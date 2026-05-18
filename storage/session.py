@@ -5,8 +5,9 @@ Connection pool is initialized once at bot startup.
 import asyncpg
 import json
 import logging
-from datetime import datetime
+import re
 from typing import Optional
+from urllib.parse import quote, unquote
 
 from config import DATABASE_URL
 from storage.models import Session, BusinessProfile, PipelineStage
@@ -16,11 +17,26 @@ logger = logging.getLogger(__name__)
 _pool: Optional[asyncpg.Pool] = None
 
 
+def _sanitize_db_url(url: str) -> str:
+    """URL-encode special chars in password part of a PostgreSQL URI.
+    Handles passwords containing [ ] ! $ , % which break the URL parser.
+    """
+    pattern = r'^(postgresql(?:\+\w+)?://[^:]+:)(.+?)(@.+)$'
+    match = re.match(pattern, url)
+    if match:
+        prefix, password, suffix = match.groups()
+        # Decode any existing partial encoding, then re-encode fully
+        decoded = unquote(password)
+        encoded = quote(decoded, safe='')
+        return prefix + encoded + suffix
+    return url
+
+
 async def init_pool():
     """Create the asyncpg connection pool. Call once at startup."""
     global _pool
     _pool = await asyncpg.create_pool(
-        DATABASE_URL,
+        _sanitize_db_url(DATABASE_URL),
         min_size=2,
         max_size=10,
         command_timeout=30,
