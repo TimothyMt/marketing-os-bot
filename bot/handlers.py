@@ -11,10 +11,11 @@ from telegram.constants import ParseMode, ChatAction
 
 from storage import get_session, save_session, reset_session
 from storage.models import PipelineStage
-from agents.pipeline import run_intake, run_full_pipeline
-from agents.prompts import INTAKE_CONFIRM_TEMPLATE, PROGRESS_MESSAGES
+from agents.pipeline import run_intake, run_targeted_pipeline
+from agents.prompts import INTAKE_CONFIRM_TEMPLATE, PROGRESS_MESSAGES, TASK_OPENING_QUESTIONS
 from frameworks.kpi_library import KPI_LIBRARY
 from bot.keyboards import (
+    TASK_SELECT_KEYBOARD,
     CONFIRM_KEYBOARD,
     RESTART_KEYBOARD,
     stage_done_keyboard,
@@ -31,31 +32,44 @@ STAGE_HEADERS = {
     "synthesis":       "🚀 MARKETING STRATEGY TỔNG HỢP",
 }
 
+TASK_LABELS = {
+    "full":       "Phân tích toàn diện (6 bước)",
+    "market":     "Nghiên cứu thị trường",
+    "competitor": "Phân tích đối thủ",
+    "customer":   "Customer Insight & ICP",
+    "pricing":    "Pricing Strategy",
+    "social":     "Social Listening",
+    "strategy":   "Marketing Strategy",
+}
+
+TASK_PIPELINE_STEPS = {
+    "full":       "1️⃣ Thị trường · 2️⃣ Đối thủ · 3️⃣ Customer · 4️⃣ Psychology & Pricing · 5️⃣ Social · 6️⃣ Strategy",
+    "market":     "📊 Phân tích TAM/SAM/SOM + market dynamics",
+    "competitor": "🕵️ Landscape đối thủ + market gap analysis",
+    "customer":   "👥 ICP profile + Jobs-to-be-Done + Customer Journey",
+    "pricing":    "💰 Pricing model + psychology tactics + revenue optimization",
+    "social":     "📡 Keyword clusters + monitoring routine + crisis thresholds",
+    "strategy":   "🎯 SAVE Framework + SMART Goals + 90-day Roadmap",
+}
+
+TASK_STAGE_COUNT = {
+    "full": 6,
+    "market": 1,
+    "competitor": 1,
+    "customer": 1,
+    "pricing": 1,
+    "social": 1,
+    "strategy": 1,
+}
+
 WELCOME_MESSAGE = """👋 Xin chào! Tôi là *Max — AI CMO* của bạn.
 
-Tôi sẽ phân tích và xây dựng Marketing Strategy hoàn chỉnh trong vài phút:
-📊 Thị trường · 🕵️ Đối thủ · 👥 Khách hàng · 💡 Psychology & Pricing · 🎯 Strategy 90 ngày
+Tôi có thể giúp bạn:
+📊 Nghiên cứu thị trường · 🕵️ Phân tích đối thủ · 👥 Customer Insight
+💰 Pricing Strategy · 📡 Social Listening · 🎯 Marketing Strategy
 
 ─────────────────────────
-*Trả lời 5 câu dưới đây — copy và điền vào chỗ trống hoặc tự viết theo cách của bạn:*
-
-*1. Bạn đang bán gì?*
-_Vd: Quán cà phê / App quản lý bán hàng / Khóa học digital marketing / Spa làm đẹp_
-
-*2. Bán cho ai, ở đâu?*
-_Vd: Dân văn phòng 25-35 tuổi tại HCM / SME chủ shop online toàn quốc / Phụ nữ 28-40 tuổi tại Hà Nội_
-
-*3. Doanh thu hiện tại?*
-_Vd: 80 triệu/tháng / Chưa có (đang chuẩn bị launch) / 500 triệu/tháng_
-
-*4. Mục tiêu 90 ngày tới?*
-_Vd: Tăng lên 150 triệu/tháng / Có 100 khách hàng đầu tiên / Giảm CAC xuống dưới 200k_
-
-*5. Khó khăn lớn nhất hiện tại?*
-_Vd: Chạy ads tốn tiền nhưng không ra khách / Khách mua 1 lần rồi thôi / Không biết bắt đầu từ đâu_
-
-─────────────────────────
-💬 *Điền xong gửi một lần — tôi phân tích ngay!*"""
+*Bạn muốn Max làm gì hôm nay?*"""
 
 HELP_MESSAGE = """*Marketing OS — Hướng dẫn sử dụng*
 
@@ -64,12 +78,12 @@ HELP_MESSAGE = """*Marketing OS — Hướng dẫn sử dụng*
 /help  — Hiển thị hướng dẫn này
 
 *Cách sử dụng*:
-1. Nhắn mô tả business của bạn (tiếng Việt tự nhiên)
-2. Tôi sẽ hỏi thêm nếu cần thông tin
-3. Xác nhận thông tin → Tôi chạy 6 bước phân tích
-4. Nhận Marketing Strategy hoàn chỉnh
+1. Chọn task bạn muốn Max thực hiện
+2. Trả lời câu hỏi để Max nắm bức tranh business
+3. Xác nhận thông tin → Max chạy phân tích
+4. Nhận kết quả chuyên sâu
 
-*Thời gian*: Khoảng 3-5 phút cho đầy đủ 6 bước phân tích."""
+*Thời gian*: 30-60 giây cho task đơn lẻ, 3-5 phút cho phân tích toàn diện."""
 
 
 async def send_long_message(message: Message, text: str, **kwargs):
@@ -102,16 +116,20 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     await reset_session(user_id)
     session = await get_session(user_id)
-    session.stage = PipelineStage.INTAKE
+    session.stage = PipelineStage.TASK_SELECT
     await save_session(session)
-    await update.message.reply_text(WELCOME_MESSAGE, parse_mode=ParseMode.MARKDOWN)
+    await update.message.reply_text(
+        WELCOME_MESSAGE,
+        parse_mode=ParseMode.MARKDOWN,
+        reply_markup=TASK_SELECT_KEYBOARD,
+    )
 
 
 async def cmd_reset(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     await reset_session(user_id)
     await update.message.reply_text(
-        "✅ Đã xóa phiên cũ. Hãy kể về business mới của bạn nhé!",
+        "✅ Đã xóa phiên cũ. Bắt đầu lại nhé!",
         reply_markup=RESTART_KEYBOARD,
     )
 
@@ -127,16 +145,21 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text.strip()
     session = await get_session(user_id)
 
-    if session.stage == PipelineStage.IDLE:
-        session.stage = PipelineStage.INTAKE
+    if session.stage in (PipelineStage.IDLE, PipelineStage.TASK_SELECT):
+        # User typed instead of using the keyboard — show task menu
+        session.stage = PipelineStage.TASK_SELECT
         await save_session(session)
+        await update.message.reply_text(
+            "Chọn task bạn muốn Max thực hiện nhé 👇",
+            reply_markup=TASK_SELECT_KEYBOARD,
+        )
 
-    if session.stage == PipelineStage.INTAKE:
+    elif session.stage == PipelineStage.INTAKE:
         await _handle_intake(update, context, session, text)
 
     elif session.stage == PipelineStage.CONFIRMED:
         await update.message.reply_text(
-            "Nhấn *Bắt đầu phân tích* để tôi chạy 6 bước nhé! Hoặc /reset để bắt đầu lại.",
+            "Nhấn *Đúng rồi, bắt đầu!* để tôi chạy phân tích nhé! Hoặc /reset để bắt đầu lại.",
             parse_mode=ParseMode.MARKDOWN,
             reply_markup=CONFIRM_KEYBOARD,
         )
@@ -146,7 +169,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     else:
         await update.message.reply_text(
-            "⏳ Đang phân tích... Vui lòng chờ tôi hoàn thành các bước nhé."
+            "⏳ Đang phân tích... Vui lòng chờ tôi hoàn thành nhé."
         )
 
 
@@ -167,15 +190,24 @@ async def _handle_intake(update, context, session, text):
         fw = KPI_LIBRARY.get(session.profile.industry or "")
         industry_name = fw.display_name if fw else (session.profile.industry or "Chưa xác định")
 
-        confirm_msg = INTAKE_CONFIRM_TEMPLATE.format(
-            business_name=session.profile.business_name or "Business của bạn",
-            product_service=session.profile.product_service or "Chưa xác định",
-            target_customer=session.profile.target_customer or "Chưa xác định",
-            industry_display=industry_name,
-            stage=session.profile.stage or "Chưa xác định",
-            monthly_revenue=session.profile.monthly_revenue or "Chưa rõ",
-            primary_goal=session.profile.primary_goal or "Chưa xác định",
-            main_challenge=session.profile.main_challenge or "Chưa xác định",
+        task = session.selected_task or "full"
+        task_label = TASK_LABELS.get(task, "Phân tích")
+        steps_desc = TASK_PIPELINE_STEPS.get(task, "")
+
+        confirm_msg = (
+            f"Tôi đã nắm được thông tin cần thiết!\n\n"
+            f"🏢 *Business*: {session.profile.business_name or 'Business của bạn'}\n"
+            f"📦 *Sản phẩm/DV*: {session.profile.product_service or 'Chưa xác định'}\n"
+            f"👥 *Khách hàng*: {session.profile.target_customer or 'Chưa xác định'}\n"
+            f"📊 *Ngành*: {industry_name}\n"
+            f"🚀 *Stage*: {session.profile.stage or 'Chưa xác định'}\n"
+            f"💰 *Doanh thu*: {session.profile.monthly_revenue or 'Chưa rõ'}\n"
+            f"🎯 *Mục tiêu*: {session.profile.primary_goal or 'Chưa xác định'}\n"
+            f"⚡ *Thách thức*: {session.profile.main_challenge or 'Chưa xác định'}\n\n"
+            f"─────────────────────────\n"
+            f"*Task*: {task_label}\n"
+            f"{steps_desc}\n\n"
+            f"Bắt đầu nhé? 🚀"
         )
 
         session.stage = PipelineStage.CONFIRMED
@@ -237,7 +269,23 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     session = await get_session(user_id)
     data = query.data
 
-    if data == "confirm_yes":
+    # ── Task selection ────────────────────────────────────────────
+    if data.startswith("task_"):
+        task_type = data[5:]  # strip "task_" prefix
+        session.selected_task = task_type
+        session.stage = PipelineStage.INTAKE
+        await save_session(session)
+
+        task_label = TASK_LABELS.get(task_type, "Phân tích")
+        opening = TASK_OPENING_QUESTIONS.get(task_type, TASK_OPENING_QUESTIONS["full"])
+
+        await query.edit_message_text(
+            f"✅ *{task_label}*\n\n{opening}",
+            parse_mode=ParseMode.MARKDOWN,
+        )
+
+    # ── Pipeline confirmation ─────────────────────────────────────
+    elif data == "confirm_yes":
         session.stage = PipelineStage.MARKET_RESEARCH
         await save_session(session)
         await query.edit_message_reply_markup(reply_markup=None)
@@ -249,41 +297,56 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         session.profile = BusinessProfile()
         session.intake_history = []
         await save_session(session)
+
+        task = session.selected_task or "full"
+        opening = TASK_OPENING_QUESTIONS.get(task, TASK_OPENING_QUESTIONS["full"])
         await query.edit_message_text(
-            "Không sao! Hãy mô tả lại business của bạn — tôi sẽ lắng nghe lại từ đầu nhé 🙂"
+            f"Không sao! Hãy mô tả lại — tôi nghe lại từ đầu nhé 🙂\n\n{opening}",
+            parse_mode=ParseMode.MARKDOWN,
         )
 
+    # ── Restart ───────────────────────────────────────────────────
     elif data == "restart":
         await reset_session(user_id)
         session = await get_session(user_id)
-        session.stage = PipelineStage.INTAKE
+        session.stage = PipelineStage.TASK_SELECT
         await save_session(session)
         await query.edit_message_text(
-            "✅ Đã reset! Hãy kể cho tôi về business mới của bạn nhé:"
+            "✅ Đã reset! Bạn muốn Max làm gì hôm nay?",
+            reply_markup=TASK_SELECT_KEYBOARD,
         )
 
     elif data == "ask_followup":
         await query.edit_message_reply_markup(reply_markup=None)
         await query.message.reply_text(
-            "💬 Bạn muốn hỏi thêm gì về strategy? Cứ nhắn thẳng vào đây nhé!"
+            "💬 Bạn muốn hỏi thêm gì về kết quả phân tích? Cứ nhắn thẳng vào đây nhé!"
         )
 
 
 # ─── Pipeline runner ─────────────────────────────────────────────
 
 async def _run_pipeline_sequentially(message: Message, session):
-    await message.reply_text(
-        "🚀 *Bắt đầu phân tích toàn diện!*\n\nTôi sẽ chạy 6 bước và gửi kết quả từng bước để bạn xem trong khi chờ.",
-        parse_mode=ParseMode.MARKDOWN,
-    )
+    task = session.selected_task or "full"
+    task_label = TASK_LABELS.get(task, "Phân tích")
+    total_stages = TASK_STAGE_COUNT.get(task, 1)
+
+    if total_stages > 1:
+        await message.reply_text(
+            f"🚀 *Bắt đầu {task_label}!*\n\nTôi sẽ chạy {total_stages} bước và gửi kết quả từng bước.",
+            parse_mode=ParseMode.MARKDOWN,
+        )
+    else:
+        await message.reply_text(
+            f"🚀 *Bắt đầu {task_label}...*",
+            parse_mode=ParseMode.MARKDOWN,
+        )
 
     stage_count = 0
-    total_stages = 6
 
     async def progress_cb(msg: str):
         await message.reply_text(msg, parse_mode=ParseMode.MARKDOWN)
 
-    async for stage_key, result in run_full_pipeline(session, progress_callback=progress_cb):
+    async for stage_key, result in run_targeted_pipeline(session, progress_callback=progress_cb):
         stage_count += 1
         is_last = stage_count == total_stages
         header = STAGE_HEADERS.get(stage_key, stage_key.upper())
@@ -298,9 +361,16 @@ async def _run_pipeline_sequentially(message: Message, session):
         await save_session(session)
         await asyncio.sleep(0.5)
 
-    if stage_count == total_stages:
-        await message.reply_text(
-            "✅ *Hoàn thành phân tích!*\n\nBạn đã có đầy đủ:\n• Market Intelligence\n• Competitor Landscape\n• Customer Insights\n• Psychology & Pricing\n• Social Listening System\n• Marketing Strategy 90 ngày\n\nCó câu hỏi gì thêm không? Cứ nhắn thẳng vào đây nhé! 💬",
-            parse_mode=ParseMode.MARKDOWN,
-            reply_markup=stage_done_keyboard(is_last=True),
-        )
+    if stage_count > 0 and stage_count == total_stages:
+        if total_stages > 1:
+            await message.reply_text(
+                "✅ *Hoàn thành phân tích!*\n\nBạn đã có đầy đủ:\n• Market Intelligence\n• Competitor Landscape\n• Customer Insights\n• Psychology & Pricing\n• Social Listening System\n• Marketing Strategy 90 ngày\n\nCó câu hỏi gì thêm không? Cứ nhắn thẳng vào đây nhé! 💬",
+                parse_mode=ParseMode.MARKDOWN,
+                reply_markup=stage_done_keyboard(is_last=True),
+            )
+        else:
+            await message.reply_text(
+                f"✅ *Hoàn thành {task_label}!*\n\nCó câu hỏi gì thêm không? Cứ nhắn thẳng vào đây nhé! 💬",
+                parse_mode=ParseMode.MARKDOWN,
+                reply_markup=stage_done_keyboard(is_last=True),
+            )

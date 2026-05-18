@@ -21,6 +21,7 @@ from agents.prompts import (
     SOCIAL_LISTENING_SYSTEM,
     STRATEGY_SYNTHESIZER_SYSTEM,
     PROGRESS_MESSAGES,
+    get_intake_system,
 )
 from frameworks.kpi_library import get_framework_as_text
 from frameworks.save_framework import generate_save_analysis
@@ -43,13 +44,15 @@ async def run_intake(session: Session, user_message: str) -> tuple[str, bool]:
     # Build messages with cache breakpoint on system prompt
     messages = session.intake_history.copy()
 
+    system_prompt = get_intake_system(session.selected_task or "full")
+
     response = await client.messages.create(
         model=CLAUDE_MODEL,
         max_tokens=1024,
         system=[
             {
                 "type": "text",
-                "text": INTAKE_SYSTEM,
+                "text": system_prompt,
                 "cache_control": {"type": "ephemeral"},
             }
         ],
@@ -272,7 +275,7 @@ PIPELINE_SEQUENCE = [
 ]
 
 
-async def run_full_pipeline(
+async def run_full_pipeline(  # kept for backwards compatibility — use run_targeted_pipeline
     session: Session,
     progress_callback=None,
 ) -> AsyncGenerator[tuple[str, str], None]:
@@ -300,5 +303,51 @@ async def run_full_pipeline(
         except Exception as e:
             error_msg = f"⚠️ Lỗi ở bước {stage_key}: {str(e)[:200]}"
             yield stage_key, error_msg
+
+    session.stage = PipelineStage.COMPLETE
+
+
+# ─────────────────────────────────────────────────────────────────
+# TARGETED PIPELINE — runs only stages relevant to selected task
+# ─────────────────────────────────────────────────────────────────
+
+TASK_PIPELINE_MAP: dict[str, list] = {
+    "full":       PIPELINE_SEQUENCE,
+    "market":     [(PipelineStage.MARKET_RESEARCH, run_market_research, "market_research")],
+    "competitor": [(PipelineStage.COMPETITOR, run_competitor_analysis, "competitor")],
+    "customer":   [(PipelineStage.CUSTOMER_INSIGHT, run_customer_insight, "customer_insight")],
+    "pricing":    [(PipelineStage.PSYCHOLOGY_PRICING, run_psychology_and_pricing, "psychology_pricing")],
+    "social":     [(PipelineStage.SOCIAL_LISTENING, run_social_listening, "social_listening")],
+    "strategy":   [(PipelineStage.SYNTHESIS, run_strategy_synthesis, "synthesis")],
+}
+
+
+async def run_targeted_pipeline(
+    session: Session,
+    progress_callback=None,
+) -> AsyncGenerator[tuple[str, str], None]:
+    """
+    Run only the pipeline stages relevant to session.selected_task.
+    Yields (stage_name, result_text) for each stage.
+    """
+    task = session.selected_task or "full"
+    sequence = TASK_PIPELINE_MAP.get(task, PIPELINE_SEQUENCE)
+
+    for stage_enum, stage_fn, stage_key in sequence:
+        session.stage = stage_enum
+
+        if progress_callback and stage_key in PROGRESS_MESSAGES:
+            await progress_callback(PROGRESS_MESSAGES[stage_key][0])
+
+        try:
+            result = await asyncio.wait_for(
+                stage_fn(session),
+                timeout=AGENT_TIMEOUT,
+            )
+            yield stage_key, result
+        except asyncio.TimeoutError:
+            yield stage_key, f"⚠️ Bước {stage_key} mất quá nhiều thời gian. Bỏ qua và tiếp tục..."
+        except Exception as e:
+            yield stage_key, f"⚠️ Lỗi ở bước {stage_key}: {str(e)[:200]}"
 
     session.stage = PipelineStage.COMPLETE

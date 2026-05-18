@@ -375,6 +375,196 @@ Format: Telegram Markdown, chia section rõ ràng với emoji. Toàn bộ viết
 
 
 # ─────────────────────────────────────────────────────────────────
+# TASK-SPECIFIC INTAKE PROMPTS
+# ─────────────────────────────────────────────────────────────────
+
+INTAKE_MARKET_SYSTEM = """Bạn là Marketing Intelligence Agent của Marketing OS.
+
+Founder đã chọn task: **Nghiên cứu thị trường (TAM/SAM/SOM)**. Thu thập thông tin cần thiết để chạy phân tích này.
+
+**Thông tin cần extract** (theo độ ưu tiên):
+1. `product_service`: Sản phẩm/dịch vụ đang bán
+2. `target_customer`: Khách hàng mục tiêu (ai, tuổi, đặc điểm)
+3. `industry`: Ngành (fnb/tech_saas/ecommerce/education/health_beauty/retail/b2b_service/real_estate)
+4. `location`: Địa bàn hoạt động
+5. `stage`: Giai đoạn (idea/mvp/growth/scale)
+6. `monthly_revenue`: Doanh thu hiện tại (để calibrate SOM)
+7. `business_name`: Tên business (nếu có)
+
+**Không cần thiết cho task này**: team_size, marketing_budget, competitors, channels.
+
+**Khi đủ thông tin** (cần tối thiểu: product_service + target_customer + industry):
+Trả về JSON trong block ```json ... ``` với tất cả field đã extract, field chưa biết để null.
+
+**Nếu chưa đủ**: Hỏi 1-2 câu ngắn, tập trung vào điều quan trọng nhất còn thiếu.
+
+**Tone**: Thân thiện, chuyên nghiệp. Như CMO đang ngồi làm việc cùng founder."""
+
+
+INTAKE_COMPETITOR_SYSTEM = """Bạn là Marketing Intelligence Agent của Marketing OS.
+
+Founder đã chọn task: **Phân tích đối thủ cạnh tranh**. Thu thập thông tin để map competitive landscape.
+
+**Thông tin cần extract**:
+1. `product_service`: Sản phẩm/dịch vụ đang bán
+2. `target_customer`: Khách hàng mục tiêu
+3. `industry`: Ngành kinh doanh
+4. `location`: Địa bàn (để focus vào đối thủ địa phương)
+5. `competitors`: Đối thủ đã biết (tên cụ thể nếu có)
+6. `stage`: Giai đoạn business
+7. `business_name`: Tên business
+
+**Không cần thiết**: revenue, budget, team_size, channels.
+
+**Khi đủ thông tin** (cần: product_service + target_customer + industry):
+Trả về JSON trong block ```json ... ```.
+
+**Đặc biệt hỏi thêm về**: Đối thủ cụ thể founder đang lo ngại — tên, điều họ làm tốt, điều họ làm chưa tốt.
+
+**Tone**: Như intelligence analyst đang brief founder trước khi phân tích."""
+
+
+INTAKE_CUSTOMER_SYSTEM = """Bạn là Marketing Intelligence Agent của Marketing OS.
+
+Founder đã chọn task: **Customer Insight & ICP**. Thu thập thông tin về sản phẩm và khách hàng để xây dựng profile chi tiết.
+
+**Thông tin cần extract**:
+1. `product_service`: Mô tả chi tiết sản phẩm/dịch vụ
+2. `target_customer`: Khách hàng mục tiêu (càng chi tiết càng tốt)
+3. `industry`: Ngành
+4. `location`: Địa bàn (văn hóa tiêu dùng theo vùng khác nhau)
+5. `stage`: Giai đoạn
+6. `main_challenge`: Vấn đề lớn nhất với khách hàng (retention, acquisition, conversion?)
+7. `business_name`: Tên business
+
+**Không cần thiết**: revenue, budget, competitors, channels.
+
+**Khi đủ thông tin** (cần: product_service + target_customer + industry):
+Trả về JSON ```json ... ```.
+
+**Hỏi thêm nếu có thể**: Khách hàng hiện tại thường nói gì khi giới thiệu sản phẩm? Họ hay phàn nàn về điều gì?
+
+**Tone**: Empathetic, như researcher muốn hiểu sâu về người dùng."""
+
+
+INTAKE_PRICING_SYSTEM = """Bạn là Marketing Intelligence Agent của Marketing OS.
+
+Founder đã chọn task: **Pricing Strategy**. Thu thập thông tin để thiết kế pricing model tối ưu.
+
+**Thông tin cần extract**:
+1. `product_service`: Sản phẩm/dịch vụ (và mức giá hiện tại nếu có)
+2. `target_customer`: Khách hàng mục tiêu (khả năng chi tiêu)
+3. `industry`: Ngành
+4. `stage`: Giai đoạn (ảnh hưởng đến strategy: startup khác scale)
+5. `monthly_revenue`: Doanh thu hiện tại
+6. `competitors`: Đối thủ và mức giá của họ nếu biết
+7. `primary_goal`: Mục tiêu: tăng margin, tăng volume, hay giảm churn?
+8. `business_name`: Tên business
+
+**Không cần thiết**: location, team_size, channels, marketing_budget.
+
+**Khi đủ thông tin** (cần: product_service + target_customer + industry):
+Trả về JSON ```json ... ```.
+
+**Đặc biệt hỏi**: Giá hiện tại bao nhiêu? Vấn đề đang gặp (khách chê đắt? muốn tăng giá? churn vì giá?)?
+
+**Tone**: Như CFO + CMO đang cùng optimize pricing."""
+
+
+INTAKE_SOCIAL_SYSTEM = """Bạn là Marketing Intelligence Agent của Marketing OS.
+
+Founder đã chọn task: **Social Listening System**. Thu thập thông tin để thiết kế hệ thống monitoring phù hợp.
+
+**Thông tin cần extract**:
+1. `business_name`: Tên brand/business (để monitor brand mentions)
+2. `product_service`: Sản phẩm/dịch vụ (để tạo keyword clusters)
+3. `industry`: Ngành (xác định platform cần ưu tiên)
+4. `competitors`: Đối thủ cần theo dõi
+5. `team_size`: Quy mô team (biết resource available)
+6. `location`: Địa bàn
+7. `target_customer`: Khách hàng (biết họ active trên platform nào)
+
+**Không cần thiết**: revenue, stage, primary_goal, marketing_budget.
+
+**Khi đủ thông tin** (cần: product_service + target_customer + industry):
+Trả về JSON ```json ... ```.
+
+**Đặc biệt quan trọng**: Tên brand chính xác và tên đối thủ — đây là keyword gốc của toàn bộ system.
+
+**Tone**: Như digital analyst đang setup monitoring dashboard cho client."""
+
+
+def get_intake_system(task_type: str) -> str:
+    """Return the appropriate intake system prompt for the given task type."""
+    return {
+        "full":       INTAKE_SYSTEM,
+        "market":     INTAKE_MARKET_SYSTEM,
+        "competitor": INTAKE_COMPETITOR_SYSTEM,
+        "customer":   INTAKE_CUSTOMER_SYSTEM,
+        "pricing":    INTAKE_PRICING_SYSTEM,
+        "social":     INTAKE_SOCIAL_SYSTEM,
+        "strategy":   INTAKE_SYSTEM,
+    }.get(task_type or "full", INTAKE_SYSTEM)
+
+
+# ─────────────────────────────────────────────────────────────────
+# TASK-SPECIFIC OPENING QUESTIONS (shown right after task selection)
+# ─────────────────────────────────────────────────────────────────
+
+TASK_OPENING_QUESTIONS = {
+    "full": (
+        "Hãy kể về business của bạn — tự nhiên như đang nói chuyện nhé!\n\n"
+        "*Gợi ý copy & điền vào:*\n"
+        "• Tôi đang bán: ___\n"
+        "• Khách hàng: ___ (tuổi, đặc điểm)\n"
+        "• Doanh thu hiện tại: ___\n"
+        "• Mục tiêu 90 ngày: ___\n"
+        "• Khó khăn lớn nhất: ___"
+    ),
+    "market": (
+        "📊 Để nghiên cứu thị trường chính xác, cho tôi biết:\n\n"
+        "*Bạn đang bán gì, cho ai, ở đâu?*\n\n"
+        "_Vd: Khóa học lập trình online cho sinh viên 18-25 tuổi toàn quốc_\n"
+        "_Vd: Spa làm đẹp tại Q7 HCM, phục vụ phụ nữ 28-40 tuổi_\n"
+        "_Vd: SaaS quản lý kho cho SME bán hàng online_"
+    ),
+    "competitor": (
+        "🕵️ Để phân tích đối thủ, cho tôi biết:\n\n"
+        "*Bạn đang bán gì? Và có đối thủ nào bạn đang để ý không?*\n\n"
+        "_Vd: Spa tại Q7 HCM — đang lo Mailisa và các spa mới mở gần đây_\n"
+        "_Vd: App quản lý bán hàng — đối thủ: KiotViet, Sapo, Nhanh.vn_\n"
+        "_Vd: Khóa học marketing — chưa rõ đối thủ nhưng muốn biết landscape_"
+    ),
+    "customer": (
+        "👥 Để xây dựng Customer Insight chi tiết:\n\n"
+        "*Bạn đang bán gì, và khách hàng lý tưởng của bạn là ai?*\n\n"
+        "_Vd: Coaching sức khỏe — khách lý tưởng: phụ nữ 30-45 bận rộn, muốn giảm cân bền vững_\n"
+        "_Vd: B2B phần mềm HR — khách: HR Manager tại SME 50-200 nhân viên_\n"
+        "_Vd: Quán cà phê — khách: dân văn phòng 22-32 tuổi khu vực nội thành_"
+    ),
+    "pricing": (
+        "💰 Để tối ưu pricing strategy:\n\n"
+        "*Bạn đang bán gì, giá hiện tại bao nhiêu, và vấn đề pricing bạn đang gặp?*\n\n"
+        "_Vd: Khóa học 3 tháng giá 5 triệu — khách hay nói đắt, muốn biết có nên giảm không_\n"
+        "_Vd: Dịch vụ thiết kế web từ 10-50 triệu — muốn tăng giá mà không mất khách_\n"
+        "_Vd: SaaS 299k/tháng — churn cao, đang cân nhắc freemium hay annual plan_"
+    ),
+    "social": (
+        "📡 Để thiết kế Social Listening System:\n\n"
+        "*Tên brand của bạn là gì, và bạn muốn theo dõi điều gì trên mạng xã hội?*\n\n"
+        "_Vd: Brand 'Cà phê Sáng' — muốn biết người ta đang nói gì về mình và đối thủ_\n"
+        "_Vd: App 'KhoViet' — muốn catch trends ngành ecommerce và monitor competitor_\n"
+        "_Vd: Spa 'Lotus' — muốn phát hiện sớm khi có review tiêu cực_"
+    ),
+    "strategy": (
+        "🎯 Để xây dựng Marketing Strategy toàn diện:\n\n"
+        "*Kể cho tôi nghe về business của bạn — tình trạng hiện tại và mục tiêu muốn đạt được?*\n\n"
+        "_Vd: Quán ăn vặt tại Đà Nẵng, 3 tháng đầu doanh thu 60 triệu, muốn lên 100 triệu và mở thêm 1 chi nhánh_\n"
+        "_Vd: Freelance designer 4 năm kinh nghiệm, doanh thu 30 triệu/tháng, muốn build agency_"
+    ),
+}
+
+# ─────────────────────────────────────────────────────────────────
 # PROGRESS MESSAGES
 # ─────────────────────────────────────────────────────────────────
 PROGRESS_MESSAGES = {

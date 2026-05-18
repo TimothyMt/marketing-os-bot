@@ -6,8 +6,19 @@ from typing import Optional
 from enum import Enum
 
 
+class TaskType(str, Enum):
+    FULL        = "full"           # Phân tích toàn diện (6 bước)
+    MARKET      = "market"         # Nghiên cứu thị trường
+    COMPETITOR  = "competitor"     # Phân tích đối thủ
+    CUSTOMER    = "customer"       # Customer Insight
+    PRICING     = "pricing"        # Pricing Strategy
+    SOCIAL      = "social"         # Social Listening
+    STRATEGY    = "strategy"       # Marketing Strategy (SAVE + SMART)
+
+
 class PipelineStage(str, Enum):
     IDLE = "idle"
+    TASK_SELECT = "task_select"
     INTAKE = "intake"
     CONFIRMED = "confirmed"
     MARKET_RESEARCH = "market_research"
@@ -70,6 +81,7 @@ class Session:
     """Full session state for a Telegram user."""
     user_id: int
     stage: PipelineStage = PipelineStage.IDLE
+    selected_task: Optional[str] = None        # TaskType value
     profile: BusinessProfile = field(default_factory=BusinessProfile)
 
     # Conversation history for intake phase
