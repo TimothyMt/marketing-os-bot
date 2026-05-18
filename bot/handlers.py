@@ -37,20 +37,25 @@ Tôi sẽ phân tích và xây dựng Marketing Strategy hoàn chỉnh trong và
 📊 Thị trường · 🕵️ Đối thủ · 👥 Khách hàng · 💡 Psychology & Pricing · 🎯 Strategy 90 ngày
 
 ─────────────────────────
-Để bắt đầu, tôi cần biết 5 điều này:
+*Trả lời 5 câu dưới đây — copy và điền vào chỗ trống hoặc tự viết theo cách của bạn:*
 
-*1. Bạn đang bán gì?* — Sản phẩm/dịch vụ cụ thể, không cần dài
+*1. Bạn đang bán gì?*
+_Vd: Quán cà phê / App quản lý bán hàng / Khóa học digital marketing / Spa làm đẹp_
 
-*2. Bán cho ai?* — Khách hàng mục tiêu (tuổi, nghề, thu nhập, địa lý)
+*2. Bán cho ai, ở đâu?*
+_Vd: Dân văn phòng 25-35 tuổi tại HCM / SME chủ shop online toàn quốc / Phụ nữ 28-40 tuổi tại Hà Nội_
 
-*3. Doanh thu hiện tại?* — Tháng gần nhất, ước tính cũng được
+*3. Doanh thu hiện tại?*
+_Vd: 80 triệu/tháng / Chưa có (đang chuẩn bị launch) / 500 triệu/tháng_
 
-*4. Mục tiêu 90 ngày tới là gì?* — Con số cụ thể càng tốt
+*4. Mục tiêu 90 ngày tới?*
+_Vd: Tăng lên 150 triệu/tháng / Có 100 khách hàng đầu tiên / Giảm CAC xuống dưới 200k_
 
-*5. Đang gặp khó khăn gì lớn nhất?* — Không ra khách? Khách không quay lại? Đốt tiền ads không hiệu quả?
+*5. Khó khăn lớn nhất hiện tại?*
+_Vd: Chạy ads tốn tiền nhưng không ra khách / Khách mua 1 lần rồi thôi / Không biết bắt đầu từ đâu_
 
 ─────────────────────────
-💬 *Trả lời 5 câu trên là tôi có đủ để bắt đầu phân tích cho bạn ngay.*"""
+💬 *Điền xong gửi một lần — tôi phân tích ngay!*"""
 
 HELP_MESSAGE = """*Marketing OS — Hướng dẫn sử dụng*
 
