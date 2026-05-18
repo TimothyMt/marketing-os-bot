@@ -31,17 +31,25 @@ STAGE_HEADERS = {
     "synthesis":       "🚀 MARKETING STRATEGY TỔNG HỢP",
 }
 
-WELCOME_MESSAGE = """👋 Xin chào! Tôi là *Marketing OS* — AI hỗ trợ Founders & Business Owners xây dựng Marketing Strategy chuyên nghiệp.
+WELCOME_MESSAGE = """👋 Xin chào! Tôi là *Max — Your CMO* được hỗ trợ bởi AI.
 
-Tôi sẽ giúp bạn:
+Tôi sẽ phân tích toàn diện và xây dựng Marketing Strategy riêng cho business của bạn:
 • 📊 Nghiên cứu thị trường (TAM/SAM/SOM)
 • 🕵️ Phân tích đối thủ cạnh tranh
-• 👥 Hiểu sâu khách hàng (ICP + JTBD)
-• 💡 Áp dụng Marketing Psychology & Pricing
-• 📡 Thiết lập Social Listening
-• 🎯 Xây dựng Marketing Strategy (SAVE + SMART)
+• 👥 Customer Insight (ICP + JTBD)
+• 💡 Marketing Psychology & Pricing Strategy
+• 📡 Social Listening System
+• 🎯 Marketing Strategy 90 ngày (SAVE + SMART)
 
-*Hãy kể cho tôi nghe về business của bạn* — tự nhiên như đang nói chuyện nhé! Ngành gì, đang ở giai đoạn nào, đang gặp vấn đề gì... càng chi tiết tôi phân tích càng sâu. 🙂"""
+─────────────────────────
+*Để bắt đầu, hãy kể về business của bạn.*
+
+Bạn chỉ cần nhắn tự nhiên, ví dụ như:
+
+_"Mình đang chạy quán cà phê ở Quận 1 HCM, khách chủ yếu là dân văn phòng 25–35 tuổi. Doanh thu hiện tại khoảng 80 triệu/tháng, mình muốn đẩy lên 150 triệu trong 3 tháng tới. Đang chạy Facebook Ads nhưng tốn tiền mà không ra khách. Đối thủ gần đó có The Coffee House và Phúc Long."_
+
+─────────────────────────
+💬 *Giờ đến lượt bạn — business của bạn đang làm gì?*"""
 
 HELP_MESSAGE = """*Marketing OS — Hướng dẫn sử dụng*
 
