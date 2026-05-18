@@ -11,7 +11,46 @@ User nhắn mô tả business → Max hỏi thêm nếu cần → chạy phân t
 
 - **GitHub**: https://github.com/TimothyMt/marketing-os-bot
 - **Deploy**: Railway (auto-deploy từ GitHub branch)
-- **Local path**: `C:\Users\dtnhien\marketing-os-bot\`
+- **Local path**: tùy máy (vd `C:\Users\<your-user>\projects\marketing-os-bot\`)
+
+---
+
+## ⚡ Quick Start trên máy mới
+
+Branch hoạt động hiện tại: **`fix/critical-issues`** (chứa Priority 1 hardening).
+
+```bash
+# 1. Clone repo
+git clone https://github.com/TimothyMt/marketing-os-bot
+cd marketing-os-bot
+
+# 2. Checkout branch đang làm
+git fetch origin
+git checkout fix/critical-issues
+
+# 3. Verify đúng commit gần nhất
+git log --oneline -1
+# Expect: 9eb6081 fix: Priority 1 hardening — timeouts, error handling, ...
+
+# 4. Cài dependencies (đã có thêm tavily-python)
+pip install -r requirements.txt
+
+# 5. Tạo .env (xem section "Env vars" bên dưới)
+# Tối thiểu: ANTHROPIC_API_KEY + TAVILY_API_KEY để chạy simulate.py
+
+# 6. Test nhanh không cần Telegram/Supabase
+python simulate.py
+
+# 7. Đọc thứ tự để hiểu Priority 1:
+#    HANDOFF.md (file này) → section "Priority 1 Hardening" bên dưới
+#    AUDIT_REPORT_20250518.md — rationale + danh sách 20 issues
+#    BUG_ANALYSIS_BRAND_DETECTION.md — 5 bugs brand search + code fixes
+#    IMPROVEMENTS_IMPLEMENTATION.md — implementation guide Priority 1+2
+```
+
+> **Lưu ý git identity**: nếu commit lần đầu trên máy mới, set local cho repo:
+> `git config user.email "your@email"` + `git config user.name "Your Name"`.
+> Commit gần nhất do `dev@local` tạo (inline identity, không lưu config).
 
 ---
 
@@ -75,53 +114,69 @@ TAVILY_API_KEY=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
 
 ---
 
-## Flow hoàn chỉnh
+## Flow hoàn chỉnh (sau Priority 1 hardening)
 
 ```
 /start
+  └─→ @safe_handler bao bọc — mọi lỗi → "😅 Xin lỗi + gõ lại tin nhắn"
   └─→ stage = TASK_SELECT
       └─→ WELCOME_MESSAGE + 7-nút task keyboard
 
 User chọn task (vd: "📡 Social Listening")
+  └─→ validate_task_type() chặn callback giả mạo (task_invalid)
   └─→ selected_task = "social", stage = INTAKE
       └─→ Gửi câu hỏi mở đầu riêng cho task đó
 
 User nhắn tin (stage = INTAKE):
-  ├─ Tin đầu tiên + ≤4 words + ≤45 chars + không có từ mô tả
-  │   └─→ Brand Search Flow (B1 → B2 → B3):
-  │       ├─ Tavily search brand name
-  │       ├─ 1 kết quả  → keyboard [✅ Đúng rồi / ❌ Không phải]
-  │       ├─ 2-4 kết quả → show options + [❌ Không phải những cái trên]
-  │       └─ 0 kết quả  → fallback về normal intake
+  ├─ validate_user_input() — chặn empty / >2000 chars / spam ngay ở boundary
+  │
+  ├─ _is_likely_brand_name() — Tin đầu, ≤3 words, ≤30 chars, charset whitelist,
+  │   không terminator (.?!,), không từ mô tả (tôi/bán/shop/...)
+  │   └─→ Brand Search Flow:
+  │       ├─ status_msg "🔍 Đang tìm kiếm..."
+  │       ├─ search_brand_candidates() — timeout 30s, không retry
+  │       ├─ 1 kết quả  → keyboard [✅ Đúng / ❌ Không phải]
+  │       ├─ 2-4 kết quả → show options + [❌ Không phải]
+  │       │   stage = BRAND_SELECT (callback có race-guard)
+  │       └─ 0 kết quả/timeout/error → "😅 Xin lỗi không tìm được"
+  │           → Guided Wizard 5 bước (xem section "Priority 1 #5")
   │
   └─ Normal intake
-      └─→ run_intake() — Claude hỏi cho đến khi đủ info
-          Claude có thể tự gọi web_search nếu cần
-          Tool calls chạy local loop, KHÔNG ghi vào intake_history
-          Khi đủ → trả JSON profile trong ```json``` block
-          └─→ stage = CONFIRMED + confirm card
+      └─→ with_heartbeat() wrap toàn bộ:
+          - typing indicator refresh mỗi 4s
+          - progress messages tại 30s/75s/150s
+      └─→ run_intake() @with_timeout(AGENT_TIMEOUT=120s)
+          Claude có thể tự gọi web_search (tool-use loop)
+          web_search() timeout 30s mỗi call, return error string nếu fail
+          Khi đủ info → trả JSON profile trong ```json``` block
+          └─→ stage = CONFIRMED + _send_confirm_card()
               [✅ Đúng rồi, bắt đầu! / ✏️ Sửa thông tin]
 
-User nhấn [✅ Đúng rồi, bắt đầu!]
-  └─→ run_targeted_pipeline() — chỉ chạy stages của task đã chọn
+User click [✅ Đúng rồi, bắt đầu!]
+  └─→ Race-guard: chỉ process nếu stage == CONFIRMED
+  └─→ stage = MARKET_RESEARCH
+  └─→ _run_pipeline_sequentially() — chỉ stages của task đã chọn
 
-      "full"       → market → competitor → customer → pricing → social → synthesis (6 bước)
-      "market"     → market_research (1 bước)
-      "competitor" → competitor (1 bước)
-      "customer"   → customer_insight (1 bước)
-      "pricing"    → psychology_pricing (1 bước)
-      "social"     → social_listening (1 bước)
-      "strategy"   → synthesis (1 bước)
+      "full"       → market → competitor → customer → pricing → social → synthesis
+      "market"/"competitor"/.../"strategy" → 1 stage tương ứng
 
-      Mỗi bước:
-        1. Gửi progress message
-        2. Gọi Claude với web_search tool available
-        3. Gửi kết quả ngay (không chờ hết pipeline)
-        4. Bước cuối: keyboard [🔄 Phân tích mới / ❓ Hỏi thêm]
+      Mỗi stage:
+        1. progress_cb gửi "🔍 Đang nghiên cứu..."
+        2. with_heartbeat wrap stage call — typing + progress 30/75/150s
+        3. stage_fn() @with_timeout(AGENT_TIMEOUT=120s) hoặc
+           _run_agent_with_tools @with_timeout(PIPELINE_STAGE_TIMEOUT=240s)
+        4. Gửi kết quả ngay, save_session
+        5. Stage cuối: keyboard [🔄 Phân tích mới / ❓ Hỏi thêm]
 
 stage = COMPLETE
-  └─→ User hỏi thêm → _handle_followup() — Q&A không giới hạn
+  └─→ User hỏi thêm → _handle_followup() → run_followup() có timeout + heartbeat
 ```
+
+**Khi có lỗi/timeout bất kỳ chỗ nào trên flow**:
+- `@with_timeout` raise `AgentTimeoutError` / `AgentExecutionError`
+- Bubble lên `@safe_handler` ở top-level (cmd_*/handle_message/handle_callback)
+- User nhận message tiếng Việt rõ ràng: "😅 Xin lỗi + gõ lại tin nhắn vừa rồi"
+- Session **không reset** — user chỉ cần gõ lại 1 tin nhắn để tiếp tục
 
 ---
 
@@ -158,16 +213,23 @@ File: `agents/prompts.py`
 class Session:
     user_id: int
     stage: PipelineStage       # idle → task_select → intake → brand_select
+                               # → guided_intake (nếu brand search fail)
                                # → confirmed → [pipeline stages] → complete
     selected_task: str         # "full"/"market"/"competitor"/"customer"/"pricing"/"social"/"strategy"
-    profile: BusinessProfile   # Extracted từ intake conversation
+    profile: BusinessProfile   # Extracted từ intake conversation hoặc guided wizard
     intake_history: list[dict] # [{"role": "user/assistant", "content": "..."}] max 20 turns
-    results: dict[str, str]    # {"market_research": "...", "competitor": "...", ...}
+    results: dict[str, str]    # {"market_research": "...", "_guided_step": "industry", ...}
     raw_description: str
     brand_candidates: list     # Tạm lưu kết quả search brand (xóa sau khi confirm)
 ```
 
-> ⚠️ **Quan trọng**: `selected_task` và `brand_candidates` được lưu bằng cách nhét vào `results` dict với key `_selected_task` / `_brand_candidates` — **không cần thêm column Supabase**. Logic xử lý trong `storage/session.py`.
+> ⚠️ **Quan trọng**: Các field "ngoài DataClass schema" được lưu bằng cách nhét vào `results` dict với prefix `_` — không cần thêm column Supabase. Hiện có:
+> - `_selected_task` — task user chọn
+> - `_brand_candidates` — kết quả Tavily brand search
+> - `_guided_step` — step hiện tại trong guided wizard ("industry"/"stage"/"product"/"customer"/"location")
+> - `_guided_await_other` — step nào đang chờ user gõ free text (sau khi tap "Khác")
+>
+> Logic encode/decode trong `storage/session.py`.
 
 ---
 
@@ -206,12 +268,20 @@ Dùng: `format_smart_prompt(industry, stage, goals)` → inject vào Synthesis a
 
 ## Branches & Rollback
 
-| Branch | Trạng thái | Commits |
-|---|---|---|
-| `master` | ✅ Stable — task-first UX hoàn chỉnh | `772a967` |
-| `feature/web-search` | 🧪 Testing — web search + brand ID | `d961012` |
+| Branch | Trạng thái | Commit gần nhất | Mô tả |
+|---|---|---|---|
+| `master` | ✅ Stable production | `772a967` | Task-first UX, KHÔNG có web search/brand/Priority 1 |
+| `feature/web-search` | 🧪 Testing | `d961012` | Thêm Tavily + brand identification (chưa hardening) |
+| **`fix/critical-issues`** | 🚧 **Active dev** | **`9eb6081`** | **Branch hiện tại — Priority 1 hardening** (từ feature/web-search) |
+
+**Quan hệ branches**:
+```
+master ──┐
+         └─→ feature/web-search ──→ fix/critical-issues  ← bạn đang ở đây
+```
 
 **Rollback**: Railway → Deployments → chọn deploy từ `master` → instant.
+**Để deploy Priority 1 sau khi test**: merge `fix/critical-issues` → `master`.
 
 ---
 
@@ -310,9 +380,28 @@ Khi brand search fail HOẶC user click "❌ Không phải", thay vì để user
 ## Tham chiếu Audit
 
 3 file MD ở root branch `fix/critical-issues`:
-- `AUDIT_REPORT_20250518.md` — kiến trúc review + danh sách issues
-- `BUG_ANALYSIS_BRAND_DETECTION.md` — 5 bugs cụ thể của brand search + fix code
-- `IMPROVEMENTS_IMPLEMENTATION.md` — implementation guide cho cả Priority 1 + 2
+
+### `AUDIT_REPORT_20250518.md` (4.6K)
+Architecture review + đánh giá codebase health 7.5/10.
+- Strengths: async-first, prompt caching, state machine rõ ràng
+- Critical issues: timeouts, error handling, race conditions
+- Roadmap Priority 1 (đã làm) + Priority 2 (chưa làm)
+- **Đọc đầu tiên** để hiểu rationale.
+
+### `BUG_ANALYSIS_BRAND_DETECTION.md` (8.6K)
+Chi tiết 5 bugs trên `feature/web-search` branch + code fix:
+1. No timeout on Tavily search → đã fix (timeout 30s)
+2. Race condition brand selection → đã fix (stage guard)
+3. Missing error handling → đã fix (@safe_handler bubble up)
+4. Brand matching too aggressive → đã fix (≤3 words, charset whitelist)
+5. No recovery flow → đã fix (Guided Wizard)
+
+### `IMPROVEMENTS_IMPLEMENTATION.md` (11K)
+Implementation guide với code examples cho:
+- Priority 1 (timeout decorator, error handler, validators, brand fixes) — **đã làm**
+- Priority 2 (logging, cleanup, PDF export, rate limiting) — **chưa làm**
+- Testing strategy (unit + integration + staging)
+- Deployment plan (staging → production)
 
 ---
 
