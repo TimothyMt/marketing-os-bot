@@ -33,6 +33,25 @@ RESTART_KEYBOARD = InlineKeyboardMarkup([
 ])
 
 
+def brand_select_keyboard(candidates: list, single: bool = False) -> InlineKeyboardMarkup:
+    """Dynamic keyboard for brand confirmation / multi-select."""
+    buttons = []
+    if single:
+        buttons.append([
+            InlineKeyboardButton("✅ Đúng, đó là brand tôi", callback_data="brand_pick_0"),
+            InlineKeyboardButton("❌ Không phải",            callback_data="brand_none"),
+        ])
+    else:
+        for i, c in enumerate(candidates[:4]):
+            label = c.get("name", f"Option {i+1}")
+            desc  = c.get("description", "")[:45]
+            if desc:
+                label = f"{label} — {desc}"
+            buttons.append([InlineKeyboardButton(label[:64], callback_data=f"brand_pick_{i}")])
+        buttons.append([InlineKeyboardButton("❌ Không phải những cái trên", callback_data="brand_none")])
+    return InlineKeyboardMarkup(buttons)
+
+
 def stage_done_keyboard(is_last: bool = False) -> InlineKeyboardMarkup:
     if is_last:
         return InlineKeyboardMarkup([

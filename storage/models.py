@@ -28,6 +28,7 @@ class PipelineStage(str, Enum):
     SOCIAL_LISTENING = "social_listening"
     SYNTHESIS = "synthesis"
     COMPLETE = "complete"
+    BRAND_SELECT = "brand_select"
 
 
 @dataclass
@@ -92,6 +93,9 @@ class Session:
 
     # Raw user description (first message)
     raw_description: str = ""
+
+    # Brand identification flow
+    brand_candidates: list = field(default_factory=list)
 
     # Timestamps
     created_at: Optional[str] = None

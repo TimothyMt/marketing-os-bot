@@ -44,6 +44,51 @@ async def web_search(query: str, max_results: int = 5) -> str:
         return f"Lỗi tìm kiếm: {str(e)[:150]}"
 
 
+async def search_brand_candidates(brand_name: str) -> list[dict]:
+    """Search for brand and return up to 4 distinct candidates."""
+    if not TAVILY_API_KEY:
+        return []
+    try:
+        from urllib.parse import urlparse
+        client = get_client()
+        response = await client.search(
+            query=brand_name,
+            max_results=10,
+            search_depth="basic",
+        )
+        results = response.get("results", [])
+
+        seen_domains: set[str] = set()
+        candidates: list[dict] = []
+        for r in results:
+            url = r.get("url", "")
+            domain = urlparse(url).netloc.replace("www.", "")
+            if domain in seen_domains:
+                continue
+            seen_domains.add(domain)
+
+            title = r.get("title", "")
+            # Strip common suffixes: "Brand - tagline | site"
+            clean_name = title.split(" - ")[0].split(" | ")[0].split(" – ")[0].strip()
+            if len(clean_name) > 60 or not clean_name:
+                clean_name = brand_name
+
+            description = r.get("content", "")[:150].strip()
+            candidates.append({
+                "name": clean_name,
+                "description": description,
+                "url": url,
+                "domain": domain,
+            })
+            if len(candidates) >= 4:
+                break
+
+        return candidates
+    except Exception as e:
+        logger.warning("search_brand_candidates error for '%s': %s", brand_name, e)
+        return []
+
+
 # Claude tool definition
 WEB_SEARCH_TOOL = {
     "name": "web_search",
