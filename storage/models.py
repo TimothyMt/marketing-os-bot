@@ -29,6 +29,7 @@ class PipelineStage(str, Enum):
     SYNTHESIS = "synthesis"
     COMPLETE = "complete"
     BRAND_SELECT = "brand_select"
+    GUIDED_INTAKE = "guided_intake"  # Wizard mode after brand search fails
 
 
 @dataclass

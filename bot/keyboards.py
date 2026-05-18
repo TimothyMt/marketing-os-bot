@@ -52,6 +52,56 @@ def brand_select_keyboard(candidates: list, single: bool = False) -> InlineKeybo
     return InlineKeyboardMarkup(buttons)
 
 
+# ── Guided intake wizard — used when brand search can't auto-fill profile ──
+# Each step shows known options + "Khác" so the user can either tap-to-pick
+# or escape to free-text input. Reduces friction vs. typing everything.
+
+INDUSTRY_KEYBOARD = InlineKeyboardMarkup([
+    [
+        InlineKeyboardButton("🍔 F&B",            callback_data="guided_industry_fnb"),
+        InlineKeyboardButton("💻 Tech/SaaS",      callback_data="guided_industry_tech_saas"),
+    ],
+    [
+        InlineKeyboardButton("🛒 E-commerce",     callback_data="guided_industry_ecommerce"),
+        InlineKeyboardButton("📚 Education",      callback_data="guided_industry_education"),
+    ],
+    [
+        InlineKeyboardButton("💄 Health & Beauty", callback_data="guided_industry_health_beauty"),
+        InlineKeyboardButton("🛍️ Retail",          callback_data="guided_industry_retail"),
+    ],
+    [
+        InlineKeyboardButton("🏢 B2B Service",    callback_data="guided_industry_b2b_service"),
+        InlineKeyboardButton("🏘️ Real Estate",    callback_data="guided_industry_real_estate"),
+    ],
+    [InlineKeyboardButton("✏️ Khác (gõ vào)", callback_data="guided_industry_other")],
+])
+
+STAGE_KEYBOARD = InlineKeyboardMarkup([
+    [
+        InlineKeyboardButton("💡 Idea",   callback_data="guided_stage_idea"),
+        InlineKeyboardButton("🚀 MVP",    callback_data="guided_stage_mvp"),
+    ],
+    [
+        InlineKeyboardButton("📈 Growth", callback_data="guided_stage_growth"),
+        InlineKeyboardButton("🏆 Scale",  callback_data="guided_stage_scale"),
+    ],
+    [InlineKeyboardButton("✏️ Khác (gõ vào)", callback_data="guided_stage_other")],
+])
+
+LOCATION_KEYBOARD = InlineKeyboardMarkup([
+    [
+        InlineKeyboardButton("🏙️ TP.HCM",  callback_data="guided_location_hcm"),
+        InlineKeyboardButton("🏛️ Hà Nội",  callback_data="guided_location_hanoi"),
+    ],
+    [
+        InlineKeyboardButton("🌊 Đà Nẵng", callback_data="guided_location_danang"),
+        InlineKeyboardButton("🏝️ Phú Quốc / Du lịch", callback_data="guided_location_tourist"),
+    ],
+    [InlineKeyboardButton("🇻🇳 Toàn quốc / Online", callback_data="guided_location_nationwide")],
+    [InlineKeyboardButton("✏️ Khác (gõ vào)", callback_data="guided_location_other")],
+])
+
+
 def stage_done_keyboard(is_last: bool = False) -> InlineKeyboardMarkup:
     if is_last:
         return InlineKeyboardMarkup([

@@ -1,15 +1,24 @@
 """
 Pipeline Orchestration Engine.
 Manages the sequential execution of all 8 agents via Claude API.
+
+All agent entry points are timeout-wrapped — Claude API can hang on rare network
+issues, and tool-use loops can iterate indefinitely if the model misbehaves.
 """
 import json
+import logging
 import re
 import asyncio
 from typing import AsyncGenerator, Optional
 
 import anthropic
 
-from config import CLAUDE_MODEL, ANTHROPIC_API_KEY, AGENT_TIMEOUT
+from config import (
+    CLAUDE_MODEL,
+    ANTHROPIC_API_KEY,
+    AGENT_TIMEOUT,
+    PIPELINE_STAGE_TIMEOUT,
+)
 from tools.search import web_search, WEB_SEARCH_TOOL
 from storage.models import Session, BusinessProfile, PipelineStage
 from agents.prompts import (
@@ -24,10 +33,12 @@ from agents.prompts import (
     PROGRESS_MESSAGES,
     get_intake_system,
 )
+from agents._decorators import with_timeout, AgentTimeoutError, AgentExecutionError
 from frameworks.kpi_library import get_framework_as_text
 from frameworks.save_framework import generate_save_analysis
 from frameworks.smart_framework import format_smart_prompt
 
+logger = logging.getLogger(__name__)
 client = anthropic.AsyncAnthropic(api_key=ANTHROPIC_API_KEY)
 
 
@@ -35,6 +46,7 @@ client = anthropic.AsyncAnthropic(api_key=ANTHROPIC_API_KEY)
 # INTAKE AGENT — conversational, multi-turn
 # ─────────────────────────────────────────────────────────────────
 
+@with_timeout(AGENT_TIMEOUT)
 async def run_intake(session: Session, user_message: str) -> tuple[str, bool]:
     """
     Run one turn of the intake conversation.
@@ -79,6 +91,30 @@ async def run_intake(session: Session, user_message: str) -> tuple[str, bool]:
             return assistant_text, is_complete
 
 
+@with_timeout(AGENT_TIMEOUT)
+async def run_followup(session: Session, question: str) -> str:
+    """Answer a follow-up question after the full pipeline has completed."""
+    context_str = session.build_pipeline_context()
+    followup_system = (
+        STRATEGY_SYNTHESIZER_SYSTEM
+        + "\n\nBạn đã hoàn thành phân tích. Trả lời câu hỏi follow-up dựa trên kết quả đã có."
+    )
+    response = await client.messages.create(
+        model=CLAUDE_MODEL,
+        max_tokens=1500,
+        system=[{
+            "type": "text",
+            "text": followup_system,
+            "cache_control": {"type": "ephemeral"},
+        }],
+        messages=[{
+            "role": "user",
+            "content": f"{context_str}\n\n---\n\nCâu hỏi follow-up: {question}",
+        }],
+    )
+    return response.content[0].text
+
+
 def _extract_profile_from_response(text: str) -> tuple[Optional[BusinessProfile], bool]:
     """Parse JSON block from AI response into BusinessProfile."""
     match = re.search(r"```json\s*(.*?)\s*```", text, re.DOTALL)
@@ -111,6 +147,7 @@ def _extract_profile_from_response(text: str) -> tuple[Optional[BusinessProfile]
 # PIPELINE STAGES — single-shot Claude calls
 # ─────────────────────────────────────────────────────────────────
 
+@with_timeout(AGENT_TIMEOUT)
 async def _run_agent(
     system_prompt: str,
     user_message: str,
@@ -138,13 +175,17 @@ async def _run_agent(
     return response.content[0].text
 
 
+@with_timeout(PIPELINE_STAGE_TIMEOUT)
 async def _run_agent_with_tools(
     system_prompt: str,
     user_message: str,
     context: str,
     max_tokens: int = 2048,
 ) -> str:
-    """Agent runner that can call web_search tool before producing final answer."""
+    """
+    Agent runner that can call web_search tool before producing final answer.
+    Uses higher timeout (PIPELINE_STAGE_TIMEOUT) because tool-use loops add latency.
+    """
     system_def = [{"type": "text", "text": system_prompt, "cache_control": {"type": "ephemeral"}}]
     messages = [{"role": "user", "content": f"{context}\n\n---\n\n{user_message}"}]
 

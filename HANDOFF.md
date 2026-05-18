@@ -1,6 +1,6 @@
 # Marketing OS — Handoff Document
 
-> Cập nhật lần cuối: 2026-05-18
+> Cập nhật lần cuối: 2026-05-18 (Priority 1 hardening pass)
 
 ---
 
@@ -34,10 +34,15 @@ marketing-os-bot/
 ├── bot/
 │   ├── main.py            ← Entry point, webhook setup (production)
 │   ├── handlers.py        ← Toàn bộ Telegram logic (message + callback)
-│   └── keyboards.py       ← Inline keyboard definitions
+│   ├── keyboards.py       ← Inline keyboard definitions (+ guided wizard kb)
+│   ├── _error_handler.py  ← @safe_handler — exception → Vietnamese message
+│   ├── _validators.py     ← Input + enum validation at Telegram boundary
+│   ├── _guided_intake.py  ← Wizard flow khi brand search không tìm được
+│   └── _heartbeat.py      ← Typing + progress messages cho long operations
 ├── agents/
 │   ├── pipeline.py        ← Orchestration — gọi Claude cho từng bước
-│   └── prompts.py         ← System prompts cho 8 agents + task-specific intake variants
+│   ├── prompts.py         ← System prompts cho 8 agents + task-specific intake variants
+│   └── _decorators.py     ← @with_timeout + AgentTimeoutError/AgentExecutionError
 ├── frameworks/
 │   ├── kpi_library.py     ← 8 ngành × KPI benchmarks đã calibrate
 │   ├── save_framework.py  ← SAVE framework generator (thay thế 4P)
@@ -232,19 +237,102 @@ python run_local.py
 
 ---
 
-## Vấn đề đang dở
+## Priority 1 Hardening — đã xong (branch `fix/critical-issues`)
 
-**Brand detection chưa confirm hoạt động trên production**
-- Code logic đúng: `_is_likely_brand_name()` — first message, ≤4 words, ≤45 chars, không có từ mô tả tiếng Việt
-- Nghi vấn: Railway chưa deploy commit `d961012` khi test
-- Cách test: `/start` → chọn task → gõ tên brand ngắn (phải là **tin đầu tiên** trong intake)
+Branch hiện tại bắt đầu từ `feature/web-search`, thêm các lớp bảo vệ và UX:
+
+### 1. Timeouts có cấu trúc
+- `agents/_decorators.py` mới — decorator `@with_timeout(secs)` + 2 exception types:
+  - `AgentTimeoutError` — gọi mất quá lâu, user nên thử lại
+  - `AgentExecutionError` — lỗi logic, gợi ý /reset
+- Áp lên `run_intake`, `_run_agent`, `_run_agent_with_tools`, `run_followup`
+- Constants mới ở `config.py`:
+  - `AGENT_TIMEOUT = 120s` — một agent đơn lẻ
+  - `TAVILY_TIMEOUT = 30s` — một call Tavily (raised từ 15s)
+  - `PIPELINE_STAGE_TIMEOUT = 240s` — stage có tool-use loop
+- `tools/search.py`: `asyncio.wait_for` quanh Tavily, **không loop retry**, return error string để Claude tự xử lý
+
+### 2. Error handling tập trung
+- `bot/_error_handler.py` mới — `@safe_handler` decorator:
+  - Map exception class → user message tiếng Việt
+  - Mọi message bắt đầu bằng "😅 Xin lỗi" và bảo user **"gõ lại tin nhắn vừa rồi"** (session không mất)
+  - Markdown rendering với plain-text fallback
+  - Log full traceback (`exc_info=True`) cho production
+- Wrapped: `cmd_start`, `cmd_reset`, `cmd_help`, `handle_message`, `handle_callback`
+- `_handle_followup` refactor → dùng `run_followup()` thay vì raw client call
+
+### 3. Validation ở boundary
+- `bot/_validators.py` mới:
+  - `validate_user_input()` — reject empty/>2000 chars/spam (`MAX_INPUT_LENGTH=2000` ở config)
+  - `validate_task_type()` — chặn `task_invalid` giả mạo từ callback
+- Apply trong `handle_message` (trước khi load session) và `handle_callback` (task_ branch)
+
+### 4. Brand detection hardening
+- `_is_likely_brand_name()` siết:
+  - Từ ≤4 words / ≤45 chars xuống **≤3 words / ≤30 chars**
+  - Char whitelist (chặn emoji, special chars)
+  - Reject câu hỏi (`?!.,`)
+  - Mở rộng `_DESCRIPTIVE_TOKENS` (anh/chị/em/bạn/đã/sẽ...)
+- Race condition guard: callback `brand_pick_` check `session.stage == BRAND_SELECT` trước khi process; transition stage NGAY trước async work
+- Recovery flow đổi từ "mô tả thêm" sang **Guided Intake Wizard** (xem #5)
+
+### 5. Guided Intake Wizard (mới)
+Khi brand search fail HOẶC user click "❌ Không phải", thay vì để user gõ free-form:
+- `bot/_guided_intake.py` mới — 5-step wizard với keyboard
+  1. Ngành (8 options + "Khác")
+  2. Stage (4 options + "Khác")
+  3. Sản phẩm/dịch vụ (text với ví dụ)
+  4. Khách hàng (text với ví dụ)
+  5. Địa bàn (5 options + "Khác")
+- State tracker: `session.results["_guided_step"]` + `["_guided_await_other"]`
+- Tap nút "Khác" → wait next text message → save vào field tương ứng
+- Sau step 5 → reuse `_send_confirm_card()` → user xác nhận → pipeline chạy
+- New `PipelineStage.GUIDED_INTAKE` enum value
+- Keyboards mới: `INDUSTRY_KEYBOARD`, `STAGE_KEYBOARD`, `LOCATION_KEYBOARD`
+
+### 6. Progress Heartbeat (mới)
+- `bot/_heartbeat.py` mới — `with_heartbeat(coro_factory, message, bot)`:
+  - Refresh typing indicator mỗi 4s
+  - 3-tier progress messages tại 30s / 75s / 150s
+  - Tự cancel khi operation hoàn tất → không spam
+  - Telegram errors bên trong heartbeat được swallow → không kill main flow
+- Apply trong `_handle_intake`, `_handle_followup`, `_run_pipeline_sequentially`
+- Pipeline runner refactor `async for` thành manual `__anext__()` để wrap mỗi stage
+
+### Trải nghiệm user mới
+- Lỗi/timeout → bot xin lỗi rõ ràng + bảo gõ lại 1 tin nhắn, **session không reset**
+- Long operation (60s+) → user thấy typing liên tục + tin nhắn progress
+- Pipeline 240s timeout → vẫn báo lại + bảo gõ lại
+- Brand không tìm được → wizard với button thay vì hỏi 5 câu open-ended
+
+---
+
+## Tham chiếu Audit
+
+3 file MD ở root branch `fix/critical-issues`:
+- `AUDIT_REPORT_20250518.md` — kiến trúc review + danh sách issues
+- `BUG_ANALYSIS_BRAND_DETECTION.md` — 5 bugs cụ thể của brand search + fix code
+- `IMPROVEMENTS_IMPLEMENTATION.md` — implementation guide cho cả Priority 1 + 2
 
 ---
 
 ## Bước tiếp theo
 
-- [ ] Confirm brand detection hoạt động sau khi Railway deploy `d961012`
-- [ ] Merge `feature/web-search` → `master` nếu ổn
-- [ ] Cải thiện brand search: thêm query tiếng Anh cho brand quốc tế
-- [ ] Data lifecycle: auto-xóa sessions > 30 ngày
-- [ ] Export PDF report sau khi phân tích xong
+### Trước khi merge `fix/critical-issues` → `master`
+- [ ] Test trên Railway staging với TAVILY_API_KEY thật
+- [ ] Manual test 7 task flows (full, market, competitor, customer, pricing, social, strategy)
+- [ ] Test brand wizard: gõ "Nike" → keyboard flow → confirm
+- [ ] Test heartbeat: simulate slow Claude (mock) → verify thấy progress messages
+- [ ] Test error: kill TAVILY_API_KEY trong env → verify graceful fallback
+
+### Priority 2 — chưa làm
+- [ ] Structured JSON logging (bot/_logging_config.py)
+- [ ] Session TTL cleanup job (xóa session > 30 ngày)
+- [ ] PDF export report (reportlab)
+- [ ] Rate limiting per user_id
+
+### Có thể làm thêm (đề xuất từ session)
+- [ ] Auto-retry sau timeout (Option A — phức tạp, tốn quota)
+- [ ] `/status` command để user check bot health
+- [ ] "Bot recovered" notification sau outage
+- [ ] Thêm tokens không dấu vào `_DESCRIPTIVE_TOKENS` (vd "toi", "ban") — giảm false positive brand detection
