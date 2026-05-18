@@ -30,6 +30,9 @@ logger = logging.getLogger(__name__)
 
 async def post_init(application: Application):
     """Called once after Application is built — init DB pool here."""
+    from config import SUPABASE_URL, SUPABASE_KEY
+    logger.info(f"SUPABASE_URL = '{SUPABASE_URL[:30] if SUPABASE_URL else 'EMPTY'}'")
+    logger.info(f"SUPABASE_KEY = '{'SET (' + str(len(SUPABASE_KEY)) + ' chars)' if SUPABASE_KEY else 'EMPTY'}'")
     await init_pool()
     await init_db()
     logger.info("DB pool ready.")
