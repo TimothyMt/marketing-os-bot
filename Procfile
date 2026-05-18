@@ -1,1 +1,1 @@
-web: python bot/main.py
+web: PYTHONPATH=/app python bot/main.py
