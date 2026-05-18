@@ -31,25 +31,26 @@ STAGE_HEADERS = {
     "synthesis":       "🚀 MARKETING STRATEGY TỔNG HỢP",
 }
 
-WELCOME_MESSAGE = """👋 Xin chào! Tôi là *Max — Your CMO* được hỗ trợ bởi AI.
+WELCOME_MESSAGE = """👋 Xin chào! Tôi là *Max — AI CMO* của bạn.
 
-Tôi sẽ phân tích toàn diện và xây dựng Marketing Strategy riêng cho business của bạn:
-• 📊 Nghiên cứu thị trường (TAM/SAM/SOM)
-• 🕵️ Phân tích đối thủ cạnh tranh
-• 👥 Customer Insight (ICP + JTBD)
-• 💡 Marketing Psychology & Pricing Strategy
-• 📡 Social Listening System
-• 🎯 Marketing Strategy 90 ngày (SAVE + SMART)
+Tôi sẽ phân tích và xây dựng Marketing Strategy hoàn chỉnh trong vài phút:
+📊 Thị trường · 🕵️ Đối thủ · 👥 Khách hàng · 💡 Psychology & Pricing · 🎯 Strategy 90 ngày
 
 ─────────────────────────
-*Để bắt đầu, hãy kể về business của bạn.*
+Để bắt đầu, tôi cần biết 5 điều này:
 
-Bạn chỉ cần nhắn tự nhiên, ví dụ như:
+*1. Bạn đang bán gì?* — Sản phẩm/dịch vụ cụ thể, không cần dài
 
-_"Mình đang chạy quán cà phê ở Quận 1 HCM, khách chủ yếu là dân văn phòng 25–35 tuổi. Doanh thu hiện tại khoảng 80 triệu/tháng, mình muốn đẩy lên 150 triệu trong 3 tháng tới. Đang chạy Facebook Ads nhưng tốn tiền mà không ra khách. Đối thủ gần đó có The Coffee House và Phúc Long."_
+*2. Bán cho ai?* — Khách hàng mục tiêu (tuổi, nghề, thu nhập, địa lý)
+
+*3. Doanh thu hiện tại?* — Tháng gần nhất, ước tính cũng được
+
+*4. Mục tiêu 90 ngày tới là gì?* — Con số cụ thể càng tốt
+
+*5. Đang gặp khó khăn gì lớn nhất?* — Không ra khách? Khách không quay lại? Đốt tiền ads không hiệu quả?
 
 ─────────────────────────
-💬 *Giờ đến lượt bạn — business của bạn đang làm gì?*"""
+💬 *Trả lời 5 câu trên là tôi có đủ để bắt đầu phân tích cho bạn ngay.*"""
 
 HELP_MESSAGE = """*Marketing OS — Hướng dẫn sử dụng*
 
