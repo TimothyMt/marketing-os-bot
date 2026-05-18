@@ -5,7 +5,16 @@ load_dotenv()
 
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
-DATABASE_PATH = os.getenv("DATABASE_PATH", "sessions.db")
+
+# Cloud DB — Supabase PostgreSQL connection string
+# Format: postgresql://user:password@host:port/dbname
+DATABASE_URL = os.getenv("DATABASE_URL", "")
+
+# Webhook — Railway public domain (e.g. https://xxx.up.railway.app)
+WEBHOOK_URL = os.getenv("WEBHOOK_URL", "")
+
+# Railway sets PORT automatically; fallback 8000 for local testing
+PORT = int(os.getenv("PORT", "8000"))
 
 CLAUDE_MODEL = "claude-sonnet-4-6"
 
@@ -13,18 +22,18 @@ CLAUDE_MODEL = "claude-sonnet-4-6"
 AGENT_TIMEOUT = 120
 
 # Max conversation history kept in session
-MAX_HISTORY_TURNS = 10
+MAX_HISTORY_TURNS = 20
 
 # Industries supported
 INDUSTRIES = [
-    "fnb",           # F&B: nhà hàng, cà phê, food delivery
-    "tech_saas",     # Tech SaaS / App
-    "ecommerce",     # Thương mại điện tử
-    "education",     # Giáo dục / Coaching / Khóa học
-    "health_beauty", # Sức khỏe / Làm đẹp / Spa / Clinic
-    "retail",        # Bán lẻ offline / Chuỗi cửa hàng
-    "b2b_service",   # Dịch vụ B2B / Agency / Tư vấn
-    "real_estate",   # Bất động sản
+    "fnb",
+    "tech_saas",
+    "ecommerce",
+    "education",
+    "health_beauty",
+    "retail",
+    "b2b_service",
+    "real_estate",
 ]
 
 # Business stages

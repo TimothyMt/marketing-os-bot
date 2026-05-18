@@ -1,5 +1,6 @@
 """
 Telegram bot message and callback handlers.
+All storage calls are async (asyncpg-backed).
 """
 import asyncio
 import logging
@@ -21,14 +22,13 @@ from bot.keyboards import (
 
 logger = logging.getLogger(__name__)
 
-# Stage display names for progress headers
 STAGE_HEADERS = {
     "market_research": "📊 NGHIÊN CỨU THỊ TRƯỜNG (TAM/SAM/SOM)",
-    "competitor": "🕵️ PHÂN TÍCH ĐỐI THỦ CẠNH TRANH",
-    "customer_insight": "👥 CUSTOMER INSIGHT & ICP",
+    "competitor":      "🕵️ PHÂN TÍCH ĐỐI THỦ CẠNH TRANH",
+    "customer_insight":"👥 CUSTOMER INSIGHT & ICP",
     "psychology_pricing": "💡 MARKETING PSYCHOLOGY & PRICING STRATEGY",
-    "social_listening": "📡 SOCIAL LISTENING SYSTEM",
-    "synthesis": "🚀 MARKETING STRATEGY TỔNG HỢP",
+    "social_listening":"📡 SOCIAL LISTENING SYSTEM",
+    "synthesis":       "🚀 MARKETING STRATEGY TỔNG HỢP",
 }
 
 WELCOME_MESSAGE = """👋 Xin chào! Tôi là *Marketing OS* — AI hỗ trợ Founders & Business Owners xây dựng Marketing Strategy chuyên nghiệp.
@@ -47,7 +47,7 @@ HELP_MESSAGE = """*Marketing OS — Hướng dẫn sử dụng*
 
 /start — Bắt đầu phân tích business mới
 /reset — Xóa phiên hiện tại, bắt đầu lại
-/help — Hiển thị hướng dẫn này
+/help  — Hiển thị hướng dẫn này
 
 *Cách sử dụng*:
 1. Nhắn mô tả business của bạn (tiếng Việt tự nhiên)
@@ -59,51 +59,43 @@ HELP_MESSAGE = """*Marketing OS — Hướng dẫn sử dụng*
 
 
 async def send_long_message(message: Message, text: str, **kwargs):
-    """Split and send messages longer than Telegram's 4096 char limit."""
+    """Split messages exceeding Telegram's 4096-char limit."""
     MAX_LEN = 4000
     if len(text) <= MAX_LEN:
         await message.reply_text(text, **kwargs)
         return
 
-    # Split at newlines, keeping sections intact
-    chunks = []
-    current = ""
+    chunks, current = [], ""
     for line in text.split("\n"):
         if len(current) + len(line) + 1 > MAX_LEN:
             if current:
                 chunks.append(current)
             current = line
         else:
-            current = current + "\n" + line if current else line
+            current = (current + "\n" + line) if current else line
     if current:
         chunks.append(current)
 
     for i, chunk in enumerate(chunks):
-        if i == len(chunks) - 1:
-            await message.reply_text(chunk, **kwargs)
-        else:
-            await message.reply_text(chunk, parse_mode=kwargs.get("parse_mode"))
+        kw = kwargs if i == len(chunks) - 1 else {k: v for k, v in kwargs.items() if k != "reply_markup"}
+        await message.reply_text(chunk, **kw)
         await asyncio.sleep(0.3)
 
 
-async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle /start command."""
-    user_id = update.effective_user.id
-    reset_session(user_id)
-    session = get_session(user_id)
-    session.stage = PipelineStage.INTAKE
-    save_session(session)
+# ─── Commands ────────────────────────────────────────────────────
 
-    await update.message.reply_text(
-        WELCOME_MESSAGE,
-        parse_mode=ParseMode.MARKDOWN,
-    )
+async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    await reset_session(user_id)
+    session = await get_session(user_id)
+    session.stage = PipelineStage.INTAKE
+    await save_session(session)
+    await update.message.reply_text(WELCOME_MESSAGE, parse_mode=ParseMode.MARKDOWN)
 
 
 async def cmd_reset(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle /reset command."""
     user_id = update.effective_user.id
-    reset_session(user_id)
+    await reset_session(user_id)
     await update.message.reply_text(
         "✅ Đã xóa phiên cũ. Hãy kể về business mới của bạn nhé!",
         reply_markup=RESTART_KEYBOARD,
@@ -114,22 +106,21 @@ async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(HELP_MESSAGE, parse_mode=ParseMode.MARKDOWN)
 
 
+# ─── Main message handler ─────────────────────────────────────────
+
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Main message handler — routes based on session stage."""
     user_id = update.effective_user.id
     text = update.message.text.strip()
-    session = get_session(user_id)
+    session = await get_session(user_id)
 
-    # Auto-start if user messages without /start
     if session.stage == PipelineStage.IDLE:
         session.stage = PipelineStage.INTAKE
-        save_session(session)
+        await save_session(session)
 
     if session.stage == PipelineStage.INTAKE:
         await _handle_intake(update, context, session, text)
 
     elif session.stage == PipelineStage.CONFIRMED:
-        # User is confirmed but pipeline not started yet
         await update.message.reply_text(
             "Nhấn *Bắt đầu phân tích* để tôi chạy 6 bước nhé! Hoặc /reset để bắt đầu lại.",
             parse_mode=ParseMode.MARKDOWN,
@@ -137,35 +128,30 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
     elif session.stage == PipelineStage.COMPLETE:
-        # Allow follow-up questions after analysis
         await _handle_followup(update, context, session, text)
 
     else:
-        # Pipeline is running
         await update.message.reply_text(
             "⏳ Đang phân tích... Vui lòng chờ tôi hoàn thành các bước nhé."
         )
 
 
+# ─── Intake ───────────────────────────────────────────────────────
+
 async def _handle_intake(update, context, session, text):
-    """Handle intake phase conversation."""
     await context.bot.send_chat_action(
         chat_id=update.effective_chat.id,
         action=ChatAction.TYPING,
     )
 
     response, is_complete = await run_intake(session, text)
-    save_session(session)
+    await save_session(session)
 
     if is_complete:
-        # Show confirmation without the JSON block
         clean_response = re.sub(r"```json.*?```", "", response, flags=re.DOTALL).strip()
 
-        # Build confirmation message
-        industry_display = KPI_LIBRARY.get(
-            session.profile.industry or "", None
-        )
-        industry_name = industry_display.display_name if industry_display else (session.profile.industry or "Chưa xác định")
+        fw = KPI_LIBRARY.get(session.profile.industry or "")
+        industry_name = fw.display_name if fw else (session.profile.industry or "Chưa xác định")
 
         confirm_msg = INTAKE_CONFIRM_TEMPLATE.format(
             business_name=session.profile.business_name or "Business của bạn",
@@ -179,7 +165,7 @@ async def _handle_intake(update, context, session, text):
         )
 
         session.stage = PipelineStage.CONFIRMED
-        save_session(session)
+        await save_session(session)
 
         await update.message.reply_text(
             confirm_msg,
@@ -187,15 +173,12 @@ async def _handle_intake(update, context, session, text):
             reply_markup=CONFIRM_KEYBOARD,
         )
     else:
-        # Still gathering info
-        await update.message.reply_text(
-            response,
-            parse_mode=ParseMode.MARKDOWN,
-        )
+        await update.message.reply_text(response, parse_mode=ParseMode.MARKDOWN)
 
+
+# ─── Follow-up Q&A after analysis complete ───────────────────────
 
 async def _handle_followup(update, context, session, text):
-    """Handle follow-up questions after analysis is complete."""
     await context.bot.send_chat_action(
         chat_id=update.effective_chat.id,
         action=ChatAction.TYPING,
@@ -206,25 +189,20 @@ async def _handle_followup(update, context, session, text):
     from agents.prompts import STRATEGY_SYNTHESIZER_SYSTEM
 
     client = anthropic.AsyncAnthropic(api_key=ANTHROPIC_API_KEY)
-
     context_str = session.build_pipeline_context()
 
     response = await client.messages.create(
         model=CLAUDE_MODEL,
         max_tokens=1500,
-        system=[
-            {
-                "type": "text",
-                "text": STRATEGY_SYNTHESIZER_SYSTEM + "\n\nBạn đã hoàn thành phân tích đầy đủ. Hãy trả lời câu hỏi follow-up của founder dựa trên kết quả phân tích đã có.",
-                "cache_control": {"type": "ephemeral"},
-            }
-        ],
-        messages=[
-            {
-                "role": "user",
-                "content": f"{context_str}\n\n---\n\nCâu hỏi follow-up: {text}",
-            }
-        ],
+        system=[{
+            "type": "text",
+            "text": STRATEGY_SYNTHESIZER_SYSTEM + "\n\nBạn đã hoàn thành phân tích. Trả lời câu hỏi follow-up dựa trên kết quả đã có.",
+            "cache_control": {"type": "ephemeral"},
+        }],
+        messages=[{
+            "role": "user",
+            "content": f"{context_str}\n\n---\n\nCâu hỏi follow-up: {text}",
+        }],
     )
 
     await send_long_message(
@@ -235,37 +213,37 @@ async def _handle_followup(update, context, session, text):
     )
 
 
+# ─── Callback (inline keyboard) ──────────────────────────────────
+
 async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle inline keyboard button presses."""
     query = update.callback_query
     await query.answer()
 
     user_id = query.from_user.id
-    session = get_session(user_id)
+    session = await get_session(user_id)
     data = query.data
 
     if data == "confirm_yes":
         session.stage = PipelineStage.MARKET_RESEARCH
-        save_session(session)
+        await save_session(session)
         await query.edit_message_reply_markup(reply_markup=None)
         await _run_pipeline_sequentially(query.message, session)
 
     elif data == "confirm_no":
         session.stage = PipelineStage.INTAKE
-        # Clear profile to restart intake
         from storage.models import BusinessProfile
         session.profile = BusinessProfile()
         session.intake_history = []
-        save_session(session)
+        await save_session(session)
         await query.edit_message_text(
             "Không sao! Hãy mô tả lại business của bạn — tôi sẽ lắng nghe lại từ đầu nhé 🙂"
         )
 
     elif data == "restart":
-        reset_session(user_id)
-        session = get_session(user_id)
+        await reset_session(user_id)
+        session = await get_session(user_id)
         session.stage = PipelineStage.INTAKE
-        save_session(session)
+        await save_session(session)
         await query.edit_message_text(
             "✅ Đã reset! Hãy kể cho tôi về business mới của bạn nhé:"
         )
@@ -277,14 +255,13 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
 
+# ─── Pipeline runner ─────────────────────────────────────────────
+
 async def _run_pipeline_sequentially(message: Message, session):
-    """Run all pipeline stages and send results one by one."""
     await message.reply_text(
         "🚀 *Bắt đầu phân tích toàn diện!*\n\nTôi sẽ chạy 6 bước và gửi kết quả từng bước để bạn xem trong khi chờ.",
         parse_mode=ParseMode.MARKDOWN,
     )
-
-    from storage import save_session
 
     stage_count = 0
     total_stages = 6
@@ -295,10 +272,8 @@ async def _run_pipeline_sequentially(message: Message, session):
     async for stage_key, result in run_full_pipeline(session, progress_callback=progress_cb):
         stage_count += 1
         is_last = stage_count == total_stages
-
         header = STAGE_HEADERS.get(stage_key, stage_key.upper())
-        divider = "─" * 30
-        full_text = f"*{header}*\n{divider}\n\n{result}"
+        full_text = f"*{header}*\n{'─' * 30}\n\n{result}"
 
         await send_long_message(
             message,
@@ -306,8 +281,7 @@ async def _run_pipeline_sequentially(message: Message, session):
             parse_mode=ParseMode.MARKDOWN,
             reply_markup=stage_done_keyboard(is_last=is_last) if is_last else None,
         )
-
-        save_session(session)
+        await save_session(session)
         await asyncio.sleep(0.5)
 
     if stage_count == total_stages:
