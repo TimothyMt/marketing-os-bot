@@ -30,9 +30,11 @@ logger = logging.getLogger(__name__)
 
 async def post_init(application: Application):
     """Called once after Application is built — init DB pool here."""
-    from config import SUPABASE_URL, SUPABASE_KEY
-    logger.info(f"SUPABASE_URL = '{SUPABASE_URL[:30] if SUPABASE_URL else 'EMPTY'}'")
-    logger.info(f"SUPABASE_KEY = '{'SET (' + str(len(SUPABASE_KEY)) + ' chars)' if SUPABASE_KEY else 'EMPTY'}'")
+    import os
+    # Log mọi env var để xác nhận Railway đã inject chưa
+    supa_vars = {k: v[:20] + "..." for k, v in os.environ.items() if "SUPA" in k.upper()}
+    logger.info(f"ENV vars chứa SUPA: {supa_vars if supa_vars else 'KHÔNG CÓ GÌ'}")
+    logger.info(f"Tất cả env var keys: {sorted(os.environ.keys())}")
     await init_pool()
     await init_db()
     logger.info("DB pool ready.")
