@@ -37,9 +37,10 @@ async def init_pool():
     global _pool
     _pool = await asyncpg.create_pool(
         _sanitize_db_url(DATABASE_URL),
-        min_size=2,
+        min_size=1,
         max_size=10,
         command_timeout=30,
+        ssl='require',
     )
     logger.info("PostgreSQL connection pool created.")
 
