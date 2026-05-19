@@ -5,7 +5,10 @@ load_dotenv()
 
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
 ANTHROPIC_API_KEY  = os.getenv("ANTHROPIC_API_KEY", "")
-TAVILY_API_KEY     = os.getenv("TAVILY_API_KEY", "")
+
+# Google Custom Search Engine (VN-focused via curated site list)
+GOOGLE_API_KEY     = os.getenv("GOOGLE_API_KEY", "")
+GOOGLE_CSE_ID      = os.getenv("GOOGLE_CSE_ID", "")
 
 # Supabase — dùng HTTPS (port 443), không bao giờ bị block
 SUPABASE_URL       = os.getenv("SUPABASE_URL", "")

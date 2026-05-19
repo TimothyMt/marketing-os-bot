@@ -15,10 +15,9 @@ TASK_SELECT_KEYBOARD = InlineKeyboardMarkup([
         InlineKeyboardButton("👥 Customer Insight",       callback_data="task_customer"),
         InlineKeyboardButton("💰 Pricing Strategy",       callback_data="task_pricing"),
     ],
-    [
-        InlineKeyboardButton("📡 Social Listening",       callback_data="task_social"),
-        InlineKeyboardButton("🎯 Marketing Strategy",     callback_data="task_strategy"),
-    ],
+    # Social Listening tạm tắt — chờ web search engine có VN coverage tốt hơn
+    # [InlineKeyboardButton("📡 Social Listening",       callback_data="task_social")],
+    [InlineKeyboardButton("🎯 Marketing Strategy",       callback_data="task_strategy")],
 ])
 
 CONFIRM_KEYBOARD = InlineKeyboardMarkup([

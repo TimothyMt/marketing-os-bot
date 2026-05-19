@@ -44,22 +44,22 @@ TASK_LABELS = {
 }
 
 TASK_PIPELINE_STEPS = {
-    "full":       "1️⃣ Thị trường · 2️⃣ Đối thủ · 3️⃣ Customer · 4️⃣ Psychology & Pricing · 5️⃣ Social · 6️⃣ Strategy",
+    "full":       "1️⃣ Thị trường · 2️⃣ Đối thủ · 3️⃣ Customer · 4️⃣ Psychology & Pricing · 5️⃣ Strategy",
     "market":     "📊 Phân tích TAM/SAM/SOM + market dynamics",
     "competitor": "🕵️ Landscape đối thủ + market gap analysis",
     "customer":   "👥 ICP profile + Jobs-to-be-Done + Customer Journey",
     "pricing":    "💰 Pricing model + psychology tactics + revenue optimization",
-    "social":     "📡 Keyword clusters + monitoring routine + crisis thresholds",
+    # "social":  "📡 Keyword clusters + monitoring routine + crisis thresholds",  # tạm tắt
     "strategy":   "🎯 SAVE Framework + SMART Goals + 90-day Roadmap",
 }
 
 TASK_STAGE_COUNT = {
-    "full": 6,
+    "full": 5,
     "market": 1,
     "competitor": 1,
     "customer": 1,
     "pricing": 1,
-    "social": 1,
+    # "social": 1,  # tạm tắt
     "strategy": 1,
 }
 
@@ -67,7 +67,7 @@ WELCOME_MESSAGE = """👋 Xin chào! Tôi là *Max — AI CMO* của bạn.
 
 Tôi có thể giúp bạn:
 📊 Nghiên cứu thị trường · 🕵️ Phân tích đối thủ · 👥 Customer Insight
-💰 Pricing Strategy · 📡 Social Listening · 🎯 Marketing Strategy
+💰 Pricing Strategy · 🎯 Marketing Strategy
 
 ─────────────────────────
 *Bạn muốn Max làm gì hôm nay?*"""
@@ -515,7 +515,7 @@ async def _run_pipeline_sequentially(message: Message, session):
     if stage_count > 0 and stage_count == total_stages:
         if total_stages > 1:
             await message.reply_text(
-                "✅ *Hoàn thành phân tích!*\n\nBạn đã có đầy đủ:\n• Market Intelligence\n• Competitor Landscape\n• Customer Insights\n• Psychology & Pricing\n• Social Listening System\n• Marketing Strategy 90 ngày\n\nCó câu hỏi gì thêm không? Cứ nhắn thẳng vào đây nhé! 💬",
+                "✅ *Hoàn thành phân tích!*\n\nBạn đã có đầy đủ:\n• Market Intelligence\n• Competitor Landscape\n• Customer Insights\n• Psychology & Pricing\n• Marketing Strategy 90 ngày\n\nCó câu hỏi gì thêm không? Cứ nhắn thẳng vào đây nhé! 💬",
                 parse_mode=ParseMode.MARKDOWN,
                 reply_markup=stage_done_keyboard(is_last=True),
             )

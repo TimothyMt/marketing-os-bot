@@ -314,7 +314,8 @@ PIPELINE_SEQUENCE = [
     (PipelineStage.COMPETITOR, run_competitor_analysis, "competitor"),
     (PipelineStage.CUSTOMER_INSIGHT, run_customer_insight, "customer_insight"),
     (PipelineStage.PSYCHOLOGY_PRICING, run_psychology_and_pricing, "psychology_pricing"),
-    (PipelineStage.SOCIAL_LISTENING, run_social_listening, "social_listening"),
+    # Social Listening tạm tắt — chờ web search VN coverage tốt hơn
+    # (PipelineStage.SOCIAL_LISTENING, run_social_listening, "social_listening"),
     (PipelineStage.SYNTHESIS, run_strategy_synthesis, "synthesis"),
 ]
 
@@ -361,7 +362,7 @@ TASK_PIPELINE_MAP: dict[str, list] = {
     "competitor": [(PipelineStage.COMPETITOR, run_competitor_analysis, "competitor")],
     "customer":   [(PipelineStage.CUSTOMER_INSIGHT, run_customer_insight, "customer_insight")],
     "pricing":    [(PipelineStage.PSYCHOLOGY_PRICING, run_psychology_and_pricing, "psychology_pricing")],
-    "social":     [(PipelineStage.SOCIAL_LISTENING, run_social_listening, "social_listening")],
+    # "social":   [(PipelineStage.SOCIAL_LISTENING, run_social_listening, "social_listening")],  # tạm tắt
     "strategy":   [(PipelineStage.SYNTHESIS, run_strategy_synthesis, "synthesis")],
 }
 

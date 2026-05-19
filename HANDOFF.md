@@ -22,7 +22,7 @@ User nhắn mô tả business → Max hỏi thêm nếu cần → chạy phân t
 | Bot framework | `python-telegram-bot` v21 async | Webhook + async native |
 | AI | Anthropic `claude-sonnet-4-6` | Tốt nhất cho tiếng Việt + tool use |
 | Database | Supabase PostgreSQL | HTTPS REST — Railway block TCP 5432, không block 443 |
-| Web search | Tavily API | Thiết kế cho AI agents, 1000 req/tháng free |
+| Web search | Google Custom Search API | Free 100/ngày, VN-focused qua curated site list (20 site VN) |
 | Hosting | Railway | Auto-deploy từ GitHub, env vars management |
 
 ---
@@ -47,7 +47,7 @@ marketing-os-bot/
 │   ├── session.py         ← Supabase read/write logic
 │   └── __init__.py        ← Re-export get_session, save_session, reset_session
 ├── tools/
-│   ├── search.py          ← Tavily wrapper + WEB_SEARCH_TOOL definition
+│   ├── search.py          ← Google CSE wrapper + WEB_SEARCH_TOOL definition
 │   └── __init__.py
 ├── config.py              ← Tất cả env vars + constants
 ├── simulate.py            ← CLI test không cần Telegram/Supabase
@@ -65,7 +65,8 @@ SUPABASE_URL=              # Project URL từ Supabase dashboard
 SUPABASE_SERVICE_KEY=      # service_role key (KHÔNG dùng anon key)
 WEBHOOK_URL=               # Railway domain, vd: https://xxx.up.railway.app
 PORT=8000
-TAVILY_API_KEY=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
+GOOGLE_API_KEY=AIzaSy...        # Google Cloud Console > Credentials
+GOOGLE_CSE_ID=xxx               # programmablesearchengine.google.com
 ```
 
 ---
@@ -84,7 +85,7 @@ User chọn task (vd: "📡 Social Listening")
 User nhắn tin (stage = INTAKE):
   ├─ Tin đầu tiên + ≤4 words + ≤45 chars + không có từ mô tả
   │   └─→ Brand Search Flow (B1 → B2 → B3):
-  │       ├─ Tavily search brand name
+  │       ├─ Google CSE search brand name (curated VN sites)
   │       ├─ 1 kết quả  → keyboard [✅ Đúng rồi / ❌ Không phải]
   │       ├─ 2-4 kết quả → show options + [❌ Không phải những cái trên]
   │       └─ 0 kết quả  → fallback về normal intake
