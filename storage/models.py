@@ -2,18 +2,30 @@
 Data models for session state management.
 """
 from dataclasses import dataclass, field
-from typing import Optional
+from datetime import datetime
+from typing import Optional, Union
 from enum import Enum
 
 
 class TaskType(str, Enum):
-    FULL        = "full"           # Phân tích toàn diện (6 bước)
-    MARKET      = "market"         # Nghiên cứu thị trường
-    COMPETITOR  = "competitor"     # Phân tích đối thủ
-    CUSTOMER    = "customer"       # Customer Insight
-    PRICING     = "pricing"        # Pricing Strategy
-    SOCIAL      = "social"         # Social Listening
+    # Strategic skills
+    FULL        = "full"           # Phân tích toàn diện
+    MARKET      = "market"
+    COMPETITOR  = "competitor"
+    CUSTOMER    = "customer"
+    PRICING     = "pricing"
+    SOCIAL      = "social"         # tạm tắt
     STRATEGY    = "strategy"       # Marketing Strategy (SAVE + SMART)
+
+    # Operational skills (mới)
+    CAMPAIGN_BRIEF       = "campaign_brief"
+    CONTENT_CALENDAR     = "content_calendar"
+    ADS_COPY             = "ads_copy"
+    VIDEO_SCRIPTS        = "video_scripts"
+    LANDING_PAGE         = "landing_page"
+    SALES_INBOX_SCRIPT   = "sales_inbox_script"
+    EMAIL_ZALO_SEQUENCE  = "email_zalo_sequence"
+    PERFORMANCE_AUDIT    = "performance_audit"
 
 
 class PipelineStage(str, Enum):
@@ -76,50 +88,109 @@ class BusinessProfile:
         return "\n".join(lines)
 
 
+MAX_VERSIONS_PER_SKILL = 5  # FIFO cap to avoid Supabase bloat
+
+
+@dataclass
+class VersionedResult:
+    """One version of a skill output. Operational skills may have multiple versions."""
+    content: str
+    version: int = 1
+    created_at: Optional[str] = None  # ISO format
+
+    @classmethod
+    def new(cls, content: str, version: int = 1) -> "VersionedResult":
+        return cls(content=content, version=version, created_at=datetime.utcnow().isoformat())
+
+    def to_dict(self) -> dict:
+        return {"content": self.content, "version": self.version, "created_at": self.created_at}
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "VersionedResult":
+        return cls(
+            content=data.get("content", ""),
+            version=data.get("version", 1),
+            created_at=data.get("created_at"),
+        )
+
+
 @dataclass
 class Session:
-    """Full session state for a Telegram user."""
+    """Full session state for a Telegram user.
+
+    `results` schema: dict[skill_key, list[VersionedResult]]
+    FIFO max 5 versions per skill to keep Supabase storage bounded.
+
+    For backward-compat: if stored as str (old schema), automatically wrapped to v1 on read.
+    """
     user_id: int
     stage: PipelineStage = PipelineStage.IDLE
-    selected_task: Optional[str] = None        # TaskType value
+    selected_task: Optional[str] = None
     profile: BusinessProfile = field(default_factory=BusinessProfile)
 
-    # Conversation history for intake phase
     intake_history: list[dict] = field(default_factory=list)
 
-    # Results from each pipeline stage
-    results: dict[str, str] = field(default_factory=dict)
+    # Versioned results — FIFO max 5 per skill
+    results: dict[str, list[VersionedResult]] = field(default_factory=dict)
 
-    # Timestamps
+    # Pending intake answers for single-shot ops skills (cleared after use)
+    pending_intake: dict[str, str] = field(default_factory=dict)
+
     created_at: Optional[str] = None
     updated_at: Optional[str] = None
 
+    # ─── Intake history ───────────────────────────────────────────
+
     def add_to_history(self, role: str, content: str):
         self.intake_history.append({"role": role, "content": content})
-        # Keep last MAX_HISTORY_TURNS turns
         if len(self.intake_history) > 20:
             self.intake_history = self.intake_history[-20:]
 
+    # ─── Results helpers ──────────────────────────────────────────
+
+    def add_result(self, skill_key: str, content: str) -> int:
+        """Add new version of a skill result. Returns version number."""
+        versions = self.results.setdefault(skill_key, [])
+        next_version = (versions[-1].version + 1) if versions else 1
+        versions.append(VersionedResult.new(content, version=next_version))
+        # FIFO trim
+        if len(versions) > MAX_VERSIONS_PER_SKILL:
+            self.results[skill_key] = versions[-MAX_VERSIONS_PER_SKILL:]
+        return next_version
+
+    def get_latest_result(self, skill_key: str) -> Optional[str]:
+        """Get the latest version content of a skill result."""
+        versions = self.results.get(skill_key, [])
+        if not versions:
+            return None
+        return versions[-1].content
+
+    def has_result(self, skill_key: str) -> bool:
+        return bool(self.results.get(skill_key))
+
+    # ─── Pipeline context builder ─────────────────────────────────
+
     def build_pipeline_context(self) -> str:
-        """Build full context string for pipeline agents."""
+        """Build full context string for pipeline agents (uses latest of each skill)."""
         parts = [self.profile.to_context_string()]
 
-        # Inject KPI framework
         from frameworks.kpi_library import get_framework_as_text
         if self.profile.industry:
             kpi_text = get_framework_as_text(self.profile.industry)
             parts.append(kpi_text)
 
-        # Inject previous results as context
+        # Strategic skill results — inject latest version
         stage_labels = {
-            "market_research": "## Kết quả Nghiên cứu Thị trường",
-            "competitor": "## Kết quả Phân tích Đối thủ",
-            "customer_insight": "## Kết quả Customer Insight",
+            "market_research":    "## Kết quả Nghiên cứu Thị trường",
+            "competitor":         "## Kết quả Phân tích Đối thủ",
+            "customer_insight":   "## Kết quả Customer Insight",
             "psychology_pricing": "## Kết quả Marketing Psychology & Pricing",
-            "social_listening": "## Kết quả Social Listening Setup",
+            "social_listening":   "## Kết quả Social Listening Setup",
+            "synthesis":          "## Kết quả Marketing Strategy",
         }
         for key, label in stage_labels.items():
-            if key in self.results:
-                parts.append(f"{label}\n{self.results[key]}")
+            content = self.get_latest_result(key)
+            if content:
+                parts.append(f"{label}\n{content}")
 
         return "\n\n---\n\n".join(parts)

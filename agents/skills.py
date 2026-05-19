@@ -8,6 +8,7 @@ LƯU Ý KHI THÊM/SỬA SKILL MỚI:
 4. Test before/after: chạy cùng input qua skill class và verify output ~ identical
 """
 from abc import ABC, abstractmethod
+from enum import Enum
 from storage.models import Session
 from agents.prompts import (
     MARKET_RESEARCH_SYSTEM,
@@ -23,14 +24,70 @@ from frameworks.save_framework import generate_save_analysis
 from frameworks.smart_framework import format_smart_prompt
 
 
-class AgentSkill(ABC):
-    """Base class for a pipeline agent skill.
-    Each concrete skill defines its prompt, context strategy, and user message template."""
+# ─────────────────────────────────────────────────────────────────
+# Enums for skill behavior — drives runtime per skill
+# ─────────────────────────────────────────────────────────────────
 
+class OutputFormat(str, Enum):
+    """Skill output format — determines OUTPUT_FORMAT_INSTRUCTION injected + renderer used."""
+    STRATEGIC_4_SECTION       = "strategic_4_section"        # Insight / Tóm tắt / Benchmarks / Detail
+    OPERATIONAL_DELIVERABLE   = "operational_deliverable"    # Standalone file format (ad copy, brief...)
+    OPERATIONAL_ANALYSIS      = "operational_analysis"       # Audit-style (verdict + KPI vs reality + actions)
+
+
+class IntakePattern(str, Enum):
+    """How skill collects info from user."""
+    MULTI_TURN       = "multi_turn"        # Strategic — Claude conversation extracts JSON profile
+    SINGLE_SHOT_FORM = "single_shot_form"  # Operational — user pastes filled template once
+    NO_INTAKE        = "no_intake"         # All needed data already in session (e.g., follow-up)
+
+
+class ContextStrategy(str, Enum):
+    """What context data to inject into agent prompt."""
+    PROFILE_ONLY              = "profile_only"               # Just BusinessProfile
+    FULL_PIPELINE             = "full_pipeline"              # Profile + KPI library + previous results
+    PROFILE_PLUS_STRATEGY     = "profile_plus_strategy"      # Profile + synthesis result (for ops post-strategic)
+    PROFILE_PLUS_CAMPAIGN     = "profile_plus_campaign"      # Profile + synthesis + campaign_brief
+    PROFILE_PLUS_KPI          = "profile_plus_kpi"           # Profile + KPI framework only
+
+
+class PrimaryDeliverable(str, Enum):
+    """Main output format user receives (in addition to Telegram bullets)."""
+    HTML     = "html"      # All skills support; default
+    EXCEL    = "excel"     # Table-heavy: content_calendar, performance_audit
+    MARKDOWN = "markdown"  # Creative deliverables: ads_copy, video_scripts, briefs
+
+
+# ─────────────────────────────────────────────────────────────────
+# AgentSkill — base class
+# ─────────────────────────────────────────────────────────────────
+
+class AgentSkill(ABC):
+    """Base class for a skill. Each concrete skill defines its prompt + behavior flags.
+
+    Hierarchy:
+      AgentSkill (abstract)
+      ├── Strategic skills (current 6 subclasses — MarketResearchSkill, etc.)
+      ├── OperationalSkill (generic, config-driven — for 6 standard ops skills)
+      └── Special operational subclasses (AdsCopySkill, VideoScriptsSkill — custom logic)
+    """
+
+    # Identity
     name: str = ""
+
+    # AI behavior
     system_prompt: str = ""
     max_tokens: int = 4000
     enable_critic: bool = True
+
+    # Skill type flags (default = strategic; ops skills override)
+    output_format: OutputFormat = OutputFormat.STRATEGIC_4_SECTION
+    intake_pattern: IntakePattern = IntakePattern.MULTI_TURN
+    context_strategy: ContextStrategy = ContextStrategy.FULL_PIPELINE
+    primary_deliverable: PrimaryDeliverable = PrimaryDeliverable.HTML
+
+    # Aggregation into final HTML report (Strategic full-pipeline only)
+    accumulate_to_report: bool = True
 
     @abstractmethod
     def build_context(self, session: Session) -> str:
@@ -47,6 +104,10 @@ class MarketResearchSkill(AgentSkill):
     name = "market_research"
     system_prompt = MARKET_RESEARCH_SYSTEM
     max_tokens = 4000
+    output_format = OutputFormat.STRATEGIC_4_SECTION
+    intake_pattern = IntakePattern.MULTI_TURN
+    context_strategy = ContextStrategy.PROFILE_PLUS_KPI
+    accumulate_to_report = True
 
     def build_context(self, session: Session) -> str:
         return session.profile.to_context_string()
@@ -66,6 +127,7 @@ class CompetitorSkill(AgentSkill):
     name = "competitor"
     system_prompt = COMPETITOR_SYSTEM
     max_tokens = 4000
+    context_strategy = ContextStrategy.FULL_PIPELINE
 
     def build_context(self, session: Session) -> str:
         return session.build_pipeline_context()
@@ -87,6 +149,8 @@ class CustomerInsightSkill(AgentSkill):
     name = "customer_insight"
     system_prompt = CUSTOMER_INSIGHT_SYSTEM
     max_tokens = 4000
+    enable_critic = False  # Customer insight is interpretive, no specific stats to fact-check
+    context_strategy = ContextStrategy.FULL_PIPELINE
 
     def build_context(self, session: Session) -> str:
         return session.build_pipeline_context()
@@ -105,6 +169,8 @@ class PsychologyPricingSkill(AgentSkill):
     """Combines Marketing Psychology + Pricing Strategy in 1 call to save latency."""
     name = "psychology_pricing"
     max_tokens = 5000
+    enable_critic = False  # Frameworks application, not factual claims
+    context_strategy = ContextStrategy.FULL_PIPELINE
 
     @property
     def system_prompt(self) -> str:
@@ -135,6 +201,8 @@ class SocialListeningSkill(AgentSkill):
     name = "social_listening"
     system_prompt = SOCIAL_LISTENING_SYSTEM
     max_tokens = 4000
+    enable_critic = False
+    context_strategy = ContextStrategy.FULL_PIPELINE
 
     def build_context(self, session: Session) -> str:
         return session.build_pipeline_context()
@@ -154,6 +222,8 @@ class StrategySynthesisSkill(AgentSkill):
     name = "synthesis"
     system_prompt = STRATEGY_SYNTHESIZER_SYSTEM
     max_tokens = 5000
+    enable_critic = False  # Synthesis combines previous results, not new facts
+    context_strategy = ContextStrategy.FULL_PIPELINE
 
     def build_context(self, session: Session) -> str:
         return session.build_pipeline_context()

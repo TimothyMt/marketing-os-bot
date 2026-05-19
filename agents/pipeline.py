@@ -292,37 +292,37 @@ async def _run_skill(skill: AgentSkill, session: Session) -> str:
 
 async def run_market_research(session: Session) -> str:
     result = await _run_skill(MarketResearchSkill(), session)
-    session.results["market_research"] = result
+    session.add_result("market_research", result)
     return result
 
 
 async def run_competitor_analysis(session: Session) -> str:
     result = await _run_skill(CompetitorSkill(), session)
-    session.results["competitor"] = result
+    session.add_result("competitor", result)
     return result
 
 
 async def run_customer_insight(session: Session) -> str:
     result = await _run_skill(CustomerInsightSkill(), session)
-    session.results["customer_insight"] = result
+    session.add_result("customer_insight", result)
     return result
 
 
 async def run_psychology_and_pricing(session: Session) -> str:
     result = await _run_skill(PsychologyPricingSkill(), session)
-    session.results["psychology_pricing"] = result
+    session.add_result("psychology_pricing", result)
     return result
 
 
 async def run_social_listening(session: Session) -> str:
     result = await _run_skill(SocialListeningSkill(), session)
-    session.results["social_listening"] = result
+    session.add_result("social_listening", result)
     return result
 
 
 async def run_strategy_synthesis(session: Session) -> str:
     result = await _run_skill(StrategySynthesisSkill(), session)
-    session.results["synthesis"] = result
+    session.add_result("synthesis", result)
     return result
 
 
