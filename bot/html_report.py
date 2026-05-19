@@ -13,12 +13,22 @@ except ImportError:
 
 
 STAGE_META = {
+    # Strategic skills
     "market_research":    {"title": "Nghiên cứu Thị trường",       "icon": "📊", "color": "market"},
     "competitor":         {"title": "Phân tích Đối thủ",            "icon": "🕵️", "color": "competitor"},
     "customer_insight":   {"title": "Customer Insight & ICP",      "icon": "👥", "color": "customer"},
     "psychology_pricing": {"title": "Marketing Psychology & Pricing", "icon": "💡", "color": "pricing"},
     "social_listening":   {"title": "Social Listening System",     "icon": "📡", "color": "market"},
     "synthesis":          {"title": "Marketing Strategy",          "icon": "🚀", "color": "strategy"},
+    # Operational skills
+    "campaign_brief":      {"title": "Campaign Brief",              "icon": "📋", "color": "strategy"},
+    "content_calendar":    {"title": "Content Calendar",            "icon": "📅", "color": "market"},
+    "ads_copy":            {"title": "Ads Copy",                    "icon": "✍️", "color": "pricing"},
+    "video_scripts":       {"title": "Video Scripts",               "icon": "🎬", "color": "customer"},
+    "landing_page":        {"title": "Landing Page Brief",          "icon": "🌐", "color": "competitor"},
+    "sales_inbox_script":  {"title": "Sales/Inbox Script",          "icon": "💬", "color": "customer"},
+    "email_zalo_sequence": {"title": "Email/Zalo Nurture",          "icon": "📧", "color": "pricing"},
+    "performance_audit":   {"title": "Performance Audit",           "icon": "📈", "color": "strategy"},
 }
 
 
@@ -267,6 +277,89 @@ def _generate_tab_css(n: int) -> str:
             f"{{ background: var(--primary); color: white; font-weight: 600; }}"
         )
     return "\n".join(rules)
+
+
+def build_single_skill_report(
+    skill_key: str,
+    parsed: dict,
+    output_format,  # OutputFormat enum
+    business_name: str = "",
+    industry: str = "",
+    stage: str = "",
+) -> str:
+    """Render HTML for a standalone skill output (operational skills).
+    Single tab, single section — no aggregate report."""
+    from agents.skills import OutputFormat
+
+    meta = STAGE_META.get(skill_key, {"title": skill_key, "icon": "📄", "color": ""})
+
+    # Compose section body based on output format
+    parts = []
+    if output_format == OutputFormat.OPERATIONAL_DELIVERABLE:
+        if parsed.get("summary"):
+            parts.append('<div class="summary"><div class="summary-label">🎯 Tóm tắt nhanh</div>'
+                         f'{_md_to_html(parsed["summary"])}</div>')
+        if parsed.get("deliverable"):
+            parts.append(f'<div class="content">{_md_to_html(parsed["deliverable"])}</div>')
+    elif output_format == OutputFormat.OPERATIONAL_ANALYSIS:
+        # Order: Summary → KPI table → Root cause → Actions → Forecast
+        if parsed.get("summary"):
+            parts.append(f'<div class="insight">{_md_to_html(parsed["summary"])}</div>')
+        if parsed.get("kpi_table"):
+            parts.append('<div class="content"><h2>📈 Kết quả vs KPI</h2>'
+                         f'{_md_to_html(parsed["kpi_table"])}</div>')
+        if parsed.get("root_cause"):
+            parts.append('<div class="content"><h2>🔬 Phân tích nguyên nhân</h2>'
+                         f'{_md_to_html(parsed["root_cause"])}</div>')
+        if parsed.get("actions"):
+            parts.append('<div class="content"><h2>🎯 Next Actions</h2>'
+                         f'{_md_to_html(parsed["actions"])}</div>')
+        if parsed.get("forecast"):
+            parts.append('<div class="content"><h2>📉 Dự báo</h2>'
+                         f'{_md_to_html(parsed["forecast"])}</div>')
+    else:
+        # Strategic 4-section fallback
+        if parsed.get("insight"):
+            insight = parsed["insight"].strip().strip('"').strip("'")
+            parts.append(f'<div class="insight">{_md_to_html(insight)}</div>')
+        if parsed.get("detail"):
+            parts.append(f'<div class="content">{_md_to_html(parsed["detail"])}</div>')
+        if parsed.get("summary"):
+            parts.append('<div class="summary"><div class="summary-label">📌 Tóm tắt</div>'
+                         f'{_md_to_html(parsed["summary"])}</div>')
+        if parsed.get("benchmarks"):
+            parts.append('<div class="benchmarks"><div class="benchmarks-label">📊 Benchmarks</div>'
+                         f'{_md_to_html(parsed["benchmarks"])}</div>')
+
+    body = "\n".join(parts)
+    section_html = f"""
+<div class="section {meta['color']} active" data-idx="0">
+  <div class="section-header">
+    <span class="icon">{meta['icon']}</span>
+    <h2>{meta['title']}</h2>
+  </div>
+  {body}
+</div>"""
+
+    # Single tab with skill name
+    radio = f'<input type="radio" name="tab" id="tab-0" class="tab-state" checked>'
+    tab_label = (
+        f'<label for="tab-0" class="tab-btn">'
+        f'<span>{meta["icon"]}</span> {meta["title"]}'
+        f'</label>'
+    )
+
+    return HTML_TEMPLATE.format(
+        business_name=business_name or "Business",
+        industry=industry or "—",
+        stage=stage or "—",
+        date=datetime.now().strftime("%d/%m/%Y · %H:%M"),
+        radio_inputs=radio,
+        tabs_html=tab_label,
+        sections_html=section_html,
+        css=CSS,
+        tab_rules=_generate_tab_css(1),
+    )
 
 
 def build_report(
