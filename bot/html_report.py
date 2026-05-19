@@ -44,7 +44,9 @@ body {
 .header .meta { font-size: 14px; opacity: 0.9; }
 .header .powered { margin-top: 14px; font-size: 11px; opacity: 0.7; }
 
-/* Tabs navigation */
+/* CSS-only tabs (radio buttons + :checked, no JS) */
+.tab-state { display: none !important; }  /* hide radio inputs */
+
 .tabs {
   display: flex; gap: 4px; background: white;
   padding: 6px; border-radius: 12px; margin-bottom: 20px;
@@ -52,27 +54,18 @@ body {
   scrollbar-width: thin;
 }
 .tab-btn {
-  padding: 10px 16px; border: none; background: transparent;
+  padding: 10px 16px; background: transparent;
   cursor: pointer; font-size: 13px; font-weight: 500; color: var(--muted);
   white-space: nowrap; border-radius: 8px; transition: all 0.15s;
-  font-family: inherit;
+  display: inline-flex; align-items: center; gap: 6px;
 }
 .tab-btn:hover { background: #f1f5f9; color: var(--text); }
-.tab-btn.active {
-  background: var(--primary); color: white; font-weight: 600;
-}
 
-/* Section visibility */
+/* Sections start hidden, shown when matching radio is checked */
 .section {
   display: none;
   background: var(--card); border-radius: 12px; padding: 28px;
   box-shadow: 0 1px 3px rgba(0,0,0,0.05); border-left: 4px solid var(--primary);
-  animation: fadeIn 0.25s ease;
-}
-.section.active { display: block; }
-@keyframes fadeIn {
-  from { opacity: 0; transform: translateY(4px); }
-  to   { opacity: 1; transform: translateY(0); }
 }
 .section.market    { border-color: #2563eb; }
 .section.competitor{ border-color: #f59e0b; }
@@ -155,27 +148,19 @@ body {
 """
 
 
-JS = """
-function showSection(id, btn) {
-  document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
-  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
-  document.getElementById(id).classList.add('active');
-  btn.classList.add('active');
-  window.scrollTo({ top: 0, behavior: 'smooth' });
-}
-"""
-
-
 HTML_TEMPLATE = """<!DOCTYPE html>
 <html lang="vi">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Marketing Report — {business_name}</title>
-<style>{css}</style>
+<style>{css}
+{tab_rules}</style>
 </head>
 <body>
 <div class="container">
+
+  {radio_inputs}
 
   <div class="header">
     <h1>📊 Marketing Strategy Report</h1>
@@ -199,7 +184,6 @@ HTML_TEMPLATE = """<!DOCTYPE html>
   </div>
 
 </div>
-<script>{js}</script>
 </body>
 </html>"""
 
@@ -243,12 +227,10 @@ def parse_agent_output(text: str) -> dict:
 
 
 def render_stage_html(stage_key: str, parsed: dict, idx: int) -> str:
-    """Render one stage as a tabbed section. idx is the tab index (0-based)."""
+    """Render one stage as a CSS-only tabbed section with data-idx attribute."""
     meta = STAGE_META.get(stage_key, {"title": stage_key, "icon": "📄", "color": ""})
-    section_id = f"section-{stage_key}"
-    active_cls = " active" if idx == 0 else ""
 
-    # Order: Insight (hook) → Detail (full) → Summary (recap) → Benchmarks (data ref at bottom)
+    # Order: Insight (hook) → Detail (full) → Summary (recap) → Benchmarks (bottom)
     parts = []
     if parsed.get("insight"):
         insight = parsed["insight"].strip().strip('"').strip("'")
@@ -264,7 +246,7 @@ def render_stage_html(stage_key: str, parsed: dict, idx: int) -> str:
 
     body = "\n".join(parts)
     return f"""
-<div id="{section_id}" class="section {meta['color']}{active_cls}">
+<div class="section {meta['color']}" data-idx="{idx}">
   <div class="section-header">
     <span class="icon">{meta['icon']}</span>
     <h2>{meta['title']}</h2>
@@ -273,13 +255,18 @@ def render_stage_html(stage_key: str, parsed: dict, idx: int) -> str:
 </div>"""
 
 
-def render_tab_button(stage_key: str, idx: int) -> str:
-    """Render a single tab button."""
-    meta = STAGE_META.get(stage_key, {"title": stage_key, "icon": "📄"})
-    section_id = f"section-{stage_key}"
-    active_cls = " active" if idx == 0 else ""
-    label = f"{meta['icon']} {meta['title']}"
-    return f'<button class="tab-btn{active_cls}" onclick="showSection(\'{section_id}\', this)">{label}</button>'
+def _generate_tab_css(n: int) -> str:
+    """Generate per-tab CSS rules: when radio i is checked, show section i + highlight button i."""
+    rules = []
+    for i in range(n):
+        rules.append(
+            f"#tab-{i}:checked ~ .section[data-idx='{i}'] {{ display: block; }}"
+        )
+        rules.append(
+            f"#tab-{i}:checked ~ .tabs label[for='tab-{i}'] "
+            f"{{ background: var(--primary); color: white; font-weight: 600; }}"
+        )
+    return "\n".join(rules)
 
 
 def build_report(
@@ -288,21 +275,41 @@ def build_report(
     stage: str,
     parsed_stages: list[tuple[str, dict]],
 ) -> str:
-    """Render full HTML report with tabbed navigation.
-    parsed_stages: list of (stage_key, parsed_dict) in pipeline order."""
-    tabs_html = "\n    ".join(
-        render_tab_button(k, i) for i, (k, _) in enumerate(parsed_stages)
+    """Render full HTML report with CSS-only tab navigation (radio buttons, no JS)."""
+    n = len(parsed_stages)
+
+    # Radio inputs at top — first one checked
+    radio_inputs = "\n  ".join(
+        f'<input type="radio" name="tab" id="tab-{i}" class="tab-state"'
+        + (' checked' if i == 0 else '')
+        + '>'
+        for i in range(n)
     )
+
+    # Tab labels (act as clickable buttons via <label for="...">)
+    tab_labels = []
+    for i, (k, _) in enumerate(parsed_stages):
+        meta = STAGE_META.get(k, {"title": k, "icon": "📄"})
+        tab_labels.append(
+            f'<label for="tab-{i}" class="tab-btn">'
+            f'<span>{meta["icon"]}</span> {meta["title"]}'
+            f'</label>'
+        )
+    tabs_html = "\n    ".join(tab_labels)
+
+    # Section blocks
     sections_html = "\n".join(
         render_stage_html(k, p, i) for i, (k, p) in enumerate(parsed_stages)
     )
+
     return HTML_TEMPLATE.format(
         business_name=business_name or "Business",
         industry=industry or "—",
         stage=stage or "—",
         date=datetime.now().strftime("%d/%m/%Y · %H:%M"),
+        radio_inputs=radio_inputs,
         tabs_html=tabs_html,
         sections_html=sections_html,
         css=CSS,
-        js=JS,
+        tab_rules=_generate_tab_css(n),
     )
