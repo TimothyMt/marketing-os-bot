@@ -9,7 +9,12 @@ from typing import AsyncGenerator, Optional
 
 import anthropic
 
-from config import CLAUDE_MODEL, ANTHROPIC_API_KEY, AGENT_TIMEOUT
+from config import (
+    CLAUDE_SONNET_MODEL,
+    CLAUDE_HAIKU_MODEL,
+    ANTHROPIC_API_KEY,
+    AGENT_TIMEOUT,
+)
 from storage.models import Session, BusinessProfile, PipelineStage
 from agents.prompts import (
     INTAKE_SYSTEM,
@@ -23,6 +28,16 @@ from agents.prompts import (
     PROGRESS_MESSAGES,
     get_intake_system,
 )
+from agents.skills import (
+    AgentSkill,
+    MarketResearchSkill,
+    CompetitorSkill,
+    CustomerInsightSkill,
+    PsychologyPricingSkill,
+    SocialListeningSkill,
+    StrategySynthesisSkill,
+)
+from agents.critic import run_critic
 from frameworks.kpi_library import get_framework_as_text
 from frameworks.save_framework import generate_save_analysis
 from frameworks.smart_framework import format_smart_prompt
@@ -101,8 +116,9 @@ async def run_intake(session: Session, user_message: str) -> tuple[str, bool]:
     system_prompt = get_intake_system(session.selected_task or "full")
     messages = session.intake_history.copy()
 
+    # Intake = classification + JSON extract → dùng Haiku (rẻ, nhanh)
     response = await client.messages.create(
-        model=CLAUDE_MODEL,
+        model=CLAUDE_HAIKU_MODEL,
         max_tokens=1024,
         system=[{"type": "text", "text": system_prompt, "cache_control": {"type": "ephemeral"}}],
         messages=messages,
@@ -154,11 +170,11 @@ async def _run_agent(
     context: str,
     max_tokens: int = 2048,
 ) -> str:
-    """Generic agent runner with prompt caching on system.
-    Appends OUTPUT_FORMAT_INSTRUCTION so all agents output 4-section structure."""
+    """Legacy raw agent runner (kept for backward compat).
+    Pipeline now uses _run_skill which adds Critic review."""
     augmented_system = system_prompt + OUTPUT_FORMAT_INSTRUCTION
     response = await client.messages.create(
-        model=CLAUDE_MODEL,
+        model=CLAUDE_SONNET_MODEL,
         max_tokens=max_tokens,
         system=[
             {
@@ -177,134 +193,65 @@ async def _run_agent(
     return response.content[0].text
 
 
+async def _run_skill(skill: AgentSkill, session: Session) -> str:
+    """Execute a skill: build context+msg → Sonnet executor → Critic review → return."""
+    context = skill.build_context(session)
+    user_msg = skill.build_user_msg(session)
+    augmented_system = skill.system_prompt + OUTPUT_FORMAT_INSTRUCTION
+
+    response = await client.messages.create(
+        model=CLAUDE_SONNET_MODEL,
+        max_tokens=skill.max_tokens,
+        system=[
+            {
+                "type": "text",
+                "text": augmented_system,
+                "cache_control": {"type": "ephemeral"},
+            }
+        ],
+        messages=[
+            {"role": "user", "content": f"{context}\n\n---\n\n{user_msg}"}
+        ],
+    )
+    raw_output = response.content[0].text
+
+    if skill.enable_critic:
+        return await run_critic(raw_output, agent_name=skill.name)
+    return raw_output
+
+
 async def run_market_research(session: Session) -> str:
-    context = session.profile.to_context_string()
-    kpi_text = get_framework_as_text(session.profile.industry or "")
-
-    user_msg = f"""Hãy phân tích TAM/SAM/SOM cho business này.
-
-{kpi_text}
-
-Đặc biệt chú ý methodology ước tính TAM phù hợp với ngành {session.profile.industry}.
-Location: {session.profile.location or 'Việt Nam'}
-Target customer: {session.profile.target_customer}"""
-
-    result = await _run_agent(MARKET_RESEARCH_SYSTEM, user_msg, context, max_tokens=4000)
+    result = await _run_skill(MarketResearchSkill(), session)
     session.results["market_research"] = result
     return result
 
 
 async def run_competitor_analysis(session: Session) -> str:
-    context = session.build_pipeline_context()
-    competitors_known = session.profile.competitors or "chưa xác định"
-
-    user_msg = f"""Phân tích landscape cạnh tranh cho business này.
-
-Đối thủ founder đề cập: {competitors_known}
-
-Hãy:
-1. Phân tích các đối thủ đã biết (nếu có)
-2. Identify thêm các đối thủ điển hình trong ngành {session.profile.industry} tại {session.profile.location or 'VN'}
-3. Tìm market gaps rõ ràng nhất
-4. Đề xuất positioning opportunity"""
-
-    result = await _run_agent(COMPETITOR_SYSTEM, user_msg, context, max_tokens=4000)
+    result = await _run_skill(CompetitorSkill(), session)
     session.results["competitor"] = result
     return result
 
 
 async def run_customer_insight(session: Session) -> str:
-    context = session.build_pipeline_context()
-
-    user_msg = f"""Xây dựng Customer Insight đầy đủ cho business này.
-
-Product/Service: {session.profile.product_service}
-Target customer: {session.profile.target_customer}
-Location: {session.profile.location or 'Việt Nam'}
-
-Hãy đào sâu vào psychographics, JTBD, và Vietnamese cultural context của ngành {session.profile.industry}."""
-
-    result = await _run_agent(CUSTOMER_INSIGHT_SYSTEM, user_msg, context, max_tokens=4000)
+    result = await _run_skill(CustomerInsightSkill(), session)
     session.results["customer_insight"] = result
     return result
 
 
 async def run_psychology_and_pricing(session: Session) -> str:
-    context = session.build_pipeline_context()
-
-    user_msg = f"""Áp dụng Marketing Psychology VÀ đề xuất Pricing Strategy cho business này.
-
-Budget marketing: {session.profile.monthly_marketing_budget or 'chưa xác định'}
-Mục tiêu: {session.profile.primary_goal}
-Stage: {session.profile.stage}
-
-Phần 1: Map psychological principles vào từng touchpoint của funnel
-Phần 2: Đề xuất pricing model và tactics cụ thể (với số liệu)"""
-
-    # Combine psychology + pricing into one call to save time
-    combined_system = f"""{MARKETING_PSYCHOLOGY_SYSTEM}
-
----
-
-{PRICING_STRATEGY_SYSTEM}
-
-Hãy output CẢ HAI phần: Psychology Application VÀ Pricing Strategy trong một response duy nhất, chia section rõ ràng."""
-
-    result = await _run_agent(combined_system, user_msg, context, max_tokens=5000)
+    result = await _run_skill(PsychologyPricingSkill(), session)
     session.results["psychology_pricing"] = result
     return result
 
 
 async def run_social_listening(session: Session) -> str:
-    context = session.build_pipeline_context()
-
-    user_msg = f"""Thiết kế Social Listening System cho business này.
-
-Business: {session.profile.business_name or session.profile.product_service}
-Ngành: {session.profile.industry}
-Team size: {session.profile.team_size or 'nhỏ'}
-Đối thủ biết đến: {session.profile.competitors or 'chưa xác định'}
-
-Tạo system thực tế, phù hợp với team nhỏ, tập trung vào platform VN."""
-
-    result = await _run_agent(SOCIAL_LISTENING_SYSTEM, user_msg, context, max_tokens=4000)
+    result = await _run_skill(SocialListeningSkill(), session)
     session.results["social_listening"] = result
     return result
 
 
 async def run_strategy_synthesis(session: Session) -> str:
-    context = session.build_pipeline_context()
-
-    # Inject SAVE + SMART frameworks
-    save_prompt = generate_save_analysis(
-        industry=session.profile.industry or "",
-        business_description=session.profile.product_service or "",
-        target_customer=session.profile.target_customer or "",
-        product_service=session.profile.product_service or "",
-    )
-    smart_prompt = format_smart_prompt(
-        industry=session.profile.industry or "",
-        stage=session.profile.stage or "growth",
-        goals=[session.profile.primary_goal or "tăng doanh thu"],
-    )
-
-    user_msg = f"""Tổng hợp tất cả insights đã phân tích thành Marketing Strategy hoàn chỉnh.
-
-{save_prompt}
-
-{smart_prompt}
-
-Yêu cầu:
-- Apply SAVE Framework cụ thể cho {session.profile.business_name or 'business này'}
-- Tạo 2-3 SMART goals với số liệu thực tế
-- 90-day roadmap cụ thể, actionable
-- KPI dashboard với targets 30/60/90 ngày
-- Quick wins có thể làm ngay trong 2 tuần đầu
-- Budget allocation đề xuất"""
-
-    result = await _run_agent(
-        STRATEGY_SYNTHESIZER_SYSTEM, user_msg, context, max_tokens=5000
-    )
+    result = await _run_skill(StrategySynthesisSkill(), session)
     session.results["synthesis"] = result
     return result
 
