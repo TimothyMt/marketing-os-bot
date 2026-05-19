@@ -41,32 +41,21 @@ async def run_intake(session: Session, user_message: str) -> tuple[str, bool]:
     """
     session.add_to_history("user", user_message)
 
-    # Build messages with cache breakpoint on system prompt
-    messages = session.intake_history.copy()
-
     system_prompt = get_intake_system(session.selected_task or "full")
+    messages = session.intake_history.copy()
 
     response = await client.messages.create(
         model=CLAUDE_MODEL,
         max_tokens=1024,
-        system=[
-            {
-                "type": "text",
-                "text": system_prompt,
-                "cache_control": {"type": "ephemeral"},
-            }
-        ],
+        system=[{"type": "text", "text": system_prompt, "cache_control": {"type": "ephemeral"}}],
         messages=messages,
     )
 
     assistant_text = response.content[0].text
     session.add_to_history("assistant", assistant_text)
-
-    # Check if AI returned a JSON profile
     profile, is_complete = _extract_profile_from_response(assistant_text)
     if is_complete and profile:
         session.profile = profile
-
     return assistant_text, is_complete
 
 
@@ -270,7 +259,8 @@ PIPELINE_SEQUENCE = [
     (PipelineStage.COMPETITOR, run_competitor_analysis, "competitor"),
     (PipelineStage.CUSTOMER_INSIGHT, run_customer_insight, "customer_insight"),
     (PipelineStage.PSYCHOLOGY_PRICING, run_psychology_and_pricing, "psychology_pricing"),
-    (PipelineStage.SOCIAL_LISTENING, run_social_listening, "social_listening"),
+    # Social Listening tạm tắt — chờ web search VN coverage tốt hơn
+    # (PipelineStage.SOCIAL_LISTENING, run_social_listening, "social_listening"),
     (PipelineStage.SYNTHESIS, run_strategy_synthesis, "synthesis"),
 ]
 
@@ -317,7 +307,7 @@ TASK_PIPELINE_MAP: dict[str, list] = {
     "competitor": [(PipelineStage.COMPETITOR, run_competitor_analysis, "competitor")],
     "customer":   [(PipelineStage.CUSTOMER_INSIGHT, run_customer_insight, "customer_insight")],
     "pricing":    [(PipelineStage.PSYCHOLOGY_PRICING, run_psychology_and_pricing, "psychology_pricing")],
-    "social":     [(PipelineStage.SOCIAL_LISTENING, run_social_listening, "social_listening")],
+    # "social":   [(PipelineStage.SOCIAL_LISTENING, run_social_listening, "social_listening")],  # tạm tắt
     "strategy":   [(PipelineStage.SYNTHESIS, run_strategy_synthesis, "synthesis")],
 }
 

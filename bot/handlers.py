@@ -33,7 +33,7 @@ STAGE_HEADERS = {
 }
 
 TASK_LABELS = {
-    "full":       "Phân tích toàn diện (6 bước)",
+    "full":       "Phân tích toàn diện (5 bước)",
     "market":     "Nghiên cứu thị trường",
     "competitor": "Phân tích đối thủ",
     "customer":   "Customer Insight & ICP",
@@ -43,22 +43,22 @@ TASK_LABELS = {
 }
 
 TASK_PIPELINE_STEPS = {
-    "full":       "1️⃣ Thị trường · 2️⃣ Đối thủ · 3️⃣ Customer · 4️⃣ Psychology & Pricing · 5️⃣ Social · 6️⃣ Strategy",
+    "full":       "1️⃣ Thị trường · 2️⃣ Đối thủ · 3️⃣ Customer · 4️⃣ Psychology & Pricing · 5️⃣ Strategy",
     "market":     "📊 Phân tích TAM/SAM/SOM + market dynamics",
     "competitor": "🕵️ Landscape đối thủ + market gap analysis",
     "customer":   "👥 ICP profile + Jobs-to-be-Done + Customer Journey",
     "pricing":    "💰 Pricing model + psychology tactics + revenue optimization",
-    "social":     "📡 Keyword clusters + monitoring routine + crisis thresholds",
+    # "social":  "📡 Keyword clusters + monitoring routine + crisis thresholds",  # tạm tắt
     "strategy":   "🎯 SAVE Framework + SMART Goals + 90-day Roadmap",
 }
 
 TASK_STAGE_COUNT = {
-    "full": 6,
+    "full": 5,
     "market": 1,
     "competitor": 1,
     "customer": 1,
     "pricing": 1,
-    "social": 1,
+    # "social": 1,  # tạm tắt
     "strategy": 1,
 }
 
@@ -66,7 +66,7 @@ WELCOME_MESSAGE = """👋 Xin chào! Tôi là *Max — AI CMO* của bạn.
 
 Tôi có thể giúp bạn:
 📊 Nghiên cứu thị trường · 🕵️ Phân tích đối thủ · 👥 Customer Insight
-💰 Pricing Strategy · 📡 Social Listening · 🎯 Marketing Strategy
+💰 Pricing Strategy · 🎯 Marketing Strategy
 
 ─────────────────────────
 *Bạn muốn Max làm gì hôm nay?*"""
@@ -86,11 +86,25 @@ HELP_MESSAGE = """*Marketing OS — Hướng dẫn sử dụng*
 *Thời gian*: 30-60 giây cho task đơn lẻ, 3-5 phút cho phân tích toàn diện."""
 
 
+async def _safe_reply(message: Message, text: str, **kwargs):
+    """Reply with markdown; fallback to plain text if Telegram parser fails."""
+    try:
+        await message.reply_text(text, **kwargs)
+    except Exception as e:
+        # Markdown parse error (unbalanced *, _, etc.) — strip parse_mode and retry
+        if "parse" in str(e).lower() or "entities" in str(e).lower():
+            logger.warning("Markdown parse failed (%s) — sending as plain text", e)
+            kwargs_plain = {k: v for k, v in kwargs.items() if k != "parse_mode"}
+            await message.reply_text(text, **kwargs_plain)
+        else:
+            raise
+
+
 async def send_long_message(message: Message, text: str, **kwargs):
-    """Split messages exceeding Telegram's 4096-char limit."""
+    """Split messages exceeding Telegram's 4096-char limit. Safe markdown fallback."""
     MAX_LEN = 4000
     if len(text) <= MAX_LEN:
-        await message.reply_text(text, **kwargs)
+        await _safe_reply(message, text, **kwargs)
         return
 
     chunks, current = [], ""
@@ -106,7 +120,7 @@ async def send_long_message(message: Message, text: str, **kwargs):
 
     for i, chunk in enumerate(chunks):
         kw = kwargs if i == len(chunks) - 1 else {k: v for k, v in kwargs.items() if k != "reply_markup"}
-        await message.reply_text(chunk, **kw)
+        await _safe_reply(message, chunk, **kw)
         await asyncio.sleep(0.3)
 
 
@@ -211,6 +225,8 @@ async def _handle_intake(update, context, session, text):
         )
 
         session.stage = PipelineStage.CONFIRMED
+        # Profile đã extract xong → intake_history không còn giá trị, xóa để tiết kiệm storage
+        session.intake_history = []
         await save_session(session)
 
         await update.message.reply_text(
@@ -279,10 +295,15 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         task_label = TASK_LABELS.get(task_type, "Phân tích")
         opening = TASK_OPENING_QUESTIONS.get(task_type, TASK_OPENING_QUESTIONS["full"])
 
-        await query.edit_message_text(
-            f"✅ *{task_label}*\n\n{opening}",
-            parse_mode=ParseMode.MARKDOWN,
-        )
+        try:
+            await query.edit_message_text(
+                f"✅ *{task_label}*\n\n{opening}",
+                parse_mode=ParseMode.MARKDOWN,
+            )
+        except Exception as e:
+            logger.warning("edit_message_text markdown failed: %s — retrying as plain text", e)
+            # Fallback: send as plain text if markdown parse fails
+            await query.edit_message_text(f"✅ {task_label}\n\n{opening}")
 
     # ── Pipeline confirmation ─────────────────────────────────────
     elif data == "confirm_yes":
@@ -364,7 +385,7 @@ async def _run_pipeline_sequentially(message: Message, session):
     if stage_count > 0 and stage_count == total_stages:
         if total_stages > 1:
             await message.reply_text(
-                "✅ *Hoàn thành phân tích!*\n\nBạn đã có đầy đủ:\n• Market Intelligence\n• Competitor Landscape\n• Customer Insights\n• Psychology & Pricing\n• Social Listening System\n• Marketing Strategy 90 ngày\n\nCó câu hỏi gì thêm không? Cứ nhắn thẳng vào đây nhé! 💬",
+                "✅ *Hoàn thành phân tích!*\n\nBạn đã có đầy đủ:\n• Market Intelligence\n• Competitor Landscape\n• Customer Insights\n• Psychology & Pricing\n• Marketing Strategy 90 ngày\n\nCó câu hỏi gì thêm không? Cứ nhắn thẳng vào đây nhé! 💬",
                 parse_mode=ParseMode.MARKDOWN,
                 reply_markup=stage_done_keyboard(is_last=True),
             )

@@ -90,9 +90,6 @@ class Session:
     # Results from each pipeline stage
     results: dict[str, str] = field(default_factory=dict)
 
-    # Raw user description (first message)
-    raw_description: str = ""
-
     # Timestamps
     created_at: Optional[str] = None
     updated_at: Optional[str] = None

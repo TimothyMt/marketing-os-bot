@@ -22,7 +22,6 @@ User nhắn mô tả business → Max hỏi thêm nếu cần → chạy phân t
 | Bot framework | `python-telegram-bot` v21 async | Webhook + async native |
 | AI | Anthropic `claude-sonnet-4-6` | Tốt nhất cho tiếng Việt + tool use |
 | Database | Supabase PostgreSQL | HTTPS REST — Railway block TCP 5432, không block 443 |
-| Web search | Tavily API | Thiết kế cho AI agents, 1000 req/tháng free |
 | Hosting | Railway | Auto-deploy từ GitHub, env vars management |
 
 ---
@@ -46,9 +45,6 @@ marketing-os-bot/
 │   ├── models.py          ← DataClass: Session, BusinessProfile, PipelineStage
 │   ├── session.py         ← Supabase read/write logic
 │   └── __init__.py        ← Re-export get_session, save_session, reset_session
-├── tools/
-│   ├── search.py          ← Tavily wrapper + WEB_SEARCH_TOOL definition
-│   └── __init__.py
 ├── config.py              ← Tất cả env vars + constants
 ├── simulate.py            ← CLI test không cần Telegram/Supabase
 └── run_local.py           ← Chạy bot local bằng polling mode
@@ -65,7 +61,6 @@ SUPABASE_URL=              # Project URL từ Supabase dashboard
 SUPABASE_SERVICE_KEY=      # service_role key (KHÔNG dùng anon key)
 WEBHOOK_URL=               # Railway domain, vd: https://xxx.up.railway.app
 PORT=8000
-TAVILY_API_KEY=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
 ```
 
 ---
@@ -77,40 +72,30 @@ TAVILY_API_KEY=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
   └─→ stage = TASK_SELECT
       └─→ WELCOME_MESSAGE + 7-nút task keyboard
 
-User chọn task (vd: "📡 Social Listening")
-  └─→ selected_task = "social", stage = INTAKE
+User chọn task (vd: "🎯 Marketing Strategy")
+  └─→ selected_task = "strategy", stage = INTAKE
       └─→ Gửi câu hỏi mở đầu riêng cho task đó
 
 User nhắn tin (stage = INTAKE):
-  ├─ Tin đầu tiên + ≤4 words + ≤45 chars + không có từ mô tả
-  │   └─→ Brand Search Flow (B1 → B2 → B3):
-  │       ├─ Tavily search brand name
-  │       ├─ 1 kết quả  → keyboard [✅ Đúng rồi / ❌ Không phải]
-  │       ├─ 2-4 kết quả → show options + [❌ Không phải những cái trên]
-  │       └─ 0 kết quả  → fallback về normal intake
-  │
-  └─ Normal intake
-      └─→ run_intake() — Claude hỏi cho đến khi đủ info
-          Claude có thể tự gọi web_search nếu cần
-          Tool calls chạy local loop, KHÔNG ghi vào intake_history
-          Khi đủ → trả JSON profile trong ```json``` block
-          └─→ stage = CONFIRMED + confirm card
-              [✅ Đúng rồi, bắt đầu! / ✏️ Sửa thông tin]
+  └─→ run_intake() — Claude hỏi tới khi đủ info
+      Khi đủ → trả JSON profile trong ```json``` block
+      └─→ stage = CONFIRMED + confirm card
+          [✅ Đúng rồi, bắt đầu! / ✏️ Sửa thông tin]
 
 User nhấn [✅ Đúng rồi, bắt đầu!]
   └─→ run_targeted_pipeline() — chỉ chạy stages của task đã chọn
 
-      "full"       → market → competitor → customer → pricing → social → synthesis (6 bước)
+      "full"       → market → competitor → customer → pricing → synthesis (5 bước)
       "market"     → market_research (1 bước)
       "competitor" → competitor (1 bước)
       "customer"   → customer_insight (1 bước)
       "pricing"    → psychology_pricing (1 bước)
-      "social"     → social_listening (1 bước)
       "strategy"   → synthesis (1 bước)
+      (Social Listening tạm tắt — chờ web search VN coverage tốt hơn)
 
       Mỗi bước:
         1. Gửi progress message
-        2. Gọi Claude với web_search tool available
+        2. Gọi Claude agent với KPI library + frameworks
         3. Gửi kết quả ngay (không chờ hết pipeline)
         4. Bước cuối: keyboard [🔄 Phân tích mới / ❓ Hỏi thêm]
 
@@ -124,24 +109,24 @@ stage = COMPLETE
 
 File: `agents/prompts.py`
 
-| Agent | Prompt | Web search | Ghi chú |
-|---|---|---|---|
-| Intake full/strategy | `INTAKE_SYSTEM` | ✅ | |
-| Intake market | `INTAKE_MARKET_SYSTEM` | ✅ | Chỉ hỏi fields cần cho market research |
-| Intake competitor | `INTAKE_COMPETITOR_SYSTEM` | ✅ | Hỏi thêm về đối thủ cụ thể |
-| Intake customer | `INTAKE_CUSTOMER_SYSTEM` | ✅ | Hỏi sâu về pain point |
-| Intake pricing | `INTAKE_PRICING_SYSTEM` | ✅ | Hỏi giá hiện tại + vấn đề đang gặp |
-| Intake social | `INTAKE_SOCIAL_SYSTEM` | ✅ | Hỏi tên brand + đối thủ cần monitor |
-| Market Research | `MARKET_RESEARCH_SYSTEM` | ✅ | TAM/SAM/SOM |
-| Competitor | `COMPETITOR_SYSTEM` | ✅ | 8 chiều phân tích + market gap |
-| Customer Insight | `CUSTOMER_INSIGHT_SYSTEM` | ❌ | ICP + JTBD + Pain-Gain Map |
-| Psychology + Pricing | `MARKETING_PSYCHOLOGY_SYSTEM` + `PRICING_STRATEGY_SYSTEM` | ❌ | Gộp 1 call, tiết kiệm ~30s latency |
-| Social Listening | `SOCIAL_LISTENING_SYSTEM` | ✅ | Keyword clusters + monitoring routine |
-| Strategy Synthesis | `STRATEGY_SYNTHESIZER_SYSTEM` | ❌ | Inject SAVE + SMART vào context |
+| Agent | Prompt | Ghi chú |
+|---|---|---|
+| Intake full/strategy | `INTAKE_SYSTEM` | |
+| Intake market | `INTAKE_MARKET_SYSTEM` | Chỉ hỏi fields cần cho market research |
+| Intake competitor | `INTAKE_COMPETITOR_SYSTEM` | Hỏi thêm về đối thủ cụ thể |
+| Intake customer | `INTAKE_CUSTOMER_SYSTEM` | Hỏi sâu về pain point |
+| Intake pricing | `INTAKE_PRICING_SYSTEM` | Hỏi giá hiện tại + vấn đề đang gặp |
+| Intake social | `INTAKE_SOCIAL_SYSTEM` | (Social task tạm tắt) |
+| Market Research | `MARKET_RESEARCH_SYSTEM` | TAM/SAM/SOM |
+| Competitor | `COMPETITOR_SYSTEM` | 8 chiều phân tích + market gap |
+| Customer Insight | `CUSTOMER_INSIGHT_SYSTEM` | ICP + JTBD + Pain-Gain Map |
+| Psychology + Pricing | `MARKETING_PSYCHOLOGY_SYSTEM` + `PRICING_STRATEGY_SYSTEM` | Gộp 1 call, tiết kiệm ~30s latency |
+| Social Listening | `SOCIAL_LISTENING_SYSTEM` | Tạm tắt (chờ web search VN tốt hơn) |
+| Strategy Synthesis | `STRATEGY_SYNTHESIZER_SYSTEM` | Inject SAVE + SMART vào context |
 
 **Hàm quan trọng**:
 - `get_intake_system(task_type)` → trả đúng prompt cho task được chọn
-- `_run_agent_with_tools()` → agent runner có web search loop
+- `_run_agent()` → agent runner (Claude knowledge + KPI/framework context, không web search)
 - `run_targeted_pipeline()` → chạy đúng stages theo `TASK_PIPELINE_MAP`
 
 ---
@@ -152,17 +137,15 @@ File: `agents/prompts.py`
 @dataclass
 class Session:
     user_id: int
-    stage: PipelineStage       # idle → task_select → intake → brand_select
-                               # → confirmed → [pipeline stages] → complete
-    selected_task: str         # "full"/"market"/"competitor"/"customer"/"pricing"/"social"/"strategy"
+    stage: PipelineStage       # idle → task_select → intake → confirmed → [pipeline stages] → complete
+    selected_task: str         # "full"/"market"/"competitor"/"customer"/"pricing"/"strategy"
     profile: BusinessProfile   # Extracted từ intake conversation
     intake_history: list[dict] # [{"role": "user/assistant", "content": "..."}] max 20 turns
+                               # → xóa thành [] khi vào CONFIRMED
     results: dict[str, str]    # {"market_research": "...", "competitor": "...", ...}
-    raw_description: str
-    brand_candidates: list     # Tạm lưu kết quả search brand (xóa sau khi confirm)
 ```
 
-> ⚠️ **Quan trọng**: `selected_task` và `brand_candidates` được lưu bằng cách nhét vào `results` dict với key `_selected_task` / `_brand_candidates` — **không cần thêm column Supabase**. Logic xử lý trong `storage/session.py`.
+> ⚠️ **Quan trọng**: `selected_task` được lưu bằng cách nhét vào `results` dict với key `_selected_task` — **không cần thêm column Supabase**. Logic xử lý trong `storage/session.py`.
 
 ---
 
@@ -220,7 +203,6 @@ pip install -r requirements.txt
 
 # 2. Tạo file .env
 ANTHROPIC_API_KEY=sk-ant-...
-TAVILY_API_KEY=tvly-dev-...
 # (Thêm TELEGRAM_BOT_TOKEN + Supabase nếu dùng run_local.py)
 
 # 3a. CLI simulator — không cần Telegram, không cần Supabase
@@ -232,19 +214,22 @@ python run_local.py
 
 ---
 
-## Vấn đề đang dở
+## Web search — đã bỏ
 
-**Brand detection chưa confirm hoạt động trên production**
-- Code logic đúng: `_is_likely_brand_name()` — first message, ≤4 words, ≤45 chars, không có từ mô tả tiếng Việt
-- Nghi vấn: Railway chưa deploy commit `d961012` khi test
-- Cách test: `/start` → chọn task → gõ tên brand ngắn (phải là **tin đầu tiên** trong intake)
+Trước đây có thử Tavily và Google CSE để Claude tự research brand/market data. Cả 2 đều có vấn đề:
+- **Tavily**: free 1000/tháng nhưng VN coverage yếu, trả nhiều kết quả nước ngoài
+- **Google CSE**: free 100/ngày nhưng không cho search entire web (deprecated), chỉ search 20 sites curated → miss brand niche (vd: `ecochic.vn` không có trong list)
+- **Brave/SerpAPI**: cần credit card
+
+Kết luận: tắt hoàn toàn web search. Pipeline agents dùng Claude knowledge + KPI Library + SAVE/SMART frameworks là đủ tốt cho MVP.
+
+Code cũ có sẵn trong git history (commit `5566525` trở về trước) — có thể re-enable nếu sau này tìm được search engine phù hợp.
 
 ---
 
 ## Bước tiếp theo
 
-- [ ] Confirm brand detection hoạt động sau khi Railway deploy `d961012`
-- [ ] Merge `feature/web-search` → `master` nếu ổn
-- [ ] Cải thiện brand search: thêm query tiếng Anh cho brand quốc tế
-- [ ] Data lifecycle: auto-xóa sessions > 30 ngày
+- [ ] Merge `feature/web-search` → `master` để có code stable mới
+- [ ] Test full flow end-to-end với 1 founder thật
+- [ ] Re-enable Social Listening khi có web search VN tốt
 - [ ] Export PDF report sau khi phân tích xong
