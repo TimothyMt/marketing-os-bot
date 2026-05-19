@@ -21,7 +21,7 @@ CLAUDE_SONNET_MODEL = "claude-sonnet-4-6"
 CLAUDE_HAIKU_MODEL  = "claude-haiku-4-5"
 CLAUDE_MODEL        = CLAUDE_SONNET_MODEL  # backward-compat alias
 
-AGENT_TIMEOUT  = 120
+AGENT_TIMEOUT  = 180  # 3 phút — Sonnet agent (~60-90s) + Haiku critic (~10-20s) + buffer
 MAX_HISTORY_TURNS = 20
 
 INDUSTRIES = [

@@ -68,6 +68,37 @@ OUTPUT_FORMAT_INSTRUCTION = """
 ## 📄 Phân tích chi tiết
 [Full analysis dài, có sub-sections]
 
+---
+
+**NGUYÊN TẮC DỮ LIỆU (BẮT BUỘC — áp dụng cho TẤT CẢ con số/claim):**
+
+**1. CITE NGUỒN khi có data thật trong training:**
+- Dùng tên nguồn rõ ràng: "Theo Statista...", "GSO báo cáo...", "Nielsen 2024 chỉ ra..."
+- CHỈ được cite nguồn từ danh sách sau:
+  `Statista, GSO, Tổng cục Thống kê, WorldBank, World Bank, Nielsen, Q&Me, Decision Lab, Vietcetera, CafeF, VnEconomy, Brands Vietnam, Advertising Vietnam, iPrice, Cốc Cốc, Adsota, Kantar`
+- KHÔNG bịa tên báo cáo: SAI = "Vietnam Beauty Insights 2024" — không tồn tại
+- Hệ thống tự thêm hyperlink cho các nguồn trong list
+
+**2. KHÔNG CHẮC SỐ LIỆU → dùng RANGE hoặc QUALIFIER:**
+- SAI: "TAM ngành F&B = 60 nghìn tỷ VND/năm" (số chính xác không nguồn)
+- ĐÚNG: "TAM ước tính ~50-80 nghìn tỷ VND/năm (industry estimate)"
+- SAI: "ROAS trung bình 3.7x"
+- ĐÚNG: "ROAS ngành thường rơi vào 3-5x"
+
+**3. CLAIM VỀ BRAND CỤ THỂ — chỉ nói CHUNG, không số:**
+- SAI: "Cocoon có 50,000 active customers"
+- SAI: "M.O.I founded 2018 bởi Hồ Ngọc Hà, doanh thu 200 tỷ"
+- ĐÚNG: "Cocoon là local clean beauty brand đã build được presence rõ rệt"
+- ĐÚNG: "M.O.I là brand mass-premium do celebrity backing"
+- Nếu cần con số → dùng "các brand lớn trong segment" + range
+
+**4. ƯU TIÊN THỨ TỰ:**
+- Best: Data thật + cite nguồn từ list known
+- OK: Range + qualifier ("ước tính ngành", "benchmark", "industry estimate")
+- Worst: Số chính xác không nguồn → CẤM TUYỆT ĐỐI
+
+---
+
 **Quy tắc viết Phân tích chi tiết (BẮT BUỘC tuân theo):**
 
 1. **Dùng markdown tables** cho MỌI data so sánh:

@@ -7,7 +7,7 @@ import re
 import logging
 import anthropic
 
-from config import CLAUDE_SONNET_MODEL, ANTHROPIC_API_KEY
+from config import CLAUDE_HAIKU_MODEL, ANTHROPIC_API_KEY
 
 logger = logging.getLogger(__name__)
 
@@ -101,7 +101,7 @@ async def run_critic(agent_output: str, agent_name: str = "agent") -> str:
     try:
         client = _get_client()
         response = await client.messages.create(
-            model=CLAUDE_SONNET_MODEL,
+            model=CLAUDE_HAIKU_MODEL,
             max_tokens=5000,
             system=[
                 {
