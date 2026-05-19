@@ -86,11 +86,25 @@ HELP_MESSAGE = """*Marketing OS — Hướng dẫn sử dụng*
 *Thời gian*: 30-60 giây cho task đơn lẻ, 3-5 phút cho phân tích toàn diện."""
 
 
+async def _safe_reply(message: Message, text: str, **kwargs):
+    """Reply with markdown; fallback to plain text if Telegram parser fails."""
+    try:
+        await message.reply_text(text, **kwargs)
+    except Exception as e:
+        # Markdown parse error (unbalanced *, _, etc.) — strip parse_mode and retry
+        if "parse" in str(e).lower() or "entities" in str(e).lower():
+            logger.warning("Markdown parse failed (%s) — sending as plain text", e)
+            kwargs_plain = {k: v for k, v in kwargs.items() if k != "parse_mode"}
+            await message.reply_text(text, **kwargs_plain)
+        else:
+            raise
+
+
 async def send_long_message(message: Message, text: str, **kwargs):
-    """Split messages exceeding Telegram's 4096-char limit."""
+    """Split messages exceeding Telegram's 4096-char limit. Safe markdown fallback."""
     MAX_LEN = 4000
     if len(text) <= MAX_LEN:
-        await message.reply_text(text, **kwargs)
+        await _safe_reply(message, text, **kwargs)
         return
 
     chunks, current = [], ""
@@ -106,7 +120,7 @@ async def send_long_message(message: Message, text: str, **kwargs):
 
     for i, chunk in enumerate(chunks):
         kw = kwargs if i == len(chunks) - 1 else {k: v for k, v in kwargs.items() if k != "reply_markup"}
-        await message.reply_text(chunk, **kw)
+        await _safe_reply(message, chunk, **kw)
         await asyncio.sleep(0.3)
 
 
