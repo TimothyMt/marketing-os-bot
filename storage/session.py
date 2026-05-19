@@ -60,7 +60,6 @@ def _row_to_session(row: dict) -> Session:
         profile=profile,
         intake_history=intake_history if isinstance(intake_history, list) else json.loads(intake_history),
         results=raw_results,
-        raw_description=row.get("raw_description") or "",
         brand_candidates=brand_candidates if isinstance(brand_candidates, list) else [],
         created_at=str(row.get("created_at") or ""),
         updated_at=str(row.get("updated_at") or ""),
@@ -99,7 +98,6 @@ async def save_session(session: Session):
         "profile":          profile_dict,
         "intake_history":   session.intake_history,
         "results":          results_with_meta,
-        "raw_description":  session.raw_description,
     }
 
     await _client.table(TABLE).upsert(payload).execute()
@@ -113,6 +111,5 @@ async def reset_session(user_id: int):
         "profile":         {},
         "intake_history":  [],
         "results":         {},
-        "raw_description": "",
     }
     await _client.table(TABLE).upsert(payload).execute()

@@ -45,25 +45,39 @@ async def web_search(query: str, max_results: int = 5) -> str:
 
 
 async def search_brand_candidates(brand_name: str) -> list[dict]:
-    """Search for brand and return up to 4 distinct candidates."""
+    """Search for brand and return up to 4 distinct candidates.
+    Runs 2 parallel queries (general + Vietnam-context) to catch both
+    international brands and local Vietnamese businesses.
+    """
     if not TAVILY_API_KEY:
         return []
+    import asyncio
+    from urllib.parse import urlparse
+
+    client = get_client()
+
+    async def _do_search(query: str) -> list[dict]:
+        try:
+            resp = await client.search(query=query, max_results=6, search_depth="basic")
+            return resp.get("results", []) or []
+        except Exception as e:
+            logger.warning("Tavily search error for '%s': %s", query, e)
+            return []
+
     try:
-        from urllib.parse import urlparse
-        client = get_client()
-        response = await client.search(
-            query=brand_name,
-            max_results=10,
-            search_depth="basic",
+        # Parallel: catch international brands + local VN businesses
+        results_a, results_b = await asyncio.gather(
+            _do_search(brand_name),
+            _do_search(f"{brand_name} Việt Nam"),
         )
-        results = response.get("results", [])
+        all_results = results_a + results_b
 
         seen_domains: set[str] = set()
         candidates: list[dict] = []
-        for r in results:
+        for r in all_results:
             url = r.get("url", "")
             domain = urlparse(url).netloc.replace("www.", "")
-            if domain in seen_domains:
+            if not domain or domain in seen_domains:
                 continue
             seen_domains.add(domain)
 

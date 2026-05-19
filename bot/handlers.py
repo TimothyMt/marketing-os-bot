@@ -327,6 +327,8 @@ async def _handle_intake(update, context, session, text):
         )
 
         session.stage = PipelineStage.CONFIRMED
+        # Profile đã extract xong → intake_history không còn giá trị, xóa để tiết kiệm storage
+        session.intake_history = []
         await save_session(session)
 
         await update.message.reply_text(
@@ -394,6 +396,8 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
         chosen = candidates[idx]
         session.profile.business_name = chosen.get("name", "")
+        # Brand đã confirm → xóa list candidates, không cần lưu nữa
+        session.brand_candidates = []
         await query.edit_message_reply_markup(reply_markup=None)
         await query.message.reply_text(
             f"✅ *{chosen['name']}* — đã xác nhận!\n\n🔍 Đang thu thập thông tin để phân tích...",

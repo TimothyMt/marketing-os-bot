@@ -91,9 +91,6 @@ class Session:
     # Results from each pipeline stage
     results: dict[str, str] = field(default_factory=dict)
 
-    # Raw user description (first message)
-    raw_description: str = ""
-
     # Brand identification flow
     brand_candidates: list = field(default_factory=list)
 
