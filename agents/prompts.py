@@ -515,11 +515,11 @@ TASK_OPENING_QUESTIONS = {
     "full": (
         "Hãy kể về business của bạn — tự nhiên như đang nói chuyện nhé!\n\n"
         "*Gợi ý copy & điền vào:*\n"
-        "• Tôi đang bán: ___\n"
-        "• Khách hàng: ___ (tuổi, đặc điểm)\n"
-        "• Doanh thu hiện tại: ___\n"
-        "• Mục tiêu 90 ngày: ___\n"
-        "• Khó khăn lớn nhất: ___"
+        "• Tôi đang bán: ...\n"
+        "• Khách hàng: ... (tuổi, đặc điểm)\n"
+        "• Doanh thu hiện tại: ...\n"
+        "• Mục tiêu 90 ngày: ...\n"
+        "• Khó khăn lớn nhất: ..."
     ),
     "market": (
         "📊 Để nghiên cứu thị trường chính xác, cho tôi biết:\n\n"

@@ -33,7 +33,7 @@ STAGE_HEADERS = {
 }
 
 TASK_LABELS = {
-    "full":       "Phân tích toàn diện (6 bước)",
+    "full":       "Phân tích toàn diện (5 bước)",
     "market":     "Nghiên cứu thị trường",
     "competitor": "Phân tích đối thủ",
     "customer":   "Customer Insight & ICP",
@@ -281,10 +281,15 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         task_label = TASK_LABELS.get(task_type, "Phân tích")
         opening = TASK_OPENING_QUESTIONS.get(task_type, TASK_OPENING_QUESTIONS["full"])
 
-        await query.edit_message_text(
-            f"✅ *{task_label}*\n\n{opening}",
-            parse_mode=ParseMode.MARKDOWN,
-        )
+        try:
+            await query.edit_message_text(
+                f"✅ *{task_label}*\n\n{opening}",
+                parse_mode=ParseMode.MARKDOWN,
+            )
+        except Exception as e:
+            logger.warning("edit_message_text markdown failed: %s — retrying as plain text", e)
+            # Fallback: send as plain text if markdown parse fails
+            await query.edit_message_text(f"✅ {task_label}\n\n{opening}")
 
     # ── Pipeline confirmation ─────────────────────────────────────
     elif data == "confirm_yes":
