@@ -189,7 +189,7 @@ async def run_market_research(session: Session) -> str:
 Location: {session.profile.location or 'Việt Nam'}
 Target customer: {session.profile.target_customer}"""
 
-    result = await _run_agent(MARKET_RESEARCH_SYSTEM, user_msg, context)
+    result = await _run_agent(MARKET_RESEARCH_SYSTEM, user_msg, context, max_tokens=4000)
     session.results["market_research"] = result
     return result
 
@@ -208,7 +208,7 @@ Hãy:
 3. Tìm market gaps rõ ràng nhất
 4. Đề xuất positioning opportunity"""
 
-    result = await _run_agent(COMPETITOR_SYSTEM, user_msg, context, max_tokens=2048)
+    result = await _run_agent(COMPETITOR_SYSTEM, user_msg, context, max_tokens=4000)
     session.results["competitor"] = result
     return result
 
@@ -224,7 +224,7 @@ Location: {session.profile.location or 'Việt Nam'}
 
 Hãy đào sâu vào psychographics, JTBD, và Vietnamese cultural context của ngành {session.profile.industry}."""
 
-    result = await _run_agent(CUSTOMER_INSIGHT_SYSTEM, user_msg, context, max_tokens=2048)
+    result = await _run_agent(CUSTOMER_INSIGHT_SYSTEM, user_msg, context, max_tokens=4000)
     session.results["customer_insight"] = result
     return result
 
@@ -250,7 +250,7 @@ Phần 2: Đề xuất pricing model và tactics cụ thể (với số liệu)"
 
 Hãy output CẢ HAI phần: Psychology Application VÀ Pricing Strategy trong một response duy nhất, chia section rõ ràng."""
 
-    result = await _run_agent(combined_system, user_msg, context, max_tokens=3000)
+    result = await _run_agent(combined_system, user_msg, context, max_tokens=5000)
     session.results["psychology_pricing"] = result
     return result
 
@@ -267,7 +267,7 @@ Team size: {session.profile.team_size or 'nhỏ'}
 
 Tạo system thực tế, phù hợp với team nhỏ, tập trung vào platform VN."""
 
-    result = await _run_agent(SOCIAL_LISTENING_SYSTEM, user_msg, context, max_tokens=2048)
+    result = await _run_agent(SOCIAL_LISTENING_SYSTEM, user_msg, context, max_tokens=4000)
     session.results["social_listening"] = result
     return result
 
@@ -303,7 +303,7 @@ Yêu cầu:
 - Budget allocation đề xuất"""
 
     result = await _run_agent(
-        STRATEGY_SYNTHESIZER_SYSTEM, user_msg, context, max_tokens=4000
+        STRATEGY_SYNTHESIZER_SYSTEM, user_msg, context, max_tokens=5000
     )
     session.results["synthesis"] = result
     return result

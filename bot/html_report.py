@@ -34,18 +34,45 @@ body {
   background: var(--bg); color: var(--text); line-height: 1.65; padding: 24px 16px;
 }
 .container { max-width: 880px; margin: 0 auto; }
+
 .header {
   background: linear-gradient(135deg, #2563eb 0%, #7c3aed 100%);
-  color: white; padding: 36px 32px; border-radius: 16px; margin-bottom: 24px;
+  color: white; padding: 32px 28px; border-radius: 16px; margin-bottom: 20px;
   box-shadow: 0 4px 20px rgba(37,99,235,0.15);
 }
-.header h1 { font-size: 28px; font-weight: 700; margin-bottom: 8px; }
+.header h1 { font-size: 26px; font-weight: 700; margin-bottom: 6px; }
 .header .meta { font-size: 14px; opacity: 0.9; }
-.header .powered { margin-top: 16px; font-size: 12px; opacity: 0.7; }
+.header .powered { margin-top: 14px; font-size: 11px; opacity: 0.7; }
 
+/* Tabs navigation */
+.tabs {
+  display: flex; gap: 4px; background: white;
+  padding: 6px; border-radius: 12px; margin-bottom: 20px;
+  overflow-x: auto; box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+  scrollbar-width: thin;
+}
+.tab-btn {
+  padding: 10px 16px; border: none; background: transparent;
+  cursor: pointer; font-size: 13px; font-weight: 500; color: var(--muted);
+  white-space: nowrap; border-radius: 8px; transition: all 0.15s;
+  font-family: inherit;
+}
+.tab-btn:hover { background: #f1f5f9; color: var(--text); }
+.tab-btn.active {
+  background: var(--primary); color: white; font-weight: 600;
+}
+
+/* Section visibility */
 .section {
-  background: var(--card); border-radius: 12px; padding: 28px; margin-bottom: 20px;
+  display: none;
+  background: var(--card); border-radius: 12px; padding: 28px;
   box-shadow: 0 1px 3px rgba(0,0,0,0.05); border-left: 4px solid var(--primary);
+  animation: fadeIn 0.25s ease;
+}
+.section.active { display: block; }
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: translateY(0); }
 }
 .section.market    { border-color: #2563eb; }
 .section.competitor{ border-color: #f59e0b; }
@@ -57,53 +84,84 @@ body {
   display: flex; align-items: center; gap: 12px;
   margin-bottom: 18px; padding-bottom: 12px; border-bottom: 1px solid var(--border);
 }
-.section-header .icon { font-size: 24px; }
-.section-header h2 { font-size: 20px; font-weight: 600; }
+.section-header .icon { font-size: 28px; }
+.section-header h2 { font-size: 22px; font-weight: 600; }
 
 .insight {
   background: #fef3c7; border-left: 4px solid var(--accent);
-  padding: 14px 18px; border-radius: 6px; margin: 14px 0;
-  font-style: italic; color: #78350f;
+  padding: 16px 20px; border-radius: 6px; margin: 16px 0;
+  font-style: italic; color: #78350f; font-size: 15px; line-height: 1.6;
 }
-.insight::before { content: "💡 "; font-style: normal; }
+.insight::before { content: "💡 "; font-style: normal; font-weight: 600; }
 
 .summary, .benchmarks {
   background: #f0f9ff; border-left: 3px solid var(--primary);
-  padding: 14px 18px; border-radius: 8px; margin: 14px 0;
+  padding: 16px 20px; border-radius: 8px; margin: 14px 0;
 }
 .summary-label, .benchmarks-label {
-  font-size: 11px; font-weight: 600; text-transform: uppercase;
-  color: var(--primary); letter-spacing: 0.5px; margin-bottom: 8px;
+  font-size: 11px; font-weight: 700; text-transform: uppercase;
+  color: var(--primary); letter-spacing: 0.5px; margin-bottom: 10px;
 }
+.summary ul, .benchmarks ul { margin-left: 20px; }
+.summary p, .benchmarks p { margin-bottom: 6px; }
 
-.content h1, .content h2, .content h3 { margin: 18px 0 10px; font-weight: 600; }
-.content h1 { font-size: 20px; }
+.content { margin-top: 16px; }
+.content h1, .content h2, .content h3, .content h4 {
+  margin: 20px 0 10px; font-weight: 600; color: var(--text);
+}
+.content h1 { font-size: 22px; padding-bottom: 6px; border-bottom: 1px solid var(--border); }
 .content h2 { font-size: 18px; }
-.content h3 { font-size: 16px; }
-.content h4 { font-size: 14px; color: var(--muted); }
+.content h3 { font-size: 16px; color: var(--primary); }
+.content h4 { font-size: 14px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; }
 .content p { margin-bottom: 12px; }
 .content ul, .content ol { margin: 8px 0 12px 24px; }
 .content li { margin-bottom: 6px; }
-.content strong { font-weight: 600; }
+.content strong { font-weight: 700; color: var(--text); }
+.content em { color: var(--muted); }
 .content table {
-  width: 100%; border-collapse: collapse; margin: 14px 0; font-size: 14px;
+  width: 100%; border-collapse: collapse; margin: 16px 0; font-size: 14px;
+  background: white; border-radius: 8px; overflow: hidden;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.04);
 }
 .content th, .content td {
-  padding: 10px 14px; text-align: left; border-bottom: 1px solid var(--border);
+  padding: 12px 16px; text-align: left; border-bottom: 1px solid var(--border);
 }
 .content th {
   background: #f1f5f9; font-weight: 600; font-size: 12px;
   text-transform: uppercase; color: var(--muted); letter-spacing: 0.5px;
 }
+.content tr:last-child td { border-bottom: none; }
 .content tr:hover { background: #f8fafc; }
 .content blockquote {
-  border-left: 3px solid var(--accent); padding: 8px 14px; margin: 12px 0;
-  background: #fffbeb; color: #78350f; font-style: italic;
+  border-left: 4px solid var(--accent); padding: 14px 18px; margin: 14px 0;
+  background: #fffbeb; color: #78350f; font-style: italic; border-radius: 4px;
 }
 
 .footer {
   text-align: center; color: var(--muted); font-size: 12px;
-  padding: 24px 16px; margin-top: 16px;
+  padding: 24px 16px; margin-top: 16px; line-height: 1.7;
+}
+
+/* Mobile */
+@media (max-width: 640px) {
+  body { padding: 12px 8px; }
+  .header { padding: 24px 20px; border-radius: 12px; }
+  .header h1 { font-size: 22px; }
+  .section { padding: 20px 16px; }
+  .tab-btn { padding: 8px 12px; font-size: 12px; }
+  .content table { font-size: 13px; }
+  .content th, .content td { padding: 8px 10px; }
+}
+"""
+
+
+JS = """
+function showSection(id, btn) {
+  document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+  btn.classList.add('active');
+  window.scrollTo({ top: 0, behavior: 'smooth' });
 }
 """
 
@@ -128,6 +186,10 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     <div class="powered">Powered by Max — AI CMO · Marketing OS</div>
   </div>
 
+  <div class="tabs">
+    {tabs_html}
+  </div>
+
   {sections_html}
 
   <div class="footer">
@@ -137,6 +199,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
   </div>
 
 </div>
+<script>{js}</script>
 </body>
 </html>"""
 
@@ -179,27 +242,29 @@ def parse_agent_output(text: str) -> dict:
     return result
 
 
-def render_stage_html(stage_key: str, parsed: dict) -> str:
-    """Render one stage as HTML section."""
+def render_stage_html(stage_key: str, parsed: dict, idx: int) -> str:
+    """Render one stage as a tabbed section. idx is the tab index (0-based)."""
     meta = STAGE_META.get(stage_key, {"title": stage_key, "icon": "📄", "color": ""})
+    section_id = f"section-{stage_key}"
+    active_cls = " active" if idx == 0 else ""
 
+    # Order: Insight (hook) → Detail (full) → Summary (recap) → Benchmarks (data ref at bottom)
     parts = []
     if parsed.get("insight"):
-        # Strip wrapping quotes if present
         insight = parsed["insight"].strip().strip('"').strip("'")
         parts.append(f'<div class="insight">{_md_to_html(insight)}</div>')
-    if parsed.get("summary"):
-        parts.append('<div class="summary"><div class="summary-label">Tóm tắt</div>'
-                     f'{_md_to_html(parsed["summary"])}</div>')
-    if parsed.get("benchmarks"):
-        parts.append('<div class="benchmarks"><div class="benchmarks-label">Benchmarks</div>'
-                     f'{_md_to_html(parsed["benchmarks"])}</div>')
     if parsed.get("detail"):
         parts.append(f'<div class="content">{_md_to_html(parsed["detail"])}</div>')
+    if parsed.get("summary"):
+        parts.append('<div class="summary"><div class="summary-label">📌 Tóm tắt</div>'
+                     f'{_md_to_html(parsed["summary"])}</div>')
+    if parsed.get("benchmarks"):
+        parts.append('<div class="benchmarks"><div class="benchmarks-label">📊 Benchmarks</div>'
+                     f'{_md_to_html(parsed["benchmarks"])}</div>')
 
     body = "\n".join(parts)
     return f"""
-<div class="section {meta['color']}">
+<div id="{section_id}" class="section {meta['color']}{active_cls}">
   <div class="section-header">
     <span class="icon">{meta['icon']}</span>
     <h2>{meta['title']}</h2>
@@ -208,20 +273,36 @@ def render_stage_html(stage_key: str, parsed: dict) -> str:
 </div>"""
 
 
+def render_tab_button(stage_key: str, idx: int) -> str:
+    """Render a single tab button."""
+    meta = STAGE_META.get(stage_key, {"title": stage_key, "icon": "📄"})
+    section_id = f"section-{stage_key}"
+    active_cls = " active" if idx == 0 else ""
+    label = f"{meta['icon']} {meta['title']}"
+    return f'<button class="tab-btn{active_cls}" onclick="showSection(\'{section_id}\', this)">{label}</button>'
+
+
 def build_report(
     business_name: str,
     industry: str,
     stage: str,
     parsed_stages: list[tuple[str, dict]],
 ) -> str:
-    """Render full HTML report.
+    """Render full HTML report with tabbed navigation.
     parsed_stages: list of (stage_key, parsed_dict) in pipeline order."""
-    sections_html = "\n".join(render_stage_html(k, p) for k, p in parsed_stages)
+    tabs_html = "\n    ".join(
+        render_tab_button(k, i) for i, (k, _) in enumerate(parsed_stages)
+    )
+    sections_html = "\n".join(
+        render_stage_html(k, p, i) for i, (k, p) in enumerate(parsed_stages)
+    )
     return HTML_TEMPLATE.format(
         business_name=business_name or "Business",
         industry=industry or "—",
         stage=stage or "—",
         date=datetime.now().strftime("%d/%m/%Y · %H:%M"),
+        tabs_html=tabs_html,
         sections_html=sections_html,
         css=CSS,
+        js=JS,
     )
