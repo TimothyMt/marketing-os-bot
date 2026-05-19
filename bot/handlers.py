@@ -11,14 +11,21 @@ from telegram.constants import ParseMode, ChatAction
 
 from storage import get_session, save_session, reset_session
 from storage.models import PipelineStage
-from agents.pipeline import run_intake, run_targeted_pipeline
+from agents.pipeline import run_intake, run_targeted_pipeline, run_operational_skill
 from agents.prompts import INTAKE_CONFIRM_TEMPLATE, PROGRESS_MESSAGES, TASK_OPENING_QUESTIONS
+from agents.task_registry import TASK_REGISTRY, OPERATIONAL_TASKS, get_task
 from frameworks.kpi_library import KPI_LIBRARY
 from bot.keyboards import (
-    TASK_SELECT_KEYBOARD,
+    MAIN_MENU_KEYBOARD,
+    STRATEGIC_KEYBOARD,
+    OPERATIONAL_KEYBOARD,
+    ANALYSIS_KEYBOARD,
+    TASK_SELECT_KEYBOARD,  # alias to MAIN_MENU_KEYBOARD
     CONFIRM_KEYBOARD,
     RESTART_KEYBOARD,
     stage_done_keyboard,
+    ADS_COPY_TIER_KEYBOARD,
+    VIDEO_CREATOR_KEYBOARD,
 )
 
 logger = logging.getLogger(__name__)
@@ -64,9 +71,11 @@ TASK_STAGE_COUNT = {
 
 WELCOME_MESSAGE = """👋 Xin chào! Tôi là *Max — AI CMO* của bạn.
 
-Tôi có thể giúp bạn:
-📊 Nghiên cứu thị trường · 🕵️ Phân tích đối thủ · 👥 Customer Insight
-💰 Pricing Strategy · 🎯 Marketing Strategy
+Tôi có thể giúp bạn ở 3 tầng:
+
+🎯 *Chiến lược* — Phân tích thị trường, đối thủ, customer, pricing, strategy
+⚙️ *Sản xuất* — Campaign brief, content calendar, ads copy, video script, landing page, sales script, email/Zalo nurture
+📊 *Đánh giá* — Audit performance campaign đang chạy
 
 ─────────────────────────
 *Bạn muốn Max làm gì hôm nay?*"""
@@ -145,7 +154,7 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         WELCOME_MESSAGE,
         parse_mode=ParseMode.MARKDOWN,
-        reply_markup=TASK_SELECT_KEYBOARD,
+        reply_markup=MAIN_MENU_KEYBOARD,
     )
 
 
@@ -179,7 +188,11 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
     elif session.stage == PipelineStage.INTAKE:
-        await _handle_intake(update, context, session, text)
+        # Route to ops single-shot intake if marker present, else strategic multi-turn
+        if session.pending_intake.get(OPS_INTAKE_AWAITING):
+            await _handle_ops_intake_reply(update, context, session, text)
+        else:
+            await _handle_intake(update, context, session, text)
 
     elif session.stage == PipelineStage.CONFIRMED:
         await update.message.reply_text(
@@ -310,10 +323,88 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def _handle_callback_inner(update, context, query, session, data, user_id):
 
+    # ── Menu navigation (tier 1 → tier 2) ─────────────────────────
+    if data == "menu_main":
+        await query.edit_message_text(
+            WELCOME_MESSAGE,
+            parse_mode=ParseMode.MARKDOWN,
+            reply_markup=MAIN_MENU_KEYBOARD,
+        )
+        return
+
+    if data == "menu_strategic":
+        await query.edit_message_text(
+            "🎯 *Chiến lược* — phân tích sâu để ra quyết định lớn\n\nChọn task:",
+            parse_mode=ParseMode.MARKDOWN,
+            reply_markup=STRATEGIC_KEYBOARD,
+        )
+        return
+
+    if data == "menu_operational":
+        await query.edit_message_text(
+            "⚙️ *Sản xuất* — deliverable dùng hàng tuần\n\nChọn task:",
+            parse_mode=ParseMode.MARKDOWN,
+            reply_markup=OPERATIONAL_KEYBOARD,
+        )
+        return
+
+    if data == "menu_analysis":
+        await query.edit_message_text(
+            "📊 *Đánh giá* — audit campaign đang chạy\n\nChọn task:",
+            parse_mode=ParseMode.MARKDOWN,
+            reply_markup=ANALYSIS_KEYBOARD,
+        )
+        return
+
+    # ── Variant choosers for special ops skills ───────────────────
+    if data.startswith("ads_tier_"):
+        tier = data.replace("ads_tier_", "")  # tofu / mofu / bofu / all
+        session.pending_intake["selected_tiers"] = tier
+        await save_session(session)
+        await query.edit_message_reply_markup(reply_markup=None)
+        await _send_single_shot_form(query.message, session, "ads_copy")
+        return
+
+    if data.startswith("video_creator_"):
+        creator = data.replace("video_creator_", "")  # ugc / egc / fgc / kol
+        session.pending_intake["creator_type"] = creator
+        await save_session(session)
+        await query.edit_message_reply_markup(reply_markup=None)
+        await _send_single_shot_form(query.message, session, "video_scripts")
+        return
+
     # ── Task selection ────────────────────────────────────────────
     if data.startswith("task_"):
-        task_type = data[5:]  # strip "task_" prefix
+        task_type = data[5:]
         session.selected_task = task_type
+        session.pending_intake = {}  # reset for fresh single-shot intake
+        await save_session(session)
+
+        # Operational skills → single-shot form (or variant chooser first)
+        if task_type in OPERATIONAL_TASKS:
+            await query.edit_message_reply_markup(reply_markup=None)
+
+            # Special skills with variant chooser
+            if task_type == "ads_copy":
+                await query.message.reply_text(
+                    "✍️ *Ads Copy* — Bạn muốn gen tier nào trước?",
+                    parse_mode=ParseMode.MARKDOWN,
+                    reply_markup=ADS_COPY_TIER_KEYBOARD,
+                )
+                return
+            if task_type == "video_scripts":
+                await query.message.reply_text(
+                    "🎬 *Video Scripts* — Brief cho loại creator nào?",
+                    parse_mode=ParseMode.MARKDOWN,
+                    reply_markup=VIDEO_CREATOR_KEYBOARD,
+                )
+                return
+
+            # Standard ops: jump straight to single-shot form
+            await _send_single_shot_form(query.message, session, task_type)
+            return
+
+        # Strategic skills (existing flow) — multi-turn intake
         session.stage = PipelineStage.INTAKE
         await save_session(session)
 
@@ -327,7 +418,6 @@ async def _handle_callback_inner(update, context, query, session, data, user_id)
             )
         except Exception as e:
             logger.warning("edit_message_text markdown failed: %s — retrying as plain text", e)
-            # Fallback: send as plain text if markdown parse fails
             await query.edit_message_text(f"✅ {task_label}\n\n{opening}")
 
     # ── Pipeline confirmation ─────────────────────────────────────
@@ -404,6 +494,221 @@ def _format_card(stage_key: str, parsed: dict) -> str:
 
     parts.append("📎 _Xem full analysis trong file HTML cuối pipeline_")
     return "\n".join(parts)
+
+
+# ─── Operational skill flow ──────────────────────────────────────
+
+OPS_INTAKE_AWAITING = "ops_intake_awaiting"  # marker stored in pending_intake
+
+async def _send_single_shot_form(message: Message, session, task_name: str):
+    """Send a paste-template form for ops skill intake.
+    User fills in template, replies once with all fields."""
+    task = get_task(task_name)
+    if not task:
+        await message.reply_text(f"⚠️ Skill {task_name} không tồn tại.")
+        return
+
+    lines = [
+        f"✅ *{task.button_emoji} {task.label}*",
+        "",
+        f"_{task.description}_",
+        "",
+        "─────────────────────────",
+        "*Copy template dưới, điền vào (hoặc thay example), gửi lại 1 lần:*",
+        "",
+    ]
+    for f in task.intake_fields:
+        required_mark = "" if f.get("required", True) else " _(không bắt buộc)_"
+        lines.append(f"*{f['label']}*{required_mark}:")
+        lines.append(f"_Vd: {f.get('example', '...')}_")
+        lines.append("")
+
+    lines.append("─────────────────────────")
+    lines.append("💬 *Gửi tin trả lời theo format trên — Max sẽ tự parse và chạy.*")
+
+    # Mark session as waiting for ops intake
+    session.pending_intake[OPS_INTAKE_AWAITING] = task_name
+    session.selected_task = task_name
+    session.stage = PipelineStage.INTAKE
+    await save_session(session)
+
+    await message.reply_text("\n".join(lines), parse_mode=ParseMode.MARKDOWN)
+
+
+def _parse_single_shot_intake(text: str, task_name: str) -> dict:
+    """Parse user's pasted template response.
+    Strategy: extract value after each field label (case-insensitive match).
+    Falls back to splitting by newlines if pattern unclear."""
+    task = get_task(task_name)
+    if not task:
+        return {}
+
+    parsed = {}
+    text_lines = text.split("\n")
+
+    # Build label → key map (case-insensitive)
+    label_to_key = {f["label"].lower().strip(): f["key"] for f in task.intake_fields}
+
+    current_field_key = None
+    current_value_parts: list[str] = []
+
+    for line in text_lines:
+        line_stripped = line.strip()
+        if not line_stripped:
+            continue
+
+        # Match "Label: value" or "*Label*: value" — extract label
+        label_match = re.match(r"^[*_]*([^:*_]+?)[*_]*\s*:\s*(.*)$", line_stripped)
+        if label_match:
+            label_candidate = label_match.group(1).strip().lower()
+            value_inline = label_match.group(2).strip()
+
+            # Check if this label is one of our fields
+            matched_key = None
+            for label, key in label_to_key.items():
+                if label_candidate == label or label_candidate.startswith(label[:15]):
+                    matched_key = key
+                    break
+
+            if matched_key:
+                # Save previous field
+                if current_field_key and current_value_parts:
+                    parsed[current_field_key] = " ".join(current_value_parts).strip()
+                # Start new field
+                current_field_key = matched_key
+                current_value_parts = [value_inline] if value_inline else []
+                continue
+
+        # No label match — append to current field value
+        if current_field_key:
+            current_value_parts.append(line_stripped)
+
+    # Save last field
+    if current_field_key and current_value_parts:
+        parsed[current_field_key] = " ".join(current_value_parts).strip()
+
+    return parsed
+
+
+async def _handle_ops_intake_reply(update: Update, context: ContextTypes.DEFAULT_TYPE, session, text: str):
+    """Handle user's paste reply for ops skill single-shot form."""
+    task_name = session.pending_intake.get(OPS_INTAKE_AWAITING)
+    if not task_name:
+        return
+
+    parsed = _parse_single_shot_intake(text, task_name)
+
+    # Merge into pending_intake (preserves variant chooser values like selected_tiers)
+    for k, v in parsed.items():
+        session.pending_intake[k] = v
+
+    # Clear marker so next typed message doesn't re-trigger
+    session.pending_intake.pop(OPS_INTAKE_AWAITING, None)
+    await save_session(session)
+
+    await context.bot.send_chat_action(
+        chat_id=update.effective_chat.id,
+        action=ChatAction.TYPING,
+    )
+    await update.message.reply_text(
+        f"⚡ *Đang chạy {get_task(task_name).label}...*\nThời gian dự kiến: 30-60 giây.",
+        parse_mode=ParseMode.MARKDOWN,
+    )
+
+    try:
+        result = await run_operational_skill(task_name, session)
+        await save_session(session)
+        await _send_ops_result(update.message, session, task_name, result)
+    except Exception as e:
+        logger.exception("Ops skill %s failed: %s", task_name, e)
+        await update.message.reply_text(
+            f"⚠️ Skill {task_name} gặp lỗi: {str(e)[:200]}\n\nThử /start lại nhé."
+        )
+
+
+async def _send_ops_result(message: Message, session, task_name: str, result: str):
+    """Render ops skill result: Telegram bullet card + primary deliverable file."""
+    from bot.renderers import (
+        parse_by_format,
+        format_telegram_card,
+        render_markdown_file,
+        render_excel_file,
+    )
+    from bot.html_report import build_single_skill_report
+    from agents.operational_skills_config import get_operational_skill
+    from agents.skills import PrimaryDeliverable
+    import io
+
+    skill = get_operational_skill(task_name)
+    task = get_task(task_name)
+    parsed = parse_by_format(result, skill.output_format)
+
+    # Telegram bullet card
+    primary_label = {
+        PrimaryDeliverable.HTML:     "Xem chi tiết trong file HTML đính kèm",
+        PrimaryDeliverable.EXCEL:    "Xem chi tiết trong file Excel đính kèm",
+        PrimaryDeliverable.MARKDOWN: "Xem chi tiết trong file Markdown đính kèm",
+    }.get(skill.primary_deliverable, "Xem file đính kèm")
+
+    card_text = format_telegram_card(
+        task_name, task.label, task.button_emoji,
+        parsed, skill.output_format,
+        file_attached_hint=primary_label,
+    )
+
+    await message.reply_text(card_text, parse_mode=ParseMode.MARKDOWN)
+
+    business_slug = re.sub(r"[^a-zA-Z0-9_-]", "_", session.profile.business_name or task_name)[:30]
+    business_name = session.profile.business_name or "Business"
+
+    # Send HTML always (universal viewable)
+    try:
+        html_str = build_single_skill_report(
+            task_name, parsed, skill.output_format,
+            business_name=business_name,
+            industry=session.profile.industry or "",
+            stage=session.profile.stage or "",
+        )
+        buf = io.BytesIO(html_str.encode("utf-8"))
+        buf.name = f"{task_name}_{business_slug}.html"
+        await message.reply_document(
+            document=buf,
+            filename=buf.name,
+            caption=f"📄 *{task.label}* — bản HTML đầy đủ",
+            parse_mode=ParseMode.MARKDOWN,
+        )
+    except Exception as e:
+        logger.warning("HTML render failed for %s: %s", task_name, e)
+
+    # Send primary deliverable per skill config
+    if skill.primary_deliverable == PrimaryDeliverable.MARKDOWN:
+        md_bytes = render_markdown_file(task_name, task.label, parsed, skill.output_format, business_name)
+        buf = io.BytesIO(md_bytes)
+        buf.name = f"{task_name}_{business_slug}.md"
+        await message.reply_document(
+            document=buf,
+            filename=buf.name,
+            caption=f"📝 *{task.label}* — bản Markdown (gửi designer/dev/creator)",
+            parse_mode=ParseMode.MARKDOWN,
+        )
+    elif skill.primary_deliverable == PrimaryDeliverable.EXCEL:
+        xlsx_bytes = render_excel_file(task_name, task.label, parsed, skill.output_format, business_name)
+        if xlsx_bytes:
+            buf = io.BytesIO(xlsx_bytes)
+            buf.name = f"{task_name}_{business_slug}.xlsx"
+            await message.reply_document(
+                document=buf,
+                filename=buf.name,
+                caption=f"📊 *{task.label}* — bản Excel (paste vào Google Sheet)",
+                parse_mode=ParseMode.MARKDOWN,
+            )
+
+    # Final action keyboard
+    await message.reply_text(
+        f"✅ *Hoàn thành {task.label}!*\n\nChạy task khác hoặc hỏi thêm?",
+        parse_mode=ParseMode.MARKDOWN,
+        reply_markup=stage_done_keyboard(is_last=True),
+    )
 
 
 async def _run_pipeline_sequentially(message: Message, session):
