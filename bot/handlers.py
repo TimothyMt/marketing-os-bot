@@ -86,8 +86,18 @@ HELP_MESSAGE = """*Marketing OS — Hướng dẫn sử dụng*
 *Thời gian*: 30-60 giây cho task đơn lẻ, 3-5 phút cho phân tích toàn diện."""
 
 
+def _strip_code_fences(text: str) -> str:
+    """Remove ``` fences — Telegram renders them as ugly gray code blocks with copy button."""
+    # Remove opening fence (optionally with language): ```python\n or ```\n
+    text = re.sub(r"```[a-zA-Z]*\s*\n?", "", text)
+    # Remove any remaining closing fences
+    return text.replace("```", "")
+
+
 async def _safe_reply(message: Message, text: str, **kwargs):
-    """Reply with markdown; fallback to plain text if Telegram parser fails."""
+    """Reply with markdown; fallback to plain text if Telegram parser fails.
+    Also strips ``` code fences which render ugly in Telegram."""
+    text = _strip_code_fences(text)
     try:
         await message.reply_text(text, **kwargs)
     except Exception as e:
