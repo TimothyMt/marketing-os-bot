@@ -334,6 +334,19 @@ async def run_strategy_synthesis(session: Session) -> str:
 
 
 # ─────────────────────────────────────────────────────────────────
+# OPERATIONAL SKILLS — dispatched via get_operational_skill()
+# ─────────────────────────────────────────────────────────────────
+
+async def run_operational_skill(skill_name: str, session: Session) -> str:
+    """Run an operational skill by name. Stores result in session with versioning."""
+    from agents.operational_skills_config import get_operational_skill
+    skill = get_operational_skill(skill_name)
+    result = await _run_skill(skill, session)
+    session.add_result(skill_name, result)
+    return result
+
+
+# ─────────────────────────────────────────────────────────────────
 # PIPELINE RUNNER — orchestrates all stages
 # ─────────────────────────────────────────────────────────────────
 
