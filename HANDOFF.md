@@ -382,6 +382,78 @@ def needs_intake(session, task) -> bool:
 
 ---
 
+## 🛠 QUY TẮC KHI SỬA CODE (cho Claude session sau này)
+
+Đây là pattern observed cần follow để tiết kiệm token + giảm risk break code:
+
+### ❌ ANTI-PATTERN: Rewrite-from-scratch
+
+Khi user báo lỗi hoặc yêu cầu thay đổi nhỏ, KHÔNG được:
+- Viết lại toàn bộ file
+- Generate full content mới khi chỉ cần đổi 5-10 dòng
+- Dùng `Write` tool để overwrite file khi chỉ cần `Edit` 1 chỗ
+
+**Tại sao tránh:**
+- Tốn nhiều tokens không cần thiết (file 300 dòng generate lại = 5000+ tokens)
+- Dễ vô tình thay đổi code khác không liên quan (introduce regression)
+- Khó review diff — user phải đọc lại cả file thay vì xem 5 dòng đổi
+
+### ✅ PATTERN ĐÚNG: Surgical edit
+
+Khi user báo "X không hoạt động" hoặc "đổi Y thành Z":
+
+**Bước 1: Locate**
+- Dùng `Grep` để tìm chính xác chỗ liên quan
+- Đọc context xung quanh (5-10 dòng trước/sau) bằng `Read` với offset/limit
+
+**Bước 2: Identify minimum change**
+- Xác định nhỏ nhất bao nhiêu dòng phải đổi để fix
+- Identify chỗ KHÁC có liên quan (nếu có) — ví dụ: đổi function signature → check tất cả call sites
+
+**Bước 3: Edit precisely**
+- Dùng `Edit` tool với `old_string`/`new_string` đúng phần cần đổi
+- Nếu nhiều chỗ đổi → nhiều Edit calls riêng biệt, mỗi cái có context rõ ràng
+- KHÔNG dùng `Write` overwrite file trừ khi tạo file mới hoặc refactor toàn bộ
+
+**Bước 4: Verify scope**
+- Sau khi edit, syntax check
+- KHÔNG cần re-read file sau khi Edit (Edit tool đã đảm bảo)
+
+### Ví dụ cụ thể
+
+**User**: "Bot không chạy khi click Phân tích business mới"
+
+**❌ Cách sai:**
+```
+1. Read toàn bộ bot/handlers.py (400 dòng)
+2. Write lại toàn bộ file với fix nằm trong đó
+   → 5000+ tokens output
+   → Risk: thay đổi format các handler khác
+```
+
+**✅ Cách đúng:**
+```
+1. Grep "restart" trong bot/handlers.py → tìm line 340
+2. Read offset=340, limit=15 → xem callback hiện tại
+3. Edit chỉ block restart handler (~10 dòng)
+   → 300 tokens output
+   → Chỉ đổi 1 chỗ, không ảnh hưởng khác
+```
+
+### Khi NÀO mới được rewrite-from-scratch:
+
+- ✅ Tạo file mới (chưa tồn tại)
+- ✅ Refactor lớn toàn bộ file (user explicit yêu cầu)
+- ✅ File quá nát/messy không thể edit surgical (rare)
+
+**Không bao gồm:**
+- ❌ Fix 1 bug
+- ❌ Thêm 1 feature nhỏ
+- ❌ Đổi vài config values
+- ❌ Update 1 vài prompts
+
+---
+
 ## Branches & Rollback
 
 | Branch | Trạng thái |
