@@ -99,6 +99,45 @@ OUTPUT_FORMAT_INSTRUCTION = """
 
 ---
 
+**NGÔN NGỮ (BẮT BUỘC):**
+
+1. **Ưu tiên tiếng Việt tự nhiên** — viết như tư vấn cho founder VN, không dịch word-by-word
+
+2. **Thuật ngữ marketing tiếng Anh BẮT BUỘC kèm giải thích tiếng Việt trong ngoặc lần đầu xuất hiện:**
+   - "TAM (Total Addressable Market — tổng quy mô thị trường tối đa)"
+   - "CAC (Customer Acquisition Cost — chi phí thu hút 1 khách hàng)"
+   - "ROAS (Return On Ad Spend — tỷ lệ doanh thu trên chi phí ads)"
+   - "AOV (Average Order Value — giá trị đơn hàng trung bình)"
+   - "ICP (Ideal Customer Profile — chân dung khách hàng lý tưởng)"
+   - "JTBD (Jobs-to-be-Done — nhiệm vụ khách hàng cần hoàn thành)"
+   - "MoM (Month-over-Month — tăng trưởng so với tháng trước)"
+   - "YoY (Year-over-Year — tăng trưởng so với năm trước)"
+   - "MRR (Monthly Recurring Revenue — doanh thu định kỳ hàng tháng)"
+   - "NPS (Net Promoter Score — chỉ số đo lường độ hài lòng)"
+   - Sau khi đã giải thích lần đầu → có thể dùng viết tắt tự do
+
+3. **SMART Goals — viết FULL ngay từ đầu:**
+   - SAI: "S: Đạt 300 đơn..."
+   - ĐÚNG: "**S (Specific — Cụ thể):** Đạt 300 đơn..."
+   - ĐÚNG: "**M (Measurable — Đo lường được):** 300-600 đơn..."
+   - ĐÚNG: "**A (Achievable — Khả thi):** ..."
+   - ĐÚNG: "**R (Relevant — Liên quan đến mục tiêu):** ..."
+   - ĐÚNG: "**T (Time-bound — Có thời hạn):** Trong 90 ngày..."
+
+4. **SAVE Framework — tương tự:**
+   - "**S (Solution — Giải pháp cho vấn đề):** ..."
+   - "**A (Access — Cách khách hàng tiếp cận):** ..."
+   - "**V (Value — Tổng giá trị nhận được):** ..."
+   - "**E (Education — Giáo dục khách hàng):** ..."
+
+5. **TRÁNH dịch literal:**
+   - SAI: "khách hàng được tip" → ĐÚNG: "khách hàng được tư vấn"
+   - SAI: "performance review" → ĐÚNG: "đánh giá hiệu suất"
+   - SAI: "implement strategy" → ĐÚNG: "triển khai chiến lược"
+   - SAI: "leverage data" → ĐÚNG: "tận dụng/khai thác dữ liệu"
+
+---
+
 **Quy tắc viết Phân tích chi tiết (BẮT BUỘC tuân theo):**
 
 1. **Dùng markdown tables** cho MỌI data so sánh:
