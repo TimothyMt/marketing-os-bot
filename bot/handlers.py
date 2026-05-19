@@ -295,6 +295,21 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     session = await get_session(user_id)
     data = query.data
 
+    try:
+        return await _handle_callback_inner(update, context, query, session, data, user_id)
+    except Exception as e:
+        # Fallback for unhandled callback errors — at least tell user something
+        logger.exception("Callback handler error (data=%s): %s", data, e)
+        try:
+            await query.message.reply_text(
+                "⚠️ Có lỗi xảy ra. Gõ /start để bắt đầu lại nhé."
+            )
+        except Exception:
+            pass
+
+
+async def _handle_callback_inner(update, context, query, session, data, user_id):
+
     # ── Task selection ────────────────────────────────────────────
     if data.startswith("task_"):
         task_type = data[5:]  # strip "task_" prefix
@@ -342,7 +357,12 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         session = await get_session(user_id)
         session.stage = PipelineStage.TASK_SELECT
         await save_session(session)
-        await query.edit_message_text(
+        # Pattern an toàn: bỏ keyboard cũ, gửi tin mới (tránh edit failures với message cũ)
+        try:
+            await query.edit_message_reply_markup(reply_markup=None)
+        except Exception as e:
+            logger.warning("restart: edit_reply_markup failed: %s", e)
+        await query.message.reply_text(
             "✅ Đã reset! Bạn muốn Max làm gì hôm nay?",
             reply_markup=TASK_SELECT_KEYBOARD,
         )
