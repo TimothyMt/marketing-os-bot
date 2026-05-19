@@ -49,9 +49,9 @@ def _row_to_session(row: dict) -> Session:
     if isinstance(raw_results, str):
         raw_results = json.loads(raw_results)
 
-    # Extract meta fields stored inside results
+    # Extract meta field stored inside results
     selected_task = raw_results.pop("_selected_task", None)
-    brand_candidates = raw_results.pop("_brand_candidates", [])
+    raw_results.pop("_brand_candidates", None)  # backward-compat: ignore old field
 
     return Session(
         user_id=row["user_id"],
@@ -60,7 +60,6 @@ def _row_to_session(row: dict) -> Session:
         profile=profile,
         intake_history=intake_history if isinstance(intake_history, list) else json.loads(intake_history),
         results=raw_results,
-        brand_candidates=brand_candidates if isinstance(brand_candidates, list) else [],
         created_at=str(row.get("created_at") or ""),
         updated_at=str(row.get("updated_at") or ""),
     )
@@ -85,11 +84,10 @@ async def save_session(session: Session):
     from dataclasses import asdict
     profile_dict = asdict(session.profile)
 
-    # Pack meta fields into results so no schema change is needed
+    # Pack meta field into results so no schema change is needed
     results_with_meta = {
         **session.results,
-        "_selected_task":    session.selected_task or "",
-        "_brand_candidates": session.brand_candidates,
+        "_selected_task": session.selected_task or "",
     }
 
     payload = {

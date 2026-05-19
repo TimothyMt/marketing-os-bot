@@ -10,7 +10,6 @@ from typing import AsyncGenerator, Optional
 import anthropic
 
 from config import CLAUDE_MODEL, ANTHROPIC_API_KEY, AGENT_TIMEOUT
-from tools.search import web_search, WEB_SEARCH_TOOL
 from storage.models import Session, BusinessProfile, PipelineStage
 from agents.prompts import (
     INTAKE_SYSTEM,
@@ -43,40 +42,21 @@ async def run_intake(session: Session, user_message: str) -> tuple[str, bool]:
     session.add_to_history("user", user_message)
 
     system_prompt = get_intake_system(session.selected_task or "full")
-    system_def = [{"type": "text", "text": system_prompt, "cache_control": {"type": "ephemeral"}}]
-    # Local copy — tool call turns stay here only, NOT written to session.intake_history
     messages = session.intake_history.copy()
 
-    while True:
-        response = await client.messages.create(
-            model=CLAUDE_MODEL,
-            max_tokens=1024,
-            system=system_def,
-            messages=messages,
-            tools=[WEB_SEARCH_TOOL],
-        )
+    response = await client.messages.create(
+        model=CLAUDE_MODEL,
+        max_tokens=1024,
+        system=[{"type": "text", "text": system_prompt, "cache_control": {"type": "ephemeral"}}],
+        messages=messages,
+    )
 
-        if response.stop_reason == "tool_use":
-            tool_results = []
-            for block in response.content:
-                if block.type == "tool_use" and block.name == "web_search":
-                    result = await web_search(block.input["query"])
-                    tool_results.append({
-                        "type": "tool_result",
-                        "tool_use_id": block.id,
-                        "content": result,
-                    })
-            messages.append({"role": "assistant", "content": response.content})
-            messages.append({"role": "user", "content": tool_results})
-        else:
-            assistant_text = "".join(
-                b.text for b in response.content if hasattr(b, "text")
-            )
-            session.add_to_history("assistant", assistant_text)
-            profile, is_complete = _extract_profile_from_response(assistant_text)
-            if is_complete and profile:
-                session.profile = profile
-            return assistant_text, is_complete
+    assistant_text = response.content[0].text
+    session.add_to_history("assistant", assistant_text)
+    profile, is_complete = _extract_profile_from_response(assistant_text)
+    if is_complete and profile:
+        session.profile = profile
+    return assistant_text, is_complete
 
 
 def _extract_profile_from_response(text: str) -> tuple[Optional[BusinessProfile], bool]:
@@ -138,41 +118,6 @@ async def _run_agent(
     return response.content[0].text
 
 
-async def _run_agent_with_tools(
-    system_prompt: str,
-    user_message: str,
-    context: str,
-    max_tokens: int = 2048,
-) -> str:
-    """Agent runner that can call web_search tool before producing final answer."""
-    system_def = [{"type": "text", "text": system_prompt, "cache_control": {"type": "ephemeral"}}]
-    messages = [{"role": "user", "content": f"{context}\n\n---\n\n{user_message}"}]
-
-    while True:
-        response = await client.messages.create(
-            model=CLAUDE_MODEL,
-            max_tokens=max_tokens,
-            system=system_def,
-            messages=messages,
-            tools=[WEB_SEARCH_TOOL],
-        )
-
-        if response.stop_reason == "tool_use":
-            tool_results = []
-            for block in response.content:
-                if block.type == "tool_use" and block.name == "web_search":
-                    result = await web_search(block.input["query"])
-                    tool_results.append({
-                        "type": "tool_result",
-                        "tool_use_id": block.id,
-                        "content": result,
-                    })
-            messages.append({"role": "assistant", "content": response.content})
-            messages.append({"role": "user", "content": tool_results})
-        else:
-            return "".join(b.text for b in response.content if hasattr(b, "text"))
-
-
 async def run_market_research(session: Session) -> str:
     context = session.profile.to_context_string()
     kpi_text = get_framework_as_text(session.profile.industry or "")
@@ -185,7 +130,7 @@ async def run_market_research(session: Session) -> str:
 Location: {session.profile.location or 'Việt Nam'}
 Target customer: {session.profile.target_customer}"""
 
-    result = await _run_agent_with_tools(MARKET_RESEARCH_SYSTEM, user_msg, context)
+    result = await _run_agent(MARKET_RESEARCH_SYSTEM, user_msg, context)
     session.results["market_research"] = result
     return result
 
@@ -204,7 +149,7 @@ Hãy:
 3. Tìm market gaps rõ ràng nhất
 4. Đề xuất positioning opportunity"""
 
-    result = await _run_agent_with_tools(COMPETITOR_SYSTEM, user_msg, context, max_tokens=2048)
+    result = await _run_agent(COMPETITOR_SYSTEM, user_msg, context, max_tokens=2048)
     session.results["competitor"] = result
     return result
 
@@ -263,7 +208,7 @@ Team size: {session.profile.team_size or 'nhỏ'}
 
 Tạo system thực tế, phù hợp với team nhỏ, tập trung vào platform VN."""
 
-    result = await _run_agent_with_tools(SOCIAL_LISTENING_SYSTEM, user_msg, context, max_tokens=2048)
+    result = await _run_agent(SOCIAL_LISTENING_SYSTEM, user_msg, context, max_tokens=2048)
     session.results["social_listening"] = result
     return result
 

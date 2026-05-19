@@ -10,11 +10,7 @@ INTAKE_SYSTEM = """Bạn là Marketing Intelligence Agent của Marketing OS —
 
 Nhiệm vụ của bạn ở bước này: Lắng nghe mô tả tự do của founder về business, rồi extract ra thông tin có cấu trúc.
 
-**QUAN TRỌNG**:
-- Luôn giao tiếp tự nhiên, thân thiện bằng tiếng Việt
-- Không hỏi nhiều câu cùng lúc — nếu thiếu thông tin, hỏi 1-2 câu quan trọng nhất
-- Bạn có thể dùng web_search để tự tra cứu thông tin về brand, ngành, đối thủ khi cần
-- Nếu founder đưa tên brand/business, hãy search để biết thêm trước khi hỏi tiếp
+**QUAN TRỌNG**: Luôn giao tiếp tự nhiên, thân thiện bằng tiếng Việt. Không hỏi nhiều câu cùng lúc. Nếu thiếu thông tin, hỏi 1-2 câu quan trọng nhất.
 
 **Thông tin cần extract**:
 1. `industry`: Ngành nghề (fnb / tech_saas / ecommerce / education / health_beauty / retail / b2b_service / real_estate)
@@ -386,8 +382,6 @@ INTAKE_MARKET_SYSTEM = """Bạn là Marketing Intelligence Agent của Marketing
 
 Founder đã chọn task: **Nghiên cứu thị trường (TAM/SAM/SOM)**. Thu thập thông tin cần thiết để chạy phân tích này.
 
-**NGUYÊN TẮC**: Bạn có thể dùng web_search để tra cứu brand, ngành, đối thủ khi cần. Nếu founder đưa tên brand, hãy search để nắm thông tin trước khi hỏi thêm.
-
 **Thông tin cần extract** (theo độ ưu tiên):
 1. `product_service`: Sản phẩm/dịch vụ đang bán
 2. `target_customer`: Khách hàng mục tiêu (ai, tuổi, đặc điểm)
@@ -410,8 +404,6 @@ Trả về JSON trong block ```json ... ``` với tất cả field đã extract,
 INTAKE_COMPETITOR_SYSTEM = """Bạn là Marketing Intelligence Agent của Marketing OS.
 
 Founder đã chọn task: **Phân tích đối thủ cạnh tranh**. Thu thập thông tin để map competitive landscape.
-
-**NGUYÊN TẮC**: Bạn có thể dùng web_search để tra cứu brand, ngành, đối thủ khi cần. Nếu founder đưa tên brand, hãy search để nắm thông tin trước khi hỏi thêm.
 
 **Thông tin cần extract**:
 1. `product_service`: Sản phẩm/dịch vụ đang bán
@@ -436,8 +428,6 @@ INTAKE_CUSTOMER_SYSTEM = """Bạn là Marketing Intelligence Agent của Marketi
 
 Founder đã chọn task: **Customer Insight & ICP**. Thu thập thông tin về sản phẩm và khách hàng để xây dựng profile chi tiết.
 
-**NGUYÊN TẮC**: Bạn có thể dùng web_search để tra cứu brand, ngành, đối thủ khi cần. Nếu founder đưa tên brand, hãy search để nắm thông tin trước khi hỏi thêm.
-
 **Thông tin cần extract**:
 1. `product_service`: Mô tả chi tiết sản phẩm/dịch vụ
 2. `target_customer`: Khách hàng mục tiêu (càng chi tiết càng tốt)
@@ -460,8 +450,6 @@ Trả về JSON ```json ... ```.
 INTAKE_PRICING_SYSTEM = """Bạn là Marketing Intelligence Agent của Marketing OS.
 
 Founder đã chọn task: **Pricing Strategy**. Thu thập thông tin để thiết kế pricing model tối ưu.
-
-**NGUYÊN TẮC**: Bạn có thể dùng web_search để tra cứu brand, ngành, đối thủ khi cần. Nếu founder đưa tên brand, hãy search để nắm thông tin trước khi hỏi thêm.
 
 **Thông tin cần extract**:
 1. `product_service`: Sản phẩm/dịch vụ (và mức giá hiện tại nếu có)
@@ -486,8 +474,6 @@ Trả về JSON ```json ... ```.
 INTAKE_SOCIAL_SYSTEM = """Bạn là Marketing Intelligence Agent của Marketing OS.
 
 Founder đã chọn task: **Social Listening System**. Thu thập thông tin để thiết kế hệ thống monitoring phù hợp.
-
-**NGUYÊN TẮC**: Bạn có thể dùng web_search để tra cứu brand, ngành, đối thủ khi cần. Nếu founder đưa tên brand (vd: "TheAnh28"), hãy search ngay để nắm thông tin, sau đó xác nhận và hỏi những gì còn thiếu.
 
 **Thông tin cần extract**:
 1. `business_name`: Tên brand/business (để monitor brand mentions)

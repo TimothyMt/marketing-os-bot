@@ -19,7 +19,6 @@ from bot.keyboards import (
     CONFIRM_KEYBOARD,
     RESTART_KEYBOARD,
     stage_done_keyboard,
-    brand_select_keyboard,
 )
 
 logger = logging.getLogger(__name__)
@@ -158,13 +157,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif session.stage == PipelineStage.INTAKE:
         await _handle_intake(update, context, session, text)
 
-    elif session.stage == PipelineStage.BRAND_SELECT:
-        # User typed instead of picking from keyboard — treat as manual description
-        session.stage = PipelineStage.INTAKE
-        session.brand_candidates = []
-        await save_session(session)
-        await _handle_intake(update, context, session, text)
-
     elif session.stage == PipelineStage.CONFIRMED:
         await update.message.reply_text(
             "Nhấn *Đúng rồi, bắt đầu!* để tôi chạy phân tích nhé! Hoặc /reset để bắt đầu lại.",
@@ -181,117 +173,9 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
 
-# ─── Brand identification helpers ────────────────────────────────
-
-def _is_likely_brand_name(text: str, session) -> bool:
-    """True when user sent only a brand name (not a description) as first message."""
-    if len(session.intake_history) > 0:
-        return False
-    words = text.strip().split()
-    if not (1 <= len(words) <= 4) or len(text) > 45:
-        return False
-    descriptive = {
-        "tôi", "mình", "chúng", "đang", "bán", "dịch", "vụ", "sản", "phẩm",
-        "khách", "hàng", "triệu", "nghìn", "năm", "tháng", "muốn", "cần",
-        "giúp", "hỏi", "về", "cho", "với", "trong", "làm", "gì", "như",
-        "thế", "nào", "có", "không", "và", "app", "web", "shop",
-    }
-    return not any(w.lower() in descriptive for w in words)
-
-
-async def _handle_brand_search(update, context, session, brand_name: str):
-    """Search brand, show 1-4 candidates with confirm/select keyboard."""
-    await context.bot.send_chat_action(chat_id=update.effective_chat.id, action=ChatAction.TYPING)
-    from tools.search import search_brand_candidates
-
-    status_msg = await update.message.reply_text(
-        f"🔍 Đang tìm kiếm *{brand_name}*...",
-        parse_mode=ParseMode.MARKDOWN,
-    )
-    candidates = await search_brand_candidates(brand_name)
-
-    if not candidates:
-        await status_msg.edit_text(
-            f"Tôi không tìm thấy thông tin về *{brand_name}* trên web.\n\n"
-            f"Bạn mô tả ngắn về business nhé — đang bán gì, cho ai?",
-            parse_mode=ParseMode.MARKDOWN,
-        )
-        # Let normal intake handle next turn
-        session.add_to_history("user", brand_name)
-        session.add_to_history("assistant", f"Tôi không tìm thấy thông tin về {brand_name} trên web. Bạn mô tả thêm giúp tôi nhé.")
-        await save_session(session)
-        return
-
-    session.brand_candidates = candidates
-
-    if len(candidates) == 1:
-        c = candidates[0]
-        desc = c.get("description", "")[:150]
-        url_line = f"\n🌐 _{c['url']}_" if c.get("url") else ""
-        await status_msg.edit_text(
-            f"Tôi tìm thấy:\n\n"
-            f"🏢 *{c['name']}*\n"
-            f"{desc}{url_line}\n\n"
-            f"Đây có phải brand của bạn không?",
-            parse_mode=ParseMode.MARKDOWN,
-            reply_markup=brand_select_keyboard(candidates, single=True),
-        )
-    else:
-        lines = [f"Tìm thấy *{len(candidates)} kết quả* cho _{brand_name}_. Brand của bạn là cái nào?\n"]
-        for i, c in enumerate(candidates):
-            desc = c.get("description", "")[:80]
-            lines.append(f"{i+1}. *{c['name']}*\n_{desc}_\n")
-        await status_msg.edit_text(
-            "\n".join(lines),
-            parse_mode=ParseMode.MARKDOWN,
-            reply_markup=brand_select_keyboard(candidates, single=False),
-        )
-
-    session.stage = PipelineStage.BRAND_SELECT
-    await save_session(session)
-
-
-async def _extract_profile_from_brand(session, chosen: dict):
-    """Quick Claude call to infer industry + product_service from brand search result."""
-    import anthropic, json, re
-    from config import CLAUDE_MODEL, ANTHROPIC_API_KEY
-
-    client = anthropic.AsyncAnthropic(api_key=ANTHROPIC_API_KEY)
-    try:
-        resp = await client.messages.create(
-            model=CLAUDE_MODEL,
-            max_tokens=200,
-            messages=[{"role": "user", "content":
-                f'Brand: {chosen.get("name", "")}\n'
-                f'URL: {chosen.get("url", "")}\n'
-                f'Description: {chosen.get("description", "")}\n\n'
-                f'Trả về JSON: {{"industry": "(fnb/tech_saas/ecommerce/education/health_beauty/retail/b2b_service/real_estate)", '
-                f'"product_service": "mô tả ngắn sản phẩm/dịch vụ", "target_customer": "khách hàng tiêu biểu"}}'
-            }],
-        )
-        match = re.search(r'\{.*\}', resp.content[0].text, re.DOTALL)
-        if match:
-            data = json.loads(match.group())
-            session.profile.industry        = data.get("industry") or "retail"
-            session.profile.product_service = data.get("product_service") or chosen.get("description", "")[:200]
-            session.profile.target_customer = data.get("target_customer") or "chưa xác định"
-            return
-    except Exception:
-        pass
-    # Fallback
-    session.profile.industry        = "retail"
-    session.profile.product_service = chosen.get("description", "")[:200] or chosen.get("name", "")
-    session.profile.target_customer = "chưa xác định"
-
-
 # ─── Intake ───────────────────────────────────────────────────────
 
 async def _handle_intake(update, context, session, text):
-    # Detect brand-name-only message → trigger brand search flow
-    if _is_likely_brand_name(text, session):
-        await _handle_brand_search(update, context, session, text)
-        return
-
     await context.bot.send_chat_action(
         chat_id=update.effective_chat.id,
         action=ChatAction.TYPING,
@@ -386,39 +270,6 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = query.from_user.id
     session = await get_session(user_id)
     data = query.data
-
-    # ── Brand pick ───────────────────────────────────────────────
-    if data.startswith("brand_pick_"):
-        idx = int(data.split("_")[-1])
-        candidates = session.brand_candidates or []
-        if idx >= len(candidates):
-            await query.edit_message_text("Có lỗi xảy ra. Vui lòng /start lại nhé.")
-            return
-        chosen = candidates[idx]
-        session.profile.business_name = chosen.get("name", "")
-        # Brand đã confirm → xóa list candidates, không cần lưu nữa
-        session.brand_candidates = []
-        await query.edit_message_reply_markup(reply_markup=None)
-        await query.message.reply_text(
-            f"✅ *{chosen['name']}* — đã xác nhận!\n\n🔍 Đang thu thập thông tin để phân tích...",
-            parse_mode=ParseMode.MARKDOWN,
-        )
-        await _extract_profile_from_brand(session, chosen)
-        await save_session(session)
-        await _run_pipeline_sequentially(query.message, session)
-        return
-
-    elif data == "brand_none":
-        session.stage = PipelineStage.INTAKE
-        session.brand_candidates = []
-        await save_session(session)
-        # Giữ nguyên tin nhắn cũ (chỉ bỏ keyboard), gửi tin mới bên dưới
-        await query.edit_message_reply_markup(reply_markup=None)
-        await query.message.reply_text(
-            "Không sao! Bạn đang hoạt động trong ngành nào?\n\n"
-            "Mô tả ngắn về business của bạn — sản phẩm/dịch vụ, khách hàng, địa bàn nhé."
-        )
-        return
 
     # ── Task selection ────────────────────────────────────────────
     if data.startswith("task_"):
