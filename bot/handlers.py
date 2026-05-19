@@ -356,14 +356,46 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # ─── Pipeline runner ─────────────────────────────────────────────
 
+def _format_card(stage_key: str, parsed: dict) -> str:
+    """Build Format-B Telegram card from parsed agent output."""
+    header = STAGE_HEADERS.get(stage_key, stage_key.upper())
+    parts = [f"*{header}*", "━" * 25, ""]
+
+    if parsed.get("insight"):
+        insight = parsed["insight"].strip().strip('"').strip("'")
+        parts.append("💡 *Insight quan trọng nhất:*")
+        parts.append(f"_{insight}_")
+        parts.append("")
+
+    if parsed.get("summary"):
+        parts.append("📌 *Tóm tắt:*")
+        parts.append(parsed["summary"].strip())
+        parts.append("")
+
+    if parsed.get("benchmarks"):
+        parts.append("📊 *Benchmarks:*")
+        parts.append(parsed["benchmarks"].strip())
+        parts.append("")
+
+    # If nothing parsed, fallback to raw detail (truncated)
+    if not any(parsed.get(k) for k in ("insight", "summary", "benchmarks")):
+        detail = parsed.get("detail", "")[:1500]
+        parts.append(detail)
+
+    parts.append("📎 _Xem full analysis trong file HTML cuối pipeline_")
+    return "\n".join(parts)
+
+
 async def _run_pipeline_sequentially(message: Message, session):
+    from bot.html_report import parse_agent_output, build_report
+
     task = session.selected_task or "full"
     task_label = TASK_LABELS.get(task, "Phân tích")
     total_stages = TASK_STAGE_COUNT.get(task, 1)
 
     if total_stages > 1:
         await message.reply_text(
-            f"🚀 *Bắt đầu {task_label}!*\n\nTôi sẽ chạy {total_stages} bước và gửi kết quả từng bước.",
+            f"🚀 *Bắt đầu {task_label}!*\n\nTôi sẽ chạy {total_stages} bước và gửi card tóm tắt từng bước.\nFile HTML đầy đủ sẽ được gửi ở cuối.",
             parse_mode=ParseMode.MARKDOWN,
         )
     else:
@@ -373,6 +405,7 @@ async def _run_pipeline_sequentially(message: Message, session):
         )
 
     stage_count = 0
+    parsed_stages: list[tuple[str, dict]] = []  # for HTML report
 
     async def progress_cb(msg: str):
         await message.reply_text(msg, parse_mode=ParseMode.MARKDOWN)
@@ -380,28 +413,63 @@ async def _run_pipeline_sequentially(message: Message, session):
     async for stage_key, result in run_targeted_pipeline(session, progress_callback=progress_cb):
         stage_count += 1
         is_last = stage_count == total_stages
-        header = STAGE_HEADERS.get(stage_key, stage_key.upper())
-        full_text = f"*{header}*\n{'─' * 30}\n\n{result}"
 
+        parsed = parse_agent_output(result)
+        parsed_stages.append((stage_key, parsed))
+
+        card_text = _format_card(stage_key, parsed)
         await send_long_message(
             message,
-            full_text,
+            card_text,
             parse_mode=ParseMode.MARKDOWN,
             reply_markup=stage_done_keyboard(is_last=is_last) if is_last else None,
         )
         await save_session(session)
         await asyncio.sleep(0.5)
 
+    # After all stages complete: build + send HTML report
+    if stage_count > 0:
+        try:
+            html_str = build_report(
+                business_name=session.profile.business_name or "Business",
+                industry=session.profile.industry or "",
+                stage=session.profile.stage or "",
+                parsed_stages=parsed_stages,
+            )
+            await _send_html_report(message, html_str, session)
+        except Exception as e:
+            logger.exception("Failed to generate HTML report: %s", e)
+            await message.reply_text(
+                "⚠️ Không generate được file HTML — phần tóm tắt ở trên đã đủ. Bạn có thể hỏi thêm tự do."
+            )
+
     if stage_count > 0 and stage_count == total_stages:
         if total_stages > 1:
             await message.reply_text(
-                "✅ *Hoàn thành phân tích!*\n\nBạn đã có đầy đủ:\n• Market Intelligence\n• Competitor Landscape\n• Customer Insights\n• Psychology & Pricing\n• Marketing Strategy 90 ngày\n\nCó câu hỏi gì thêm không? Cứ nhắn thẳng vào đây nhé! 💬",
+                "✅ *Hoàn thành phân tích!*\n\nMở file HTML để xem báo cáo đầy đủ.\nCó câu hỏi gì thêm? Nhắn thẳng vào đây nhé! 💬",
                 parse_mode=ParseMode.MARKDOWN,
                 reply_markup=stage_done_keyboard(is_last=True),
             )
         else:
             await message.reply_text(
-                f"✅ *Hoàn thành {task_label}!*\n\nCó câu hỏi gì thêm không? Cứ nhắn thẳng vào đây nhé! 💬",
+                f"✅ *Hoàn thành {task_label}!*\n\nMở file HTML để xem báo cáo đẹp hơn.\nCó câu hỏi gì thêm? 💬",
                 parse_mode=ParseMode.MARKDOWN,
                 reply_markup=stage_done_keyboard(is_last=True),
             )
+
+
+async def _send_html_report(message: Message, html_str: str, session):
+    """Send HTML report as document attachment."""
+    import io
+    business_slug = re.sub(r"[^a-zA-Z0-9_-]", "_", (session.profile.business_name or "report"))[:30]
+    filename = f"marketing_report_{business_slug}.html"
+
+    buf = io.BytesIO(html_str.encode("utf-8"))
+    buf.name = filename
+
+    await message.reply_document(
+        document=buf,
+        filename=filename,
+        caption="📄 *Báo cáo đầy đủ* — mở để xem full analysis với layout đẹp.",
+        parse_mode=ParseMode.MARKDOWN,
+    )

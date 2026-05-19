@@ -30,6 +30,63 @@ from frameworks.smart_framework import format_smart_prompt
 client = anthropic.AsyncAnthropic(api_key=ANTHROPIC_API_KEY)
 
 
+# Pipeline agents PHẢI output theo cấu trúc này.
+# Bot parser tách 4 sections → Telegram card (3 đầu) + HTML report (cả 4).
+OUTPUT_FORMAT_INSTRUCTION = """
+
+---
+
+**OUTPUT FORMAT (BẮT BUỘC) — Tuân thủ chính xác cấu trúc 4 sections sau:**
+
+## 💡 Insight quan trọng nhất
+[1-2 câu cốt lõi, đặt trong dấu ngoặc kép — điều quan trọng nhất user cần nhớ về phân tích này.]
+
+## 🎯 Tóm tắt
+- bullet 1 (key finding ngắn, max 15 từ)
+- bullet 2
+- bullet 3
+- bullet 4 (tối đa 5 bullets, mỗi bullet 1 finding)
+
+## 📊 Benchmarks
+[2-4 dòng KPI/số liệu/threshold cụ thể. Bỏ qua section này nếu không có data số.]
+
+## 📄 Phân tích chi tiết
+[Full analysis dài, có sub-sections]
+
+**Quy tắc viết Phân tích chi tiết (BẮT BUỘC tuân theo):**
+
+1. **Dùng markdown tables** cho MỌI data so sánh:
+   ```
+   | Brand | Position | Strength | Threat |
+   |---|---|---|---|
+   | A | Premium | Strong brand | HIGH |
+   ```
+
+2. **Bold cho mọi con số/KPI/%** trong text:
+   - "Tăng từ **80tr** lên **200tr/tháng** (**40% MoM**)"
+   - "CAC giảm xuống **< 180k**"
+
+3. **Blockquote (>) cho key takeaway**:
+   ```
+   > 🎯 ThaiHa có 18-24 tháng để chiếm thị phần trước khi big players tham gia.
+   ```
+
+4. **Sub-headings `### Tên section`** cho các nhóm nội dung lớn
+
+5. **Bullet lists với emoji prefix** cho action items:
+   - 🟢 Quick wins: ...
+   - 🟡 Medium term: ...
+   - 🔴 Risks: ...
+
+6. **Bold tên brand/product** khi mention lần đầu trong section
+
+LƯU Ý:
+- KHÔNG dùng triple backticks (```) trong output — Telegram render xấu
+- KHÔNG dùng nested code blocks
+- Tables phải có header row đầy đủ
+- Mỗi bullet không quá 25 từ"""
+
+
 # ─────────────────────────────────────────────────────────────────
 # INTAKE AGENT — conversational, multi-turn
 # ─────────────────────────────────────────────────────────────────
@@ -97,14 +154,16 @@ async def _run_agent(
     context: str,
     max_tokens: int = 2048,
 ) -> str:
-    """Generic agent runner with prompt caching on system."""
+    """Generic agent runner with prompt caching on system.
+    Appends OUTPUT_FORMAT_INSTRUCTION so all agents output 4-section structure."""
+    augmented_system = system_prompt + OUTPUT_FORMAT_INSTRUCTION
     response = await client.messages.create(
         model=CLAUDE_MODEL,
         max_tokens=max_tokens,
         system=[
             {
                 "type": "text",
-                "text": system_prompt,
+                "text": augmented_system,
                 "cache_control": {"type": "ephemeral"},
             }
         ],
