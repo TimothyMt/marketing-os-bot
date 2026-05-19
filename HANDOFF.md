@@ -1,7 +1,7 @@
 # Marketing OS — Handoff Document
 
-> Cập nhật lần cuối: 2026-05-19
-> Trạng thái: **Strategic layer hoàn chỉnh. Operational layer chưa có.**
+> Cập nhật lần cuối: 2026-05-19 (chiều)
+> Trạng thái: **Strategic layer ✅ trên master · Operational layer ✅ trên feature/operational-layer (chưa merge, cần test Railway)**
 
 ---
 
@@ -47,26 +47,32 @@ PORT=8000
 ```
 marketing-os-bot/
 ├── bot/
-│   ├── main.py            ← Entry point, webhook setup (production)
-│   ├── handlers.py        ← Telegram message + callback logic
-│   ├── keyboards.py       ← Inline keyboard definitions
-│   └── html_report.py     ← HTML accordion report generator
+│   ├── main.py                       ← Entry point, webhook setup (production)
+│   ├── handlers.py                   ← Telegram message + callback logic
+│   ├── keyboards.py                  ← Inline keyboards (multi-tier menu) [NEW: ops layer]
+│   ├── html_report.py                ← HTML accordion report (strategic + ops single-skill)
+│   └── renderers.py                  ← Parse + Telegram card + Markdown/Excel render [NEW]
 ├── agents/
-│   ├── pipeline.py        ← Orchestration: run_intake, run_targeted_pipeline, _run_skill
-│   ├── skills.py          ← AgentSkill base class + 6 concrete skills
-│   ├── critic.py          ← Haiku critic + auto-hyperlink known VN sources
-│   └── prompts.py         ← System prompts + task-specific intake variants + opening Q's
+│   ├── pipeline.py                   ← Orchestration: run_intake, _run_skill, run_operational_skill
+│   ├── skills.py                     ← AgentSkill base + enums + 6 strategic concrete skills
+│   ├── critic.py                     ← Haiku critic + auto-hyperlink known VN sources
+│   ├── prompts.py                    ← Strategic system prompts + intake variants
+│   ├── task_registry.py              ← Unified TaskConfig dict (14 tasks) [NEW]
+│   ├── output_formats.py             ← 3 OUTPUT_FORMAT instructions + shared rules [NEW]
+│   ├── operational_skill.py          ← Generic OperationalSkill class [NEW]
+│   ├── operational_prompts.py        ← 8 ops system prompts [NEW]
+│   └── operational_skills_config.py  ← Skill factories: 6 generic + 2 subclass [NEW]
 ├── frameworks/
-│   ├── kpi_library.py     ← 8 ngành × KPI benchmarks
-│   ├── save_framework.py  ← SAVE framework generator (thay 4P)
-│   └── smart_framework.py ← SMART goals templates per ngành × stage
+│   ├── kpi_library.py                ← 8 ngành × KPI benchmarks
+│   ├── save_framework.py             ← SAVE framework generator
+│   └── smart_framework.py            ← SMART goals templates
 ├── storage/
-│   ├── models.py          ← DataClass: Session, BusinessProfile, PipelineStage
-│   ├── session.py         ← Supabase read/write
+│   ├── models.py                     ← Session + VersionedResult + add_result helpers
+│   ├── session.py                    ← Supabase read/write (handles backward-compat)
 │   └── __init__.py
-├── config.py              ← Env vars + model names + AGENT_TIMEOUT (500s)
-├── simulate.py            ← CLI test không cần Telegram/Supabase
-└── run_local.py           ← Bot polling mode (dev)
+├── config.py                         ← Env vars + model names + AGENT_TIMEOUT (500s)
+├── simulate.py                       ← CLI test
+└── run_local.py                      ← Bot polling mode (dev)
 ```
 
 ---
@@ -233,24 +239,183 @@ Goal templates calibrated per ngành × stage.
 
 ---
 
-## ⚠️ LIMITATION: Đang chỉ có TẦNG CHIẾN LƯỢC
+## ⚠️ TRẠNG THÁI HIỆN TẠI
 
-**Current scope = Strategic Layer:**
+### `master` branch — Strategic Layer (production, đã deploy)
 - ✅ Market Research (TAM/SAM/SOM)
 - ✅ Competitor Analysis
 - ✅ Customer Insight & ICP
 - ✅ Psychology + Pricing Strategy
 - ✅ Marketing Strategy Synthesis (SAVE + SMART + 90-day roadmap)
 
-**Còn thiếu — Operational Layer:**
-- ❌ Content calendar tháng
-- ❌ Campaign brief (10 sections)
-- ❌ Performance review + diagnostics
-- ❌ Video script TikTok/Reels
-- ❌ Ad copy đa platform
-- ❌ UGC/EGC/KOC brief
-- ❌ Email sequence
-- ❌ KOL/Influencer brief
+### `feature/operational-layer` branch — Operational Layer (NEW, chờ test + merge)
+
+**8 skills mới đã build, đợi test trên Railway:**
+
+| Cluster | Skill | Output format | Primary deliverable | Critic |
+|---|---|---|---|---|
+| Planning | `campaign_brief` | Deliverable | HTML | OFF |
+| Planning | `content_calendar` | Deliverable | **Excel** (table grid) | OFF |
+| Production | `ads_copy` | Deliverable | **Markdown** (cho designer) | OFF |
+| Production | `video_scripts` | Deliverable | **Markdown** (cho creator) | OFF |
+| Production | `landing_page` | Deliverable | **Markdown** (cho dev) | OFF |
+| Production | `sales_inbox_script` | Deliverable | **Markdown** (cho team) | OFF |
+| Production | `email_zalo_sequence` | Deliverable | **Markdown** | OFF |
+| Analysis | `performance_audit` | **Analysis** (5 sections) | **Excel** (KPI tables) | **ON** |
+
+**Special skills có variant chooser:**
+- `ads_copy` — user pick tier trước (TOFU / MOFU / BOFU / Full 3 tầng)
+- `video_scripts` — user pick creator type (UGC / EGC / FGC / KOL)
+
+**5 commits trên `feature/operational-layer`:**
+```
+039d2d3 Phase 1: architecture foundation (enums, AgentSkill expansion, VersionedResult, task_registry)
+5e0e48e Phase 2: OperationalSkill generic + 3 output format variants
+71ba334 Phase 3: output renderers — HTML/Excel/Markdown
+3531cdc Phase 4: 8 operational skills (system prompts + factories + runner)
+3f5a8f1 Phase 5: multi-tier UI + single-shot intake + variant choosers
+```
+
+---
+
+## 🏗️ ARCHITECTURE OPERATIONAL LAYER
+
+### New files
+
+```
+agents/
+├── task_registry.py          ← Unified TaskConfig dict (14 tasks, single source of truth)
+├── output_formats.py         ← 3 OUTPUT_FORMAT_INSTRUCTION variants + shared rules
+├── operational_skill.py      ← Generic OperationalSkill class (config-driven)
+├── operational_prompts.py    ← 8 system prompts (Marketing OS branded, no external)
+└── operational_skills_config.py  ← Factories: 6 generic + 2 subclass (AdsCopy, VideoScripts)
+
+bot/
+└── renderers.py              ← parse_by_format + Telegram card + Markdown/Excel renderers
+```
+
+### Key patterns
+
+**1. Enums driving behavior (in `agents/skills.py`):**
+```python
+class OutputFormat(Enum):       # STRATEGIC_4_SECTION / OPERATIONAL_DELIVERABLE / OPERATIONAL_ANALYSIS
+class IntakePattern(Enum):      # MULTI_TURN / SINGLE_SHOT_FORM / NO_INTAKE
+class ContextStrategy(Enum):    # PROFILE_ONLY / FULL_PIPELINE / PROFILE_PLUS_STRATEGY / PROFILE_PLUS_CAMPAIGN / PROFILE_PLUS_KPI
+class PrimaryDeliverable(Enum): # HTML / EXCEL / MARKDOWN
+```
+
+**2. Hybrid skill instantiation:**
+- **Generic**: 6 standard ops skills via `OperationalSkill(config)` — config-driven
+- **Subclass**: `AdsCopySkill`, `VideoScriptsSkill` — custom logic (tier batching, creator type variants)
+- Both implement `AgentSkill` interface so pipeline `_run_skill()` treats them identically
+
+**3. Versioned results (FIFO max 5/skill):**
+```python
+session.results: dict[skill_key, list[VersionedResult]]
+session.add_result(skill_key, content)       # Append new version, FIFO trim
+session.get_latest_result(skill_key)         # Get latest content
+```
+Backward-compat: old `dict[str, str]` auto-wrapped to v1 on load.
+
+**4. Pending intake (single-shot form for ops):**
+```python
+session.pending_intake: dict[str, str]  # Filled by user template paste
+# Special markers:
+# - "ops_intake_awaiting": skill_name (set when form sent, cleared after parse)
+# - "selected_tiers": "tofu"/"mofu"/"bofu"/"all" (for ads_copy)
+# - "creator_type": "ugc"/"egc"/"fgc"/"kol" (for video_scripts)
+```
+
+**5. Marketing OS Content Pillar Framework** (replaces Run By Linh):
+- 4 Pillars: Educate 35% / Trust 30% / Engage 20% / Convert 15%
+- Funnel × Pillar mix matrix (TOFU/MOFU/BOFU per pillar)
+- Source mix: UGC 40% / EGC 25% / FGC 15% / Brand 20%
+
+---
+
+## 🧪 TEST PLAN — Trước khi merge vào master
+
+### Bước 1: Deploy feature branch
+1. Railway → Service → Settings → Source → Branch = `feature/operational-layer`
+2. Trigger redeploy
+3. Đợi ~2 phút
+
+### Bước 2: Test smoke flow
+1. **`/start`** → phải hiện main menu với 4 nút:
+   - 🎯 Chiến lược (Strategic)
+   - ⚙️ Sản xuất (Operational)
+   - 📊 Đánh giá (Analysis)
+   - 🔍 Phân tích toàn diện (Full)
+
+2. **Click "Chiến lược"** → menu 5 strategic skills + nút "← Quay lại"
+3. **Click "Sản xuất"** → menu 7 ops skills + back
+4. **Click "Đánh giá"** → Performance Audit + back
+
+### Bước 3: Test 1 ops skill đơn giản (Campaign Brief)
+1. Click "📋 Campaign Brief"
+2. Bot gửi template paste với "mớm lời" example
+3. Reply theo format template
+4. Bot chạy ~30-60s, gửi:
+   - Telegram bullet card
+   - File HTML đính kèm
+
+### Bước 4: Test variant chooser
+1. Click "✍️ Ads Copy" → phải hiện 4 nút tier (TOFU/MOFU/BOFU/Full)
+2. Click "🌐 TOFU" → bot gửi template form
+3. Reply template → bot gen ads copy CHỈ tier TOFU + gửi HTML + Markdown
+
+### Bước 5: Test Excel output
+1. Click "📅 Content Calendar"
+2. Fill form → bot gen calendar + gửi HTML + **Excel**
+3. Mở Excel → check tables render đúng
+
+### Bước 6: Test Performance Audit (có critic)
+1. Click "📈 Performance Audit"
+2. Paste data campaign (theo template với KPI dump)
+3. Bot chạy ~60-90s (Sonnet agent + Haiku critic + Excel render)
+4. Output format = Analysis (Verdict + KPI table + Root Cause + Next Actions + Forecast)
+
+### Bước 7: Test brand context reuse
+1. Chạy strategic phase trước (`Marketing Strategy`)
+2. Sau đó chạy `Campaign Brief` — phải có context từ synthesis (không hỏi lại profile)
+3. Sau đó chạy `Sales/Inbox Script` — phải có context từ Campaign Brief (tone phù hợp)
+
+---
+
+## ⚠️ ĐIỂM CẦN CHÚ Ý KHI TEST
+
+### Có thể gặp issue:
+
+1. **Single-shot intake parser** — nếu user reply không đúng format template:
+   - Parser sẽ extract những gì matched
+   - Field missing → template fallback "[missing: field_name]"
+   - **Solution if buggy**: Cải thiện regex trong `_parse_single_shot_intake()` (bot/handlers.py)
+
+2. **Excel render** — yêu cầu `openpyxl` đã trong requirements
+   - Nếu Railway log error import → check `pip install` đã chạy
+   - Excel chỉ render nếu agent output có markdown tables
+
+3. **Critic timeout** — chỉ apply cho performance_audit
+   - Agent Sonnet ~60-90s + Haiku critic ~15-20s = ~110s total
+   - Timeout hiện 500s → có buffer rộng
+
+4. **HTML render trên mobile** — tabs là CSS-only (radio buttons), no JS
+   - Test trên Telegram in-app browser + Chrome mobile
+
+5. **Versioning growth** — mỗi skill chạy lại = +1 version
+   - FIFO max 5 → cap storage ~30KB/skill/user
+   - Watch Supabase storage usage sau 1 tuần test
+
+### Việc cần làm sau khi test xong:
+
+| Status | Việc | Note |
+|---|---|---|
+| TODO | Test 8 ops skills end-to-end | Theo bước 2-7 trên |
+| TODO | Iterate prompts dựa trên output thực | Nhất là `content_calendar` cần check Pillar mix có hợp lý cho VN F&B |
+| TODO | Verify Excel render cho `content_calendar` + `performance_audit` | Mở file Excel kiểm tra |
+| TODO | Verify Markdown render cho 5 production skills | Mở .md để check usable |
+| TODO | Merge `feature/operational-layer` → `master` | Sau khi test pass |
+| TODO | Xoá branch sau merge | `git branch -d feature/operational-layer` |
 
 ---
 
@@ -482,6 +647,16 @@ python run_local.py       # Bot polling, cần đủ env
 
 ## Recent changes log
 
+### feature/operational-layer (chưa merge — 5 commits)
+| Commit | Mô tả |
+|---|---|
+| `3f5a8f1` | Phase 5: multi-tier UI + single-shot intake + variant choosers |
+| `3531cdc` | Phase 4: 8 operational skills (system prompts + factories + runner) |
+| `71ba334` | Phase 3: output renderers — HTML/Excel/Markdown |
+| `5e0e48e` | Phase 2: OperationalSkill generic + 3 output format variants |
+| `039d2d3` | Phase 1: architecture foundation (enums, AgentSkill, VersionedResult, task_registry) |
+
+### master (đã deploy production)
 | Commit | Mô tả |
 |---|---|
 | `6a76a4b` | merge: critic + skill modularity + 2-tier model + VN-friendly output |
@@ -500,17 +675,26 @@ python run_local.py       # Bot polling, cần đủ env
 
 ## Bước tiếp theo (Roadmap)
 
-### Operational layer (next major task):
-- [ ] **Refactor trước**: Hợp nhất 4 task config dicts → `agents/task_registry.py`
-- [ ] **UI refactor**: Multi-tier menu (Chiến lược / Sản xuất / Đánh giá)
-- [ ] **AgentSkill enhancements**: output_format, skip_intake_if_profile_complete
-- [ ] Thêm skills: ad copy → content calendar → brief → script → performance review
+### Tối nay — Test + Merge Operational Layer
+- [ ] Deploy `feature/operational-layer` lên Railway (đổi branch trong Settings)
+- [ ] Test 8 ops skills theo bước 2-7 ở section "TEST PLAN"
+- [ ] Note ra bug/improvement cần fix
+- [ ] Iterate prompts nếu output chưa đủ depth (đặc biệt `content_calendar` cho VN F&B/beauty)
+- [ ] Merge `feature/operational-layer` → `master` khi pass tests
+- [ ] Xoá branch sau merge
 
-### Optimization:
-- [ ] Test với 5-10 founder thật, iterate prompts
+### Tuần này — Polish & Real test
+- [ ] Test với 1-2 founder thật (chạy full workflow Strategic → Operational)
+- [ ] Tune prompt cho skill nào output yếu
+- [ ] Check Supabase storage usage sau 1 tuần dùng thật
+- [ ] Decide: cần thêm skill nào không (vd: KOL contract template separate)
+
+### Sau test xong — Optimization
 - [ ] Re-enable Social Listening khi có web search VN tốt
-- [ ] Export PDF report (hiện tại chỉ HTML)
-- [ ] Skill versioning để A/B test prompts
+- [ ] Export PDF report (hiện chỉ HTML/Excel/Markdown)
+- [ ] A/B test prompts (versioning đã có sẵn)
+- [ ] Add analytics: skill usage frequency, time-to-result, NPS sau mỗi skill
 
-### Data lifecycle (chưa gấp):
+### Data lifecycle (chưa gấp)
 - [ ] TTL cleanup sessions > 30 ngày trong Supabase
+- [ ] Monitor pending_intake leak (nếu user bỏ giữa form, marker không cleared)
