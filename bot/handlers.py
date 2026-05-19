@@ -412,7 +412,9 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         session.stage = PipelineStage.INTAKE
         session.brand_candidates = []
         await save_session(session)
-        await query.edit_message_text(
+        # Giữ nguyên tin nhắn cũ (chỉ bỏ keyboard), gửi tin mới bên dưới
+        await query.edit_message_reply_markup(reply_markup=None)
+        await query.message.reply_text(
             "Không sao! Bạn đang hoạt động trong ngành nào?\n\n"
             "Mô tả ngắn về business của bạn — sản phẩm/dịch vụ, khách hàng, địa bàn nhé."
         )
