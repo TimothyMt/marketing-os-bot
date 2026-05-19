@@ -16,8 +16,12 @@ WEBHOOK_URL = os.getenv("WEBHOOK_URL", "")
 # Railway sets PORT automatically; fallback 8000 for local testing
 PORT = int(os.getenv("PORT", "8000"))
 
-CLAUDE_MODEL   = "claude-sonnet-4-6"
-AGENT_TIMEOUT  = 120
+# 2-tier model: Haiku cho intake (classification + JSON extract, rẻ), Sonnet cho deep analysis + critic
+CLAUDE_SONNET_MODEL = "claude-sonnet-4-6"
+CLAUDE_HAIKU_MODEL  = "claude-haiku-4-5"
+CLAUDE_MODEL        = CLAUDE_SONNET_MODEL  # backward-compat alias
+
+AGENT_TIMEOUT  = 500  # ~8 phút — buffer rộng cho cả trường hợp Claude API chậm
 MAX_HISTORY_TURNS = 20
 
 INDUSTRIES = [
