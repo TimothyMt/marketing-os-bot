@@ -38,6 +38,7 @@ from agents.skills import (
     StrategySynthesisSkill,
 )
 from agents.critic import run_critic
+from agents.output_formats import get_format_instruction
 from frameworks.kpi_library import get_framework_as_text
 from frameworks.save_framework import generate_save_analysis
 from frameworks.smart_framework import format_smart_prompt
@@ -45,8 +46,8 @@ from frameworks.smart_framework import format_smart_prompt
 client = anthropic.AsyncAnthropic(api_key=ANTHROPIC_API_KEY)
 
 
-# Pipeline agents PHẢI output theo cấu trúc này.
-# Bot parser tách 4 sections → Telegram card (3 đầu) + HTML report (cả 4).
+# DEPRECATED — kept temporarily for backward-compat in legacy _run_agent function.
+# New code uses get_format_instruction(skill.output_format).
 OUTPUT_FORMAT_INSTRUCTION = """
 
 ---
@@ -264,10 +265,16 @@ async def _run_agent(
 
 
 async def _run_skill(skill: AgentSkill, session: Session) -> str:
-    """Execute a skill: build context+msg → Sonnet executor → Critic review → return."""
+    """Execute a skill: build context+msg → Sonnet executor → optional Critic → return.
+
+    Uses get_format_instruction(skill.output_format) to inject correct output format
+    (Strategic 4-section vs Operational Deliverable vs Operational Analysis).
+    Critic call only happens when skill.enable_critic = True.
+    """
     context = skill.build_context(session)
     user_msg = skill.build_user_msg(session)
-    augmented_system = skill.system_prompt + OUTPUT_FORMAT_INSTRUCTION
+    format_instruction = get_format_instruction(skill.output_format)
+    augmented_system = skill.system_prompt + format_instruction
 
     response = await client.messages.create(
         model=CLAUDE_SONNET_MODEL,
