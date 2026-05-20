@@ -24,6 +24,7 @@ from agents.operational_prompts import (
     SALES_INBOX_SCRIPT_SYSTEM,
     EMAIL_ZALO_SEQUENCE_SYSTEM,
     COMPETITOR_SPY_SYSTEM,
+    COMPETITOR_COMPARISON_SYSTEM,
     PERFORMANCE_AUDIT_SYSTEM,
 )
 from agents.task_registry import OPERATIONAL_TASKS
@@ -202,6 +203,17 @@ def make_competitor_spy_skill() -> OperationalSkill:
     ))
 
 
+def make_competitor_comparison_skill() -> OperationalSkill:
+    """Sprint 4: Follow-up sau competitor analysis — so sánh business sếp vs đối thủ."""
+    return OperationalSkill(_config_for(
+        "competitor_comparison",
+        COMPETITOR_COMPARISON_SYSTEM,
+        max_tokens=6000,
+        context_strategy=ContextStrategy.FULL_PIPELINE,  # Đọc cả competitor + profile
+        primary_deliverable=PrimaryDeliverable.HTML,
+    ))
+
+
 def make_performance_audit_skill() -> OperationalSkill:
     return OperationalSkill(_config_for(
         "performance_audit",
@@ -368,6 +380,7 @@ OPS_SKILL_FACTORIES: dict[str, callable] = {
     "content_calendar":    ContentCalendarDynamicSkill,  # Sprint 3.4 — Pillar dynamic
     "content_generator":   make_content_generator_skill,
     "competitor_spy":      make_competitor_spy_skill,
+    "competitor_comparison": make_competitor_comparison_skill,
     "landing_page":        make_landing_page_skill,
     "sales_inbox_script":  make_sales_inbox_script_skill,
     "email_zalo_sequence": make_email_zalo_sequence_skill,

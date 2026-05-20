@@ -29,6 +29,7 @@ from bot.keyboards import (
     LANG_LEVEL_KEYBOARD,
     RATING_KEYBOARD,
     REGEN_PROMPT_KEYBOARD,
+    COMPARE_PROMPT_KEYBOARD,
 )
 
 logger = logging.getLogger(__name__)
@@ -374,6 +375,33 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def _handle_callback_inner(update, context, query, session, data, user_id):
+
+    # ── Competitor → Compare follow-up (Sprint 4) ─────────────────
+    if data == "run_compare":
+        await query.edit_message_reply_markup(reply_markup=None)
+        await query.message.reply_text(
+            "Em đang so sánh business của sếp với landscape đối thủ...",
+            parse_mode=ParseMode.MARKDOWN,
+        )
+        try:
+            result = await run_operational_skill("competitor_comparison", session)
+            await save_session(session)
+            await _send_ops_result(query.message, session, "competitor_comparison", result)
+        except Exception as e:
+            logger.exception("Comparison failed: %s", e)
+            await query.message.reply_text(f"⚠️ Lỗi so sánh: {str(e)[:200]}")
+        return
+
+    if data == "skip_compare":
+        await query.edit_message_reply_markup(reply_markup=None)
+        # Show rating cho competitor như bình thường
+        session.pending_intake["_awaiting_rating_for"] = "competitor"
+        await save_session(session)
+        await query.message.reply_text(
+            "OK ạ. Sếp đánh giá output Phân Tích Đối Thủ vừa rồi thế nào?",
+            reply_markup=RATING_KEYBOARD,
+        )
+        return
 
     # ── Rating callback (Sprint 2) ───────────────────────────────
     if data.startswith("rate_"):
@@ -1066,7 +1094,16 @@ async def _send_ops_result(message: Message, session, task_name: str, result: st
                 parse_mode=ParseMode.MARKDOWN,
             )
 
-    # Sprint 2: Send RATING_KEYBOARD trước, sau khi rate xong mới hiện next action
+    # Sprint 4: Special follow-up sau competitor → hỏi user có muốn so sánh không
+    if task_name == "competitor":
+        await message.reply_text(
+            f"✅ *Hoàn thành {task.label}!*\n\nSếp có muốn em so sánh business của sếp với đối thủ luôn không ạ?",
+            parse_mode=ParseMode.MARKDOWN,
+            reply_markup=COMPARE_PROMPT_KEYBOARD,
+        )
+        return
+
+    # Sprint 2: Default — send RATING_KEYBOARD
     session.pending_intake["_awaiting_rating_for"] = task_name
     await save_session(session)
 

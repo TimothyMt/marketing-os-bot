@@ -270,6 +270,16 @@ OPERATIONAL_TASKS: dict[str, TaskConfig] = {
             {"key": "focus_area",      "label": "Sếp muốn em focus phân tích gì",         "example": "Hook style / Offer mechanics / Creative format", "required": False},
         ],
     ),
+    "competitor_comparison": TaskConfig(
+        name="competitor_comparison",
+        label="So Sánh Với Đối Thủ",
+        button_emoji="🆚",
+        category="operational",
+        description="So sánh business của sếp với đối thủ đã phân tích",
+        skill_class_name="CompetitorComparisonSkill",
+        # KHÔNG có intake_fields — đọc full từ session.results
+        intake_fields=[],
+    ),
     "performance_audit": TaskConfig(
         name="performance_audit",
         label="Báo Cáo Ads",

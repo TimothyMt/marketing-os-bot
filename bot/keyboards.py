@@ -40,6 +40,12 @@ REGEN_PROMPT_KEYBOARD = InlineKeyboardMarkup([
     [InlineKeyboardButton("⏭️ Không cần, để admin review",      callback_data="regen_no")],
 ])
 
+# Sprint 4: Sau competitor analysis — hỏi user có muốn so sánh business sếp không
+COMPARE_PROMPT_KEYBOARD = InlineKeyboardMarkup([
+    [InlineKeyboardButton("🆚 So sánh business của sếp với đối thủ", callback_data="run_compare")],
+    [InlineKeyboardButton("⏭️ Để sau",                                callback_data="skip_compare")],
+])
+
 
 # ─────────────────────────────────────────────────────────────────
 # STRATEGIC MENU — Tier 2

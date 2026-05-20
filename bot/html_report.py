@@ -36,6 +36,7 @@ STAGE_META = {
     "sales_inbox_script":  {"title": "Kịch Bản Sales",              "icon": "💬", "color": "customer"},
     "email_zalo_sequence": {"title": "Chăm Sóc Khách Hàng",         "icon": "📧", "color": "pricing"},
     "competitor_spy":      {"title": "Theo Dõi Đối Thủ",            "icon": "🔍", "color": "competitor"},
+    "competitor_comparison": {"title": "So Sánh Với Đối Thủ",         "icon": "🆚", "color": "competitor"},
     "performance_audit":   {"title": "Báo Cáo Ads",                 "icon": "📊", "color": "strategy"},
 }
 
