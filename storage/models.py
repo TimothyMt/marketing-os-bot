@@ -60,9 +60,26 @@ class BusinessProfile:
     location: Optional[str] = None
 
     def is_ready_for_analysis(self) -> bool:
-        """Check if we have enough info to start the pipeline."""
+        """Legacy global check — kept for backward compat.
+        Use is_ready_for(task_name) for per-task field requirements (Phase 1.2)."""
         required = [self.industry, self.product_service, self.target_customer]
-        return all(f is not None for f in required)
+        return all(f for f in required)
+
+    def is_ready_for(self, task_name: str) -> bool:
+        """Per-task readiness check using task_registry intake_required_fields.
+        Phase 1.2 — skill-aware intake skip."""
+        try:
+            from agents.task_registry import get_task
+        except ImportError:
+            return self.is_ready_for_analysis()
+        task = get_task(task_name)
+        if not task or not task.intake_required_fields:
+            return self.is_ready_for_analysis()
+        for f_key in task.intake_required_fields:
+            value = getattr(self, f_key, None)
+            if not value or (isinstance(value, str) and not value.strip()):
+                return False
+        return True
 
     def to_context_string(self) -> str:
         """Format profile as context string for agent prompts."""

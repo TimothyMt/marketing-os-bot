@@ -103,7 +103,7 @@ class AgentSkill(ABC):
 class MarketResearchSkill(AgentSkill):
     name = "market_research"
     system_prompt = MARKET_RESEARCH_SYSTEM
-    max_tokens = 4000
+    max_tokens = 8000  # bumped from 4000 — avoid truncation on detailed market analysis
     output_format = OutputFormat.STRATEGIC_4_SECTION
     intake_pattern = IntakePattern.MULTI_TURN
     context_strategy = ContextStrategy.PROFILE_PLUS_KPI
@@ -126,7 +126,7 @@ Target customer: {session.profile.target_customer}"""
 class CompetitorSkill(AgentSkill):
     name = "competitor"
     system_prompt = COMPETITOR_SYSTEM
-    max_tokens = 4000
+    max_tokens = 8000  # bumped from 4000
     context_strategy = ContextStrategy.FULL_PIPELINE
 
     def build_context(self, session: Session) -> str:
@@ -148,8 +148,8 @@ Hãy:
 class CustomerInsightSkill(AgentSkill):
     name = "customer_insight"
     system_prompt = CUSTOMER_INSIGHT_SYSTEM
-    max_tokens = 4000
-    enable_critic = False  # Customer insight is interpretive, no specific stats to fact-check
+    max_tokens = 8000  # bumped from 4000
+    enable_critic = False
     context_strategy = ContextStrategy.FULL_PIPELINE
 
     def build_context(self, session: Session) -> str:
@@ -168,8 +168,8 @@ Hãy đào sâu vào psychographics, JTBD, và Vietnamese cultural context của
 class PsychologyPricingSkill(AgentSkill):
     """Combines Marketing Psychology + Pricing Strategy in 1 call to save latency."""
     name = "psychology_pricing"
-    max_tokens = 5000
-    enable_critic = False  # Frameworks application, not factual claims
+    max_tokens = 10000  # bumped from 5000 — 2 frameworks merged need room
+    enable_critic = False
     context_strategy = ContextStrategy.FULL_PIPELINE
 
     @property
@@ -197,10 +197,10 @@ Phần 2: Đề xuất pricing model và tactics cụ thể (với số liệu)"
 
 
 class SocialListeningSkill(AgentSkill):
-    """Tạm tắt — chờ web search VN coverage tốt hơn. Giữ skill để dễ enable lại."""
+    """Tạm tắt — chờ web search VN coverage tốt hơn."""
     name = "social_listening"
     system_prompt = SOCIAL_LISTENING_SYSTEM
-    max_tokens = 4000
+    max_tokens = 8000
     enable_critic = False
     context_strategy = ContextStrategy.FULL_PIPELINE
 
@@ -221,8 +221,8 @@ Tạo system thực tế, phù hợp với team nhỏ, tập trung vào platform
 class StrategySynthesisSkill(AgentSkill):
     name = "synthesis"
     system_prompt = STRATEGY_SYNTHESIZER_SYSTEM
-    max_tokens = 5000
-    enable_critic = False  # Synthesis combines previous results, not new facts
+    max_tokens = 10000  # bumped from 5000 — synthesis is comprehensive output
+    enable_critic = False
     context_strategy = ContextStrategy.FULL_PIPELINE
 
     def build_context(self, session: Session) -> str:

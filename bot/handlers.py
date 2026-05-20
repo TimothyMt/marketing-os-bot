@@ -13,7 +13,7 @@ from storage import get_session, save_session, reset_session
 from storage.models import PipelineStage
 from agents.pipeline import run_intake, run_targeted_pipeline, run_operational_skill
 from agents.prompts import INTAKE_CONFIRM_TEMPLATE, PROGRESS_MESSAGES, TASK_OPENING_QUESTIONS
-from agents.task_registry import TASK_REGISTRY, OPERATIONAL_TASKS, get_task
+from agents.task_registry import TASK_REGISTRY, OPERATIONAL_TASKS, STRATEGIC_TASKS, get_task, needs_intake
 from frameworks.kpi_library import KPI_LIBRARY
 from bot.keyboards import (
     MAIN_MENU_KEYBOARD,
@@ -404,7 +404,14 @@ async def _handle_callback_inner(update, context, query, session, data, user_id)
             await _send_single_shot_form(query.message, session, task_type)
             return
 
-        # Strategic skills (existing flow) — multi-turn intake
+        # ── Strategic skills ─────────────────────────────────────
+        # Phase 1.3: Profile reuse — nếu profile đã có required fields, skip intake
+        if not needs_intake(session, task_type):
+            await query.edit_message_reply_markup(reply_markup=None)
+            await _show_profile_reuse_confirm(query.message, session, task_type)
+            return
+
+        # Profile chưa đủ → flow multi-turn intake bình thường
         session.stage = PipelineStage.INTAKE
         await save_session(session)
 
@@ -499,6 +506,53 @@ def _format_card(stage_key: str, parsed: dict) -> str:
 # ─── Operational skill flow ──────────────────────────────────────
 
 OPS_INTAKE_AWAITING = "ops_intake_awaiting"  # marker stored in pending_intake
+
+async def _show_profile_reuse_confirm(message: Message, session, task_name: str):
+    """Phase 1.3: Strategic task có profile đầy đủ → show confirm card với data cũ,
+    user pick confirm → chạy luôn pipeline, không multi-turn intake."""
+    task = get_task(task_name)
+    profile = session.profile
+    label = task.label if task else task_name
+    emoji = task.button_emoji if task else "🎯"
+
+    fw = KPI_LIBRARY.get(profile.industry or "")
+    industry_name = fw.display_name if fw else (profile.industry or "Chưa xác định")
+
+    # Build profile recap — chỉ hiện fields liên quan
+    profile_lines = []
+    profile_lines.append(f"🏢 *Business*: {profile.business_name or 'Business của bạn'}")
+    profile_lines.append(f"📦 *Sản phẩm/DV*: {profile.product_service or '—'}")
+    profile_lines.append(f"👥 *Khách hàng*: {profile.target_customer or '—'}")
+    profile_lines.append(f"📊 *Ngành*: {industry_name}")
+    if profile.location:
+        profile_lines.append(f"📍 *Địa bàn*: {profile.location}")
+    if profile.monthly_revenue:
+        profile_lines.append(f"💰 *Doanh thu*: {profile.monthly_revenue}")
+    if profile.primary_goal:
+        profile_lines.append(f"🎯 *Mục tiêu*: {profile.primary_goal}")
+    if profile.main_challenge:
+        profile_lines.append(f"⚡ *Thách thức*: {profile.main_challenge}")
+    if profile.competitors and task_name == "competitor":
+        profile_lines.append(f"🕵️ *Đối thủ*: {profile.competitors}")
+
+    confirm_msg = (
+        f"{emoji} *{label}*\n\n"
+        f"Tôi đã có thông tin business của bạn từ trước — không cần hỏi lại:\n\n"
+        + "\n".join(profile_lines) + "\n\n"
+        f"─────────────────────────\n"
+        f"Bắt đầu *{label}* luôn nhé? 🚀\n"
+        f"_(Nếu muốn cập nhật profile, bấm 'Sửa thông tin')_"
+    )
+
+    session.stage = PipelineStage.CONFIRMED
+    await save_session(session)
+
+    await message.reply_text(
+        confirm_msg,
+        parse_mode=ParseMode.MARKDOWN,
+        reply_markup=CONFIRM_KEYBOARD,
+    )
+
 
 async def _send_single_shot_form(message: Message, session, task_name: str):
     """Send a paste-template form for ops skill intake.

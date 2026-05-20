@@ -80,7 +80,7 @@ def make_campaign_brief_skill() -> OperationalSkill:
     return OperationalSkill(_config_for(
         "campaign_brief",
         CAMPAIGN_BRIEF_SYSTEM,
-        max_tokens=5000,
+        max_tokens=10000,  # bumped — 10-section brief is comprehensive
         context_strategy=ContextStrategy.PROFILE_PLUS_STRATEGY,
         primary_deliverable=PrimaryDeliverable.HTML,
     ))
@@ -90,9 +90,9 @@ def make_content_calendar_skill() -> OperationalSkill:
     return OperationalSkill(_config_for(
         "content_calendar",
         CONTENT_CALENDAR_SYSTEM,
-        max_tokens=5000,
+        max_tokens=10000,  # bumped — 4-week grid + repurpose + ops notes
         context_strategy=ContextStrategy.PROFILE_PLUS_CAMPAIGN,
-        primary_deliverable=PrimaryDeliverable.EXCEL,  # Calendar = table → Excel
+        primary_deliverable=PrimaryDeliverable.EXCEL,
     ))
 
 
@@ -100,9 +100,9 @@ def make_landing_page_skill() -> OperationalSkill:
     return OperationalSkill(_config_for(
         "landing_page",
         LANDING_PAGE_SYSTEM,
-        max_tokens=4500,
+        max_tokens=8000,  # bumped — 7 sections + checklist
         context_strategy=ContextStrategy.PROFILE_PLUS_CAMPAIGN,
-        primary_deliverable=PrimaryDeliverable.MARKDOWN,  # Brief for dev → .md
+        primary_deliverable=PrimaryDeliverable.MARKDOWN,
     ))
 
 
@@ -110,9 +110,9 @@ def make_sales_inbox_script_skill() -> OperationalSkill:
     return OperationalSkill(_config_for(
         "sales_inbox_script",
         SALES_INBOX_SCRIPT_SYSTEM,
-        max_tokens=4500,
-        context_strategy=ContextStrategy.PROFILE_PLUS_CAMPAIGN,  # Reads campaign tone
-        primary_deliverable=PrimaryDeliverable.MARKDOWN,  # For sales team
+        max_tokens=8000,  # bumped — 7 sections with objection handling
+        context_strategy=ContextStrategy.PROFILE_PLUS_CAMPAIGN,
+        primary_deliverable=PrimaryDeliverable.MARKDOWN,
     ))
 
 
@@ -120,7 +120,7 @@ def make_email_zalo_sequence_skill() -> OperationalSkill:
     return OperationalSkill(_config_for(
         "email_zalo_sequence",
         EMAIL_ZALO_SEQUENCE_SYSTEM,
-        max_tokens=5000,
+        max_tokens=8000,  # bumped — multi-day sequence with email + zalo for each
         context_strategy=ContextStrategy.PROFILE_PLUS_CAMPAIGN,
         primary_deliverable=PrimaryDeliverable.MARKDOWN,
     ))
@@ -130,11 +130,11 @@ def make_performance_audit_skill() -> OperationalSkill:
     return OperationalSkill(_config_for(
         "performance_audit",
         PERFORMANCE_AUDIT_SYSTEM,
-        max_tokens=5000,
-        output_format=OutputFormat.OPERATIONAL_ANALYSIS,  # Special format for audit
+        max_tokens=10000,  # bumped — analysis output is data-heavy
+        output_format=OutputFormat.OPERATIONAL_ANALYSIS,
         context_strategy=ContextStrategy.PROFILE_PLUS_CAMPAIGN,
-        primary_deliverable=PrimaryDeliverable.EXCEL,  # Data heavy → Excel
-        enable_critic=True,  # Audit has numbers — critic ON
+        primary_deliverable=PrimaryDeliverable.EXCEL,
+        enable_critic=True,
     ))
 
 
@@ -151,7 +151,7 @@ class AdsCopySkill(AgentSkill):
     """
     name = "ads_copy"
     system_prompt = ADS_COPY_SYSTEM
-    max_tokens = 8000  # All-tier output is large
+    max_tokens = 12000  # bumped — full 3-tier × 2 variants × 2 platforms = 12 copy units
     enable_critic = False
     output_format = OutputFormat.OPERATIONAL_DELIVERABLE
     intake_pattern = IntakePattern.SINGLE_SHOT_FORM
@@ -204,7 +204,7 @@ class VideoScriptsSkill(AgentSkill):
     """
     name = "video_scripts"
     system_prompt = VIDEO_SCRIPTS_SYSTEM
-    max_tokens = 5000
+    max_tokens = 8000  # bumped — 2 variants + production guide
     enable_critic = False
     output_format = OutputFormat.OPERATIONAL_DELIVERABLE
     intake_pattern = IntakePattern.SINGLE_SHOT_FORM

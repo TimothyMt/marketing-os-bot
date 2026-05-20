@@ -17,21 +17,21 @@ from typing import Optional
 class TaskConfig:
     """Config for one user-facing task."""
     # Identity
-    name: str                       # ID, matches stage_key & skill name
-    label: str                      # Human label (Vietnamese)
-    button_emoji: str               # Emoji prefix in UI buttons
+    name: str
+    label: str
+    button_emoji: str
 
     # Category for multi-tier menu
-    category: str                   # "strategic" / "operational" / "analysis" / "full"
+    category: str  # "strategic" / "operational" / "analysis" / "full"
 
     # Description shown in confirm card / docs
-    description: str = ""           # Short description
+    description: str = ""
 
     # Opening question (for first user message after task selection)
     opening_question: str = ""
 
     # Skill class reference (str — late binding to avoid import cycle)
-    skill_class_name: str = ""      # e.g., "MarketResearchSkill"
+    skill_class_name: str = ""
 
     # Pipeline composition (for "full" task that runs multiple stages)
     pipeline_stages: list[str] = field(default_factory=list)
@@ -39,6 +39,12 @@ class TaskConfig:
     # Intake fields (declared upfront — used by SingleShotIntake to build template)
     intake_fields: list[dict] = field(default_factory=list)
     # Each field: {key, label, example, required}
+
+    # Profile fields ESSENTIAL để task này chạy (Phase 1.2)
+    # Khi check needs_intake(): nếu session.profile có ĐỦ các fields này → skip intake
+    # Strategic tasks: ánh xạ sang BusinessProfile fields
+    # Operational tasks: thường rỗng vì dùng pending_intake template paste
+    intake_required_fields: list[str] = field(default_factory=list)
 
 
 # ─────────────────────────────────────────────────────────────────
@@ -51,9 +57,14 @@ STRATEGIC_TASKS: dict[str, TaskConfig] = {
         label="Phân tích toàn diện",
         button_emoji="🔍",
         category="full",
-        description="Chạy 5 bước phân tích chiến lược tuần tự (Thị trường → Đối thủ → Customer → Pricing → Strategy)",
-        skill_class_name="",  # Composite, runs multiple stages
+        description="Chạy 5 bước phân tích chiến lược tuần tự",
+        skill_class_name="",  # Composite
         pipeline_stages=["market_research", "competitor", "customer_insight", "psychology_pricing", "synthesis"],
+        # Full mode cần full profile — yêu cầu nhiều fields
+        intake_required_fields=[
+            "industry", "product_service", "target_customer",
+            "monthly_revenue", "primary_goal", "main_challenge",
+        ],
     ),
     "market": TaskConfig(
         name="market",
@@ -63,6 +74,13 @@ STRATEGIC_TASKS: dict[str, TaskConfig] = {
         description="TAM/SAM/SOM + Market Dynamics",
         skill_class_name="MarketResearchSkill",
         pipeline_stages=["market_research"],
+        intake_required_fields=["industry", "product_service", "target_customer", "location"],
+        intake_fields=[
+            {"key": "product_service", "label": "Sản phẩm/dịch vụ", "example": "Spa làm đẹp · combo facial 680K", "required": True},
+            {"key": "target_customer", "label": "Khách hàng mục tiêu", "example": "Phụ nữ 25-40, đi làm văn phòng", "required": True},
+            {"key": "location",        "label": "Thị trường nào",     "example": "HCM nội thành (Q1, Q3, Q7)", "required": True},
+            {"key": "industry",        "label": "Ngành (tự động map nếu không nhập)", "example": "health_beauty", "required": False},
+        ],
     ),
     "competitor": TaskConfig(
         name="competitor",
@@ -72,6 +90,13 @@ STRATEGIC_TASKS: dict[str, TaskConfig] = {
         description="8 chiều phân tích + Market Gap",
         skill_class_name="CompetitorSkill",
         pipeline_stages=["competitor"],
+        intake_required_fields=["industry", "product_service", "target_customer", "competitors"],
+        intake_fields=[
+            {"key": "product_service", "label": "Sản phẩm/dịch vụ",         "example": "Spa làm đẹp Q1 HCM", "required": True},
+            {"key": "target_customer", "label": "Khách hàng mục tiêu",      "example": "Phụ nữ 25-40", "required": True},
+            {"key": "competitors",     "label": "Đối thủ đã biết (tên cụ thể nếu có)", "example": "Cocoon, M.O.I, Lemonade — hoặc 'chưa biết' để Max tự research", "required": True},
+            {"key": "location",        "label": "Địa bàn cạnh tranh",        "example": "HCM nội thành", "required": False},
+        ],
     ),
     "customer": TaskConfig(
         name="customer",
@@ -81,6 +106,13 @@ STRATEGIC_TASKS: dict[str, TaskConfig] = {
         description="ICP + Jobs-to-be-Done + Pain-Gain Map",
         skill_class_name="CustomerInsightSkill",
         pipeline_stages=["customer_insight"],
+        intake_required_fields=["industry", "product_service", "target_customer", "main_challenge"],
+        intake_fields=[
+            {"key": "product_service",  "label": "Sản phẩm/dịch vụ",                "example": "Spa làm đẹp · combo Tết 680K", "required": True},
+            {"key": "target_customer",  "label": "Khách hàng mục tiêu hiện tại",     "example": "Phụ nữ 28-38 thu nhập 25-50tr", "required": True},
+            {"key": "main_challenge",   "label": "Vấn đề lớn nhất với khách hàng",   "example": "Khách 1 lần đi rồi không quay lại", "required": True},
+            {"key": "location",         "label": "Địa bàn",                          "example": "HCM", "required": False},
+        ],
     ),
     "pricing": TaskConfig(
         name="pricing",
@@ -90,6 +122,13 @@ STRATEGIC_TASKS: dict[str, TaskConfig] = {
         description="Pricing Model + Psychology Tactics",
         skill_class_name="PsychologyPricingSkill",
         pipeline_stages=["psychology_pricing"],
+        intake_required_fields=["industry", "product_service", "target_customer", "monthly_revenue"],
+        intake_fields=[
+            {"key": "product_service",  "label": "Sản phẩm/dịch vụ + giá hiện tại",  "example": "Combo Tết spa hiện 850K, đang test giảm 20%", "required": True},
+            {"key": "target_customer",  "label": "Khách hàng + khả năng chi tiêu",   "example": "Phụ nữ 28-40 thu nhập 25-50tr", "required": True},
+            {"key": "monthly_revenue",  "label": "Doanh thu hiện tại",               "example": "80 triệu/tháng", "required": True},
+            {"key": "primary_goal",     "label": "Mục tiêu pricing",                  "example": "Tăng margin / Tăng volume / Giảm churn", "required": False},
+        ],
     ),
     "strategy": TaskConfig(
         name="strategy",
@@ -99,6 +138,12 @@ STRATEGIC_TASKS: dict[str, TaskConfig] = {
         description="SAVE Framework + SMART Goals + 90-day Roadmap",
         skill_class_name="StrategySynthesisSkill",
         pipeline_stages=["synthesis"],
+        # Strategy là output cuối — cần full profile
+        intake_required_fields=[
+            "industry", "product_service", "target_customer",
+            "monthly_revenue", "primary_goal", "main_challenge",
+        ],
+        # KHÔNG có intake_fields → vẫn dùng multi-turn intake
     ),
 }
 
@@ -240,3 +285,21 @@ def get_task(name: str) -> Optional[TaskConfig]:
 def list_by_category(category: str) -> list[TaskConfig]:
     """List all tasks in a category, preserving registration order."""
     return [t for t in TASK_REGISTRY.values() if t.category == category]
+
+
+def needs_intake(session, task_name: str) -> bool:
+    """Phase 1.3 helper: Check if session.profile already has fields needed for task.
+    If all required fields present → user has done intake before → SKIP repeat intake.
+    Returns True = need intake; False = can skip and go straight to confirm/execute.
+    """
+    task = get_task(task_name)
+    if not task or not task.intake_required_fields:
+        return True  # safe default — if no requirements declared, do intake
+    profile = session.profile
+    if not profile:
+        return True
+    for field_key in task.intake_required_fields:
+        value = getattr(profile, field_key, None)
+        if not value or (isinstance(value, str) and not value.strip()):
+            return True  # missing field → need intake
+    return False  # all required fields present → skip intake
