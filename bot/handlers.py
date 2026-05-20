@@ -20,12 +20,15 @@ from bot.keyboards import (
     STRATEGIC_KEYBOARD,
     OPERATIONAL_KEYBOARD,
     ANALYSIS_KEYBOARD,
-    TASK_SELECT_KEYBOARD,  # alias to MAIN_MENU_KEYBOARD
+    TASK_SELECT_KEYBOARD,
     CONFIRM_KEYBOARD,
     RESTART_KEYBOARD,
     stage_done_keyboard,
     ADS_COPY_TIER_KEYBOARD,
     VIDEO_CREATOR_KEYBOARD,
+    LANG_LEVEL_KEYBOARD,
+    RATING_KEYBOARD,
+    REGEN_PROMPT_KEYBOARD,
 )
 
 logger = logging.getLogger(__name__)
@@ -69,16 +72,27 @@ TASK_STAGE_COUNT = {
     "strategy": 1,
 }
 
-WELCOME_MESSAGE = """👋 Xin chào! Tôi là *Max — AI CMO* của bạn.
+WELCOME_MESSAGE = """Em là *Max*, trợ lý marketing của sếp.
 
-Tôi có thể giúp bạn ở 3 tầng:
+Em hỗ trợ sếp 3 mảng chính:
 
-🎯 *Chiến lược* — Phân tích thị trường, đối thủ, customer, pricing, strategy
-⚙️ *Sản xuất* — Campaign brief, content calendar, ads copy, video script, landing page, sales script, email/Zalo nurture
-📊 *Đánh giá* — Audit performance campaign đang chạy
+🎯 *Chiến Lược* — Phân tích thị trường, đối thủ, khách hàng, định giá, lập kế hoạch
+⚙️ *Sản Xuất* — Brief campaign, lịch nội dung, viết quảng cáo, kịch bản video, website, kịch bản sales, chăm sóc khách
+📊 *Theo Dõi & Báo Cáo* — Theo dõi đối thủ, báo cáo ads
 
 ─────────────────────────
-*Bạn muốn Max làm gì hôm nay?*"""
+*Hôm nay sếp muốn em xử lý phần nào ạ?*"""
+
+# First-time language preference setup (Sprint 1)
+LANG_SETUP_MESSAGE = """Em chào sếp! Trước khi vào việc, em hỏi nhanh 1 ý ạ:
+
+*Khả năng tiếng Anh của sếp thế nào* để em biết cách trình bày output cho phù hợp?
+
+🔴 *Không rành* — Em dùng thuần Việt toàn bộ, kể cả thuật ngữ
+🟡 *Hiểu cơ bản* — Em dùng thuật ngữ EN nhưng kèm giải thích trong ngoặc
+🟢 *Thông thạo* — Em dùng thuật ngữ EN tự nhiên, không cần giải thích
+
+_(Sếp đổi lại bất kỳ lúc nào bằng /settings)_"""
 
 HELP_MESSAGE = """*Marketing OS — Hướng dẫn sử dụng*
 
@@ -147,14 +161,44 @@ async def send_long_message(message: Message, text: str, **kwargs):
 
 async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
+
+    # PRESERVE preferences từ session cũ (vd: en_level đã set trước)
+    old_session = await get_session(user_id)
+    preserved_prefs = dict(old_session.preferences) if old_session.preferences else {}
+
     await reset_session(user_id)
     session = await get_session(user_id)
+    session.preferences = preserved_prefs
     session.stage = PipelineStage.TASK_SELECT
     await save_session(session)
+
+    # Sprint 1.III: First-time user → hỏi en_level trước
+    if not session.preferences.get("en_level"):
+        await update.message.reply_text(
+            LANG_SETUP_MESSAGE,
+            parse_mode=ParseMode.MARKDOWN,
+            reply_markup=LANG_LEVEL_KEYBOARD,
+        )
+        return
+
+    # Returning user → vào menu chính ngay
     await update.message.reply_text(
         WELCOME_MESSAGE,
         parse_mode=ParseMode.MARKDOWN,
         reply_markup=MAIN_MENU_KEYBOARD,
+    )
+
+
+async def cmd_settings(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Sprint 1.III: /settings — đổi en_level."""
+    user_id = update.effective_user.id
+    session = await get_session(user_id)
+    current = session.preferences.get("en_level", "moderate")
+    label_map = {"none": "🔴 Không rành", "moderate": "🟡 Hiểu cơ bản", "fluent": "🟢 Thông thạo"}
+    await update.message.reply_text(
+        f"Khả năng tiếng Anh hiện tại của sếp: *{label_map.get(current, '🟡')}*\n\nĐổi lại nhé:",
+        parse_mode=ParseMode.MARKDOWN,
+        reply_markup=LANG_LEVEL_KEYBOARD,
     )
 
 
@@ -322,6 +366,34 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def _handle_callback_inner(update, context, query, session, data, user_id):
+
+    # ── Language preference setup (Sprint 1.III) ─────────────────
+    if data.startswith("lang_"):
+        level = data.replace("lang_", "")  # "none" / "moderate" / "fluent"
+        if level not in ("none", "moderate", "fluent"):
+            return
+        session.preferences["en_level"] = level
+        await save_session(session)
+
+        level_label = {
+            "none": "🔴 Không rành — Em sẽ dùng thuần Việt",
+            "moderate": "🟡 Hiểu cơ bản — Em dùng EN có giải thích",
+            "fluent": "🟢 Thông thạo — Em dùng EN tự nhiên",
+        }[level]
+
+        try:
+            await query.edit_message_text(
+                f"✅ Em ghi nhận ạ: *{level_label}*\n\nGiờ vào việc thôi sếp! 👇",
+                parse_mode=ParseMode.MARKDOWN,
+            )
+        except Exception:
+            pass
+        await query.message.reply_text(
+            WELCOME_MESSAGE,
+            parse_mode=ParseMode.MARKDOWN,
+            reply_markup=MAIN_MENU_KEYBOARD,
+        )
+        return
 
     # ── Menu navigation (tier 1 → tier 2) ─────────────────────────
     if data == "menu_main":

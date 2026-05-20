@@ -69,6 +69,8 @@ def _row_to_session(row: dict) -> Session:
     # Extract meta fields stored inside results (NOT versioned skill results)
     selected_task = raw_results.pop("_selected_task", None) or None
     pending_intake = raw_results.pop("_pending_intake", {}) or {}
+    preferences = raw_results.pop("_preferences", {}) or {}
+    feedback = raw_results.pop("_feedback", {}) or {}
     raw_results.pop("_brand_candidates", None)  # backward-compat: drop old field
 
     results = _normalize_results(raw_results)
@@ -81,6 +83,8 @@ def _row_to_session(row: dict) -> Session:
         intake_history=intake_history if isinstance(intake_history, list) else json.loads(intake_history),
         results=results,
         pending_intake=pending_intake if isinstance(pending_intake, dict) else {},
+        preferences=preferences if isinstance(preferences, dict) else {},
+        feedback=feedback if isinstance(feedback, dict) else {},
         created_at=str(row.get("created_at") or ""),
         updated_at=str(row.get("updated_at") or ""),
     )
@@ -118,6 +122,10 @@ async def save_session(session: Session):
     results_serialized["_selected_task"] = session.selected_task or ""
     if session.pending_intake:
         results_serialized["_pending_intake"] = session.pending_intake
+    if session.preferences:
+        results_serialized["_preferences"] = session.preferences
+    if session.feedback:
+        results_serialized["_feedback"] = session.feedback
 
     payload = {
         "user_id":          session.user_id,

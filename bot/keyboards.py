@@ -10,10 +10,34 @@ from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 # ─────────────────────────────────────────────────────────────────
 
 MAIN_MENU_KEYBOARD = InlineKeyboardMarkup([
-    [InlineKeyboardButton("🎯 Chiến lược (Strategic)",        callback_data="menu_strategic")],
-    [InlineKeyboardButton("⚙️ Sản xuất (Operational)",        callback_data="menu_operational")],
-    [InlineKeyboardButton("📊 Đánh giá (Analysis)",            callback_data="menu_analysis")],
-    [InlineKeyboardButton("🔍 Phân tích toàn diện (Full)",     callback_data="task_full")],
+    [InlineKeyboardButton("🎯 Chiến Lược",       callback_data="menu_strategic")],
+    [InlineKeyboardButton("⚙️ Sản Xuất",         callback_data="menu_operational")],
+    [InlineKeyboardButton("📊 Theo Dõi & Báo Cáo", callback_data="menu_analysis")],
+    [InlineKeyboardButton("🔍 Trọn Bộ (A → Z)",  callback_data="task_full")],
+])
+
+# Sprint 1: Language preference setup (first-time)
+LANG_LEVEL_KEYBOARD = InlineKeyboardMarkup([
+    [InlineKeyboardButton("🔴 Không rành — Toàn Việt",         callback_data="lang_none")],
+    [InlineKeyboardButton("🟡 Hiểu cơ bản — Có giải thích",     callback_data="lang_moderate")],
+    [InlineKeyboardButton("🟢 Thông thạo — EN tự nhiên",        callback_data="lang_fluent")],
+])
+
+# Sprint 2: Rating after skill execution
+RATING_KEYBOARD = InlineKeyboardMarkup([
+    [
+        InlineKeyboardButton("⭐", callback_data="rate_1"),
+        InlineKeyboardButton("⭐⭐", callback_data="rate_2"),
+        InlineKeyboardButton("⭐⭐⭐", callback_data="rate_3"),
+        InlineKeyboardButton("⭐⭐⭐⭐", callback_data="rate_4"),
+        InlineKeyboardButton("⭐⭐⭐⭐⭐", callback_data="rate_5"),
+    ]
+])
+
+# Sprint 2: After rating ≤ 3 + user provided feedback, ask if regen
+REGEN_PROMPT_KEYBOARD = InlineKeyboardMarkup([
+    [InlineKeyboardButton("✅ Có, chạy lại ngay theo feedback", callback_data="regen_yes")],
+    [InlineKeyboardButton("⏭️ Không cần, để admin review",      callback_data="regen_no")],
 ])
 
 
@@ -23,15 +47,15 @@ MAIN_MENU_KEYBOARD = InlineKeyboardMarkup([
 
 STRATEGIC_KEYBOARD = InlineKeyboardMarkup([
     [
-        InlineKeyboardButton("📊 Nghiên cứu thị trường", callback_data="task_market"),
-        InlineKeyboardButton("🕵️ Phân tích đối thủ",     callback_data="task_competitor"),
+        InlineKeyboardButton("📊 Tìm Hiểu Thị Trường", callback_data="task_market"),
+        InlineKeyboardButton("🕵️ Phân Tích Đối Thủ",   callback_data="task_competitor"),
     ],
     [
-        InlineKeyboardButton("👥 Customer Insight",       callback_data="task_customer"),
-        InlineKeyboardButton("💰 Pricing Strategy",       callback_data="task_pricing"),
+        InlineKeyboardButton("👥 Insight Khách Hàng", callback_data="task_customer"),
+        InlineKeyboardButton("💰 Chiến Lược Giá",     callback_data="task_pricing"),
     ],
-    [InlineKeyboardButton("🎯 Marketing Strategy",        callback_data="task_strategy")],
-    [InlineKeyboardButton("← Quay lại menu chính",        callback_data="menu_main")],
+    [InlineKeyboardButton("🎯 Lập Kế Hoạch Tổng",     callback_data="task_strategy")],
+    [InlineKeyboardButton("← Quay lại",                callback_data="menu_main")],
 ])
 
 
@@ -42,20 +66,23 @@ STRATEGIC_KEYBOARD = InlineKeyboardMarkup([
 OPERATIONAL_KEYBOARD = InlineKeyboardMarkup([
     # Planning cluster
     [
-        InlineKeyboardButton("📋 Campaign Brief",         callback_data="task_campaign_brief"),
-        InlineKeyboardButton("📅 Content Calendar",       callback_data="task_content_calendar"),
+        InlineKeyboardButton("📋 Viết Brief Campaign",  callback_data="task_campaign_brief"),
+        InlineKeyboardButton("📅 Lịch Nội Dung",        callback_data="task_content_calendar"),
     ],
     # Production cluster
     [
-        InlineKeyboardButton("✍️ Ads Copy",               callback_data="task_ads_copy"),
-        InlineKeyboardButton("🎬 Video Scripts",          callback_data="task_video_scripts"),
+        InlineKeyboardButton("✍️ Sản Xuất Nội Dung",    callback_data="task_content_generator"),
+        InlineKeyboardButton("📢 Sản Xuất Nội Dung Ads", callback_data="task_ads_generator"),
     ],
     [
-        InlineKeyboardButton("🌐 Landing Page",           callback_data="task_landing_page"),
-        InlineKeyboardButton("💬 Sales/Inbox Script",     callback_data="task_sales_inbox_script"),
+        InlineKeyboardButton("🎬 Viết Kịch Bản Video", callback_data="task_video_scripts"),
+        InlineKeyboardButton("🌐 Thiết Kế Website",    callback_data="task_landing_page"),
     ],
-    [InlineKeyboardButton("📧 Email/Zalo Nurture",         callback_data="task_email_zalo_sequence")],
-    [InlineKeyboardButton("← Quay lại menu chính",         callback_data="menu_main")],
+    [
+        InlineKeyboardButton("💬 Kịch Bản Sales",      callback_data="task_sales_inbox_script"),
+        InlineKeyboardButton("📧 Chăm Sóc Khách Hàng", callback_data="task_email_zalo_sequence"),
+    ],
+    [InlineKeyboardButton("← Quay lại",                callback_data="menu_main")],
 ])
 
 
@@ -64,8 +91,9 @@ OPERATIONAL_KEYBOARD = InlineKeyboardMarkup([
 # ─────────────────────────────────────────────────────────────────
 
 ANALYSIS_KEYBOARD = InlineKeyboardMarkup([
-    [InlineKeyboardButton("📈 Performance Audit",          callback_data="task_performance_audit")],
-    [InlineKeyboardButton("← Quay lại menu chính",         callback_data="menu_main")],
+    [InlineKeyboardButton("🔍 Theo Dõi Đối Thủ",      callback_data="task_competitor_spy")],
+    [InlineKeyboardButton("📊 Báo Cáo Ads",            callback_data="task_performance_audit")],
+    [InlineKeyboardButton("← Quay lại",                callback_data="menu_main")],
 ])
 
 

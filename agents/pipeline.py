@@ -38,7 +38,7 @@ from agents.skills import (
     StrategySynthesisSkill,
 )
 from agents.critic import run_critic
-from agents.output_formats import get_format_instruction
+from agents.output_formats import get_format_instruction, get_lang_instruction
 from frameworks.kpi_library import get_framework_as_text
 from frameworks.save_framework import generate_save_analysis
 from frameworks.smart_framework import format_smart_prompt
@@ -274,7 +274,10 @@ async def _run_skill(skill: AgentSkill, session: Session) -> str:
     context = skill.build_context(session)
     user_msg = skill.build_user_msg(session)
     format_instruction = get_format_instruction(skill.output_format)
-    augmented_system = skill.system_prompt + format_instruction
+    # Inject language preference (Sprint 1.III)
+    en_level = (session.preferences or {}).get("en_level", "moderate")
+    lang_instruction = get_lang_instruction(en_level)
+    augmented_system = skill.system_prompt + format_instruction + "\n\n---\n\n" + lang_instruction
 
     response = await client.messages.create(
         model=CLAUDE_SONNET_MODEL,

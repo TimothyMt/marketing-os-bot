@@ -54,13 +54,12 @@ class TaskConfig:
 STRATEGIC_TASKS: dict[str, TaskConfig] = {
     "full": TaskConfig(
         name="full",
-        label="Phân tích toàn diện",
+        label="Trọn Bộ",
         button_emoji="🔍",
         category="full",
-        description="Chạy 5 bước phân tích chiến lược tuần tự",
+        description="Chạy 5 bước phân tích chiến lược tuần tự (A → Z)",
         skill_class_name="",  # Composite
         pipeline_stages=["market_research", "competitor", "customer_insight", "psychology_pricing", "synthesis"],
-        # Full mode cần full profile — yêu cầu nhiều fields
         intake_required_fields=[
             "industry", "product_service", "target_customer",
             "monthly_revenue", "primary_goal", "main_challenge",
@@ -68,7 +67,7 @@ STRATEGIC_TASKS: dict[str, TaskConfig] = {
     ),
     "market": TaskConfig(
         name="market",
-        label="Nghiên cứu thị trường",
+        label="Tìm Hiểu Thị Trường",
         button_emoji="📊",
         category="strategic",
         description="TAM/SAM/SOM + Market Dynamics",
@@ -84,7 +83,7 @@ STRATEGIC_TASKS: dict[str, TaskConfig] = {
     ),
     "competitor": TaskConfig(
         name="competitor",
-        label="Phân tích đối thủ",
+        label="Phân Tích Đối Thủ",
         button_emoji="🕵️",
         category="strategic",
         description="8 chiều phân tích + Market Gap",
@@ -100,23 +99,23 @@ STRATEGIC_TASKS: dict[str, TaskConfig] = {
     ),
     "customer": TaskConfig(
         name="customer",
-        label="Customer Insight",
+        label="Insight Khách Hàng",
         button_emoji="👥",
         category="strategic",
         description="ICP + Jobs-to-be-Done + Pain-Gain Map",
         skill_class_name="CustomerInsightSkill",
         pipeline_stages=["customer_insight"],
-        intake_required_fields=["industry", "product_service", "target_customer", "main_challenge"],
+        intake_required_fields=["industry", "product_service", "target_customer"],
         intake_fields=[
-            {"key": "product_service",  "label": "Sản phẩm/dịch vụ",                "example": "Spa làm đẹp · combo Tết 680K", "required": True},
-            {"key": "target_customer",  "label": "Khách hàng mục tiêu hiện tại",     "example": "Phụ nữ 28-38 thu nhập 25-50tr", "required": True},
-            {"key": "main_challenge",   "label": "Vấn đề lớn nhất với khách hàng",   "example": "Khách 1 lần đi rồi không quay lại", "required": True},
-            {"key": "location",         "label": "Địa bàn",                          "example": "HCM", "required": False},
+            {"key": "product_service",  "label": "Sản phẩm/dịch vụ",                  "example": "Spa làm đẹp · combo Tết 680K", "required": True},
+            {"key": "target_customer",  "label": "Khách hàng mục tiêu hiện tại",       "example": "Phụ nữ 28-38 thu nhập 25-50tr", "required": True},
+            {"key": "main_challenge",   "label": "Sếp nghĩ khách tiềm năng đang gặp khó khăn gì?", "example": "Khách không biết chọn sản phẩm phù hợp — hoặc 'chưa biết, em research'", "required": False},
+            {"key": "location",         "label": "Địa bàn",                            "example": "HCM", "required": False},
         ],
     ),
     "pricing": TaskConfig(
         name="pricing",
-        label="Pricing Strategy",
+        label="Chiến Lược Giá",
         button_emoji="💰",
         category="strategic",
         description="Pricing Model + Psychology Tactics",
@@ -132,18 +131,16 @@ STRATEGIC_TASKS: dict[str, TaskConfig] = {
     ),
     "strategy": TaskConfig(
         name="strategy",
-        label="Marketing Strategy",
+        label="Lập Kế Hoạch Tổng",
         button_emoji="🎯",
         category="strategic",
         description="SAVE Framework + SMART Goals + 90-day Roadmap",
         skill_class_name="StrategySynthesisSkill",
         pipeline_stages=["synthesis"],
-        # Strategy là output cuối — cần full profile
         intake_required_fields=[
             "industry", "product_service", "target_customer",
             "monthly_revenue", "primary_goal", "main_challenge",
         ],
-        # KHÔNG có intake_fields → vẫn dùng multi-turn intake
     ),
 }
 
@@ -155,11 +152,11 @@ STRATEGIC_TASKS: dict[str, TaskConfig] = {
 OPERATIONAL_TASKS: dict[str, TaskConfig] = {
     "campaign_brief": TaskConfig(
         name="campaign_brief",
-        label="Campaign Brief",
+        label="Viết Brief Campaign",
         button_emoji="📋",
         category="operational",
         description="Bridge Strategy → Tactical — Brief campaign 10 sections",
-        skill_class_name="CampaignBriefSkill",  # Generic OperationalSkill
+        skill_class_name="CampaignBriefSkill",
         intake_fields=[
             {"key": "campaign_name", "label": "Tên campaign", "example": "Combo Tết \"Tặng Mình Trước\"", "required": True},
             {"key": "campaign_goal", "label": "Mục tiêu chính", "example": "Thu 6000 mess, doanh thu 500 triệu", "required": True},
@@ -169,7 +166,7 @@ OPERATIONAL_TASKS: dict[str, TaskConfig] = {
     ),
     "content_calendar": TaskConfig(
         name="content_calendar",
-        label="Content Calendar",
+        label="Lịch Nội Dung",
         button_emoji="📅",
         category="operational",
         description="Lịch content tháng — Pillar + Funnel + Source mix",
@@ -181,13 +178,25 @@ OPERATIONAL_TASKS: dict[str, TaskConfig] = {
             {"key": "current_campaign", "label": "Có campaign nào đang chạy không?", "example": "Combo Tết \"Tặng Mình Trước\"", "required": False},
         ],
     ),
-    "ads_copy": TaskConfig(
-        name="ads_copy",
-        label="Ads Copy",
+    "content_generator": TaskConfig(
+        name="content_generator",
+        label="Sản Xuất Nội Dung",
         button_emoji="✍️",
         category="operational",
-        description="Copy ads Meta + TikTok, 3-tier TOFU/MOFU/BOFU × 2 variants",
-        skill_class_name="AdsCopySkill",  # Subclass — has tier selection logic
+        description="Gen content theo từng bài từ Lịch Nội Dung — output Excel chi tiết",
+        skill_class_name="ContentGeneratorSkill",
+        intake_fields=[
+            {"key": "scope",     "label": "Sản xuất cho ngày nào / tuần nào?", "example": "Tuần 1 (5-11/01/2026) — 14 bài", "required": True},
+            {"key": "tone_note", "label": "Tone cần đặc biệt note?",            "example": "Tết — vibe ấm áp + urgency mềm", "required": False},
+        ],
+    ),
+    "ads_generator": TaskConfig(
+        name="ads_generator",
+        label="Sản Xuất Nội Dung Ads",
+        button_emoji="📢",
+        category="operational",
+        description="Gen ads cho Meta + TikTok — Video script hoặc Brief ảnh",
+        skill_class_name="AdsCopySkill",  # Subclass — has tier + format selector (Sprint 3 sẽ refactor)
         intake_fields=[
             {"key": "product",       "label": "Sản phẩm/dịch vụ và giá", "example": "Combo Tết spa 680K (gốc 850K)", "required": True},
             {"key": "insight",       "label": "Insight cốt lõi của tệp", "example": "Phụ nữ muốn được chăm sóc nhưng cần \"lý do\"", "required": True},
@@ -197,24 +206,23 @@ OPERATIONAL_TASKS: dict[str, TaskConfig] = {
     ),
     "video_scripts": TaskConfig(
         name="video_scripts",
-        label="Video Scripts",
+        label="Viết Kịch Bản Video",
         button_emoji="🎬",
         category="operational",
-        description="Script video TikTok/Reels/Shorts — 4 variants creator type (UGC/EGC/FGC/KOL)",
-        skill_class_name="VideoScriptsSkill",  # Subclass — has creator type selector
+        description="Kịch bản video TikTok/Reels/Shorts — mạnh về social/organic",
+        skill_class_name="VideoScriptsSkill",
         intake_fields=[
             {"key": "topic",     "label": "Sản phẩm/thông điệp",        "example": "Combo Tết spa — message: yêu bản thân", "required": True},
             {"key": "funnel",    "label": "Tầng phễu",                  "example": "TOFU (awareness) / MOFU / BOFU", "required": True},
             {"key": "duration",  "label": "Độ dài video (giây)",         "example": "15s / 30s / 45s / 60s", "required": True},
-            # creator_type chọn qua button, không qua intake form
         ],
     ),
     "landing_page": TaskConfig(
         name="landing_page",
-        label="Landing Page Brief",
+        label="Thiết Kế Website",
         button_emoji="🌐",
         category="operational",
-        description="Brief landing page hoàn chỉnh cho dev/designer",
+        description="Brief + HTML landing page hoàn chỉnh cho dev/designer",
         skill_class_name="LandingPageSkill",
         intake_fields=[
             {"key": "page_goal",       "label": "Mục tiêu trang",                    "example": "Thu lead booking / Chốt đơn / Đặt lịch", "required": True},
@@ -225,10 +233,10 @@ OPERATIONAL_TASKS: dict[str, TaskConfig] = {
     ),
     "sales_inbox_script": TaskConfig(
         name="sales_inbox_script",
-        label="Sales/Inbox Script",
+        label="Kịch Bản Sales",
         button_emoji="💬",
         category="operational",
-        description="Script chat cho team sales/inbox — base on campaign tone",
+        description="Script chat cho team sales — tone match với campaign brief",
         skill_class_name="SalesInboxScriptSkill",
         intake_fields=[
             {"key": "channel",      "label": "Kênh chat",                  "example": "Facebook Messenger / Zalo OA / Instagram DM", "required": True},
@@ -238,10 +246,10 @@ OPERATIONAL_TASKS: dict[str, TaskConfig] = {
     ),
     "email_zalo_sequence": TaskConfig(
         name="email_zalo_sequence",
-        label="Email/Zalo Nurture",
+        label="Chăm Sóc Khách Hàng",
         button_emoji="📧",
         category="operational",
-        description="Chuỗi nurture Email + Zalo OA cho lead",
+        description="Chuỗi nurture Email + Zalo OA cho lead/khách cũ",
         skill_class_name="EmailZaloSequenceSkill",
         intake_fields=[
             {"key": "audience_segment", "label": "Tệp nurture",             "example": "Khách đã inbox chưa book / Khách book chưa đến / Khách 1 lần", "required": True},
@@ -250,12 +258,24 @@ OPERATIONAL_TASKS: dict[str, TaskConfig] = {
             {"key": "duration",         "label": "Dài chuỗi (số ngày)",     "example": "7 ngày / 14 ngày / 30 ngày", "required": False},
         ],
     ),
+    "competitor_spy": TaskConfig(
+        name="competitor_spy",
+        label="Theo Dõi Đối Thủ",
+        button_emoji="🔍",
+        category="operational",
+        description="Phân tích Facebook Ads Library của đối thủ — pattern + insight",
+        skill_class_name="CompetitorSpySkill",
+        intake_fields=[
+            {"key": "competitor_name", "label": "Tên đối thủ + Facebook Page URL nếu có", "example": "Cocoon — https://facebook.com/cocoonvn", "required": True},
+            {"key": "focus_area",      "label": "Sếp muốn em focus phân tích gì",         "example": "Hook style / Offer mechanics / Creative format", "required": False},
+        ],
+    ),
     "performance_audit": TaskConfig(
         name="performance_audit",
-        label="Performance Audit",
-        button_emoji="📈",
+        label="Báo Cáo Ads",
+        button_emoji="📊",
         category="analysis",
-        description="Audit campaign — VN benchmarks + diagnostic + next actions",
+        description="Báo cáo + Audit campaign — VN benchmarks + diagnostic + next actions",
         skill_class_name="PerformanceAuditSkill",
         intake_fields=[
             {"key": "campaign_name",   "label": "Tên campaign cần audit",        "example": "Tết \"Tặng Mình Trước\" — 25/12/2025 → 14/01/2026", "required": True},

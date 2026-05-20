@@ -17,6 +17,7 @@ from bot.handlers import (
     cmd_start,
     cmd_reset,
     cmd_help,
+    cmd_settings,
     handle_message,
     handle_callback,
 )
@@ -52,6 +53,7 @@ def main():
     app.add_handler(CommandHandler("start", cmd_start))
     app.add_handler(CommandHandler("reset", cmd_reset))
     app.add_handler(CommandHandler("help", cmd_help))
+    app.add_handler(CommandHandler("settings", cmd_settings))
 
     # Inline keyboard callbacks
     app.add_handler(CallbackQueryHandler(handle_callback))

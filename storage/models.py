@@ -153,6 +153,15 @@ class Session:
     # Pending intake answers for single-shot ops skills (cleared after use)
     pending_intake: dict[str, str] = field(default_factory=dict)
 
+    # User preferences (set once at first /start)
+    # - en_level: "none" / "moderate" / "fluent"
+    # - other future settings: notification time, default platform...
+    preferences: dict[str, str] = field(default_factory=dict)
+
+    # Feedback collected per skill (rating + correction notes)
+    # Schema: {skill_name: [{"version": int, "rating": 1-5, "feedback": str, "created_at": iso}]}
+    feedback: dict[str, list[dict]] = field(default_factory=dict)
+
     created_at: Optional[str] = None
     updated_at: Optional[str] = None
 

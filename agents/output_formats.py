@@ -9,6 +9,53 @@ LANGUAGE & DATA DISCIPLINE rules apply to ALL formats uniformly.
 """
 
 # ─────────────────────────────────────────────────────────────────
+# Language preference instruction — injected based on user en_level
+# ─────────────────────────────────────────────────────────────────
+
+LANG_INSTRUCTIONS = {
+    "none": """**NGÔN NGỮ (USER KHÔNG RÀNH TIẾNG ANH):**
+- DÙNG THUẦN VIỆT TOÀN BỘ — kể cả thuật ngữ marketing.
+- Translate examples:
+  * CAC → "chi phí thu một khách hàng"
+  * TAM → "quy mô thị trường tối đa"
+  * SAM → "thị trường khả thi"
+  * SOM → "thị phần khả dĩ"
+  * ROAS → "tỷ lệ doanh thu/chi phí ads"
+  * CPMess → "chi phí một tin nhắn"
+  * AOV → "giá trị đơn hàng trung bình"
+  * ICP → "chân dung khách hàng lý tưởng"
+  * JTBD → "nhiệm vụ khách cần hoàn thành"
+  * TOFU/MOFU/BOFU → "tệp lạnh / tệp ấm / tệp nóng"
+  * UGC → "nội dung khách thật làm"
+  * EGC → "nội dung nhân viên làm"
+  * SMART → "Cụ thể / Đo được / Khả thi / Liên quan / Có thời hạn"
+  * SAVE → "Giải pháp / Tiếp cận / Giá trị / Giáo dục"
+- KHÔNG dùng từ Anh trong output trừ tên brand (Cocoon, M.O.I, Facebook, TikTok).""",
+
+    "moderate": """**NGÔN NGỮ (USER HIỂU TIẾNG ANH CƠ BẢN):**
+- Thuật ngữ marketing Anh BẮT BUỘC kèm giải thích Việt trong ngoặc lần đầu xuất hiện:
+  * "TAM (Total Addressable Market — quy mô thị trường tối đa)"
+  * "CAC (Customer Acquisition Cost — chi phí thu khách)"
+  * "ROAS (Return On Ad Spend — tỷ lệ doanh thu/ads)"
+  * "ICP (Ideal Customer Profile — chân dung khách lý tưởng)"
+  * "JTBD (Jobs-to-be-Done — nhiệm vụ khách cần làm)"
+  * "TOFU/MOFU/BOFU (Top/Middle/Bottom of Funnel — đầu/giữa/cuối phễu)"
+- Sau khi giải thích 1 lần → dùng viết tắt tự do
+- SMART/SAVE Goals viết FULL: "S (Specific — Cụ thể): ..." """,
+
+    "fluent": """**NGÔN NGỮ (USER THÔNG THẠO TIẾNG ANH):**
+- Dùng thuật ngữ marketing Anh tự nhiên: TAM, SAM, SOM, CAC, ROAS, AOV, ICP, JTBD, TOFU/MOFU/BOFU, UGC/EGC, SMART, SAVE.
+- KHÔNG cần giải thích trong ngoặc — user đã hiểu.
+- Câu văn vẫn bằng tiếng Việt (chỉ thuật ngữ là English).""",
+}
+
+
+def get_lang_instruction(en_level: str = "moderate") -> str:
+    """Get language preference instruction based on user en_level."""
+    return LANG_INSTRUCTIONS.get(en_level, LANG_INSTRUCTIONS["moderate"])
+
+
+# ─────────────────────────────────────────────────────────────────
 # Shared rules — applied to all formats
 # ─────────────────────────────────────────────────────────────────
 
