@@ -17,11 +17,13 @@ from agents.skills import (
 from agents.operational_prompts import (
     CAMPAIGN_BRIEF_SYSTEM,
     CONTENT_CALENDAR_SYSTEM,
+    CONTENT_GENERATOR_SYSTEM,
     ADS_COPY_SYSTEM,
     VIDEO_SCRIPTS_SYSTEM,
     LANDING_PAGE_SYSTEM,
     SALES_INBOX_SCRIPT_SYSTEM,
     EMAIL_ZALO_SEQUENCE_SYSTEM,
+    COMPETITOR_SPY_SYSTEM,
     PERFORMANCE_AUDIT_SYSTEM,
 )
 from agents.task_registry import OPERATIONAL_TASKS
@@ -87,13 +89,64 @@ def make_campaign_brief_skill() -> OperationalSkill:
 
 
 def make_content_calendar_skill() -> OperationalSkill:
+    """Sprint 3.4: Pillar % DYNAMIC theo stage + goal + challenge."""
     return OperationalSkill(_config_for(
         "content_calendar",
         CONTENT_CALENDAR_SYSTEM,
-        max_tokens=10000,  # bumped — 4-week grid + repurpose + ops notes
+        max_tokens=10000,
         context_strategy=ContextStrategy.PROFILE_PLUS_CAMPAIGN,
         primary_deliverable=PrimaryDeliverable.EXCEL,
     ))
+
+
+def calc_dynamic_pillar_mix(profile, synthesis: str = "") -> dict:
+    """Sprint 3.4: Calculate Pillar % dynamically dựa profile + synthesis.
+    Returns dict {educate, trust, engage, convert} that sums to 1.0.
+
+    Heuristics:
+    - MVP/Early stage → Educate cao (new brand cần educate)
+    - Growth → balanced
+    - Scale → Trust + Retention cao
+    - Goal "brand_awareness" → Educate + Engage
+    - Goal "revenue/conversion" → Convert cao
+    - Goal "retention" → Trust cao
+    """
+    base = {"educate": 0.30, "trust": 0.30, "engage": 0.20, "convert": 0.20}
+
+    # Stage adjustment
+    stage = (profile.stage or "").lower() if profile else ""
+    if stage in ("idea", "mvp"):
+        base["educate"] += 0.15
+        base["convert"] -= 0.10
+        base["engage"] -= 0.05
+    elif stage == "scale":
+        base["trust"] += 0.10
+        base["educate"] -= 0.05
+        base["convert"] -= 0.05
+
+    # Goal adjustment
+    goal = (profile.primary_goal or "").lower() if profile else ""
+    synthesis_lower = (synthesis or "").lower()
+
+    if any(k in goal + synthesis_lower for k in ["awareness", "brand", "nhận diện"]):
+        base["educate"] += 0.10
+        base["engage"] += 0.05
+        base["convert"] -= 0.15
+    elif any(k in goal + synthesis_lower for k in ["revenue", "doanh thu", "conversion", "chốt"]):
+        base["convert"] += 0.15
+        base["educate"] -= 0.10
+        base["trust"] -= 0.05
+    elif any(k in goal + synthesis_lower for k in ["retention", "giữ chân", "repeat", "loyalty"]):
+        base["trust"] += 0.15
+        base["convert"] -= 0.05
+        base["educate"] -= 0.10
+
+    # Normalize (handle negatives or sum != 1.0)
+    for k in base:
+        if base[k] < 0.05:
+            base[k] = 0.05
+    total = sum(base.values())
+    return {k: round(v / total, 2) for k, v in base.items()}
 
 
 def make_landing_page_skill() -> OperationalSkill:
@@ -126,6 +179,29 @@ def make_email_zalo_sequence_skill() -> OperationalSkill:
     ))
 
 
+def make_content_generator_skill() -> OperationalSkill:
+    """Sprint 3: NEW — gen content theo từng bài từ Content Calendar."""
+    return OperationalSkill(_config_for(
+        "content_generator",
+        CONTENT_GENERATOR_SYSTEM,
+        max_tokens=12000,  # output dài (1 tuần = 7-14 bài, mỗi bài 200-300 từ)
+        context_strategy=ContextStrategy.PROFILE_PLUS_CAMPAIGN,
+        primary_deliverable=PrimaryDeliverable.EXCEL,  # Table export — paste GG Sheet
+    ))
+
+
+def make_competitor_spy_skill() -> OperationalSkill:
+    """Sprint 3: NEW — phân tích FB Ads Library của đối thủ.
+    Hiện tại em không tự gọi FB API (chờ key). User paste ads content/screenshots → em phân tích."""
+    return OperationalSkill(_config_for(
+        "competitor_spy",
+        COMPETITOR_SPY_SYSTEM,
+        max_tokens=8000,
+        context_strategy=ContextStrategy.PROFILE_PLUS_STRATEGY,
+        primary_deliverable=PrimaryDeliverable.HTML,
+    ))
+
+
 def make_performance_audit_skill() -> OperationalSkill:
     return OperationalSkill(_config_for(
         "performance_audit",
@@ -141,6 +217,39 @@ def make_performance_audit_skill() -> OperationalSkill:
 # ─────────────────────────────────────────────────────────────────
 # SPECIAL skills (2) — custom subclasses with extra logic
 # ─────────────────────────────────────────────────────────────────
+
+class ContentCalendarDynamicSkill(OperationalSkill):
+    """Sprint 3.4: Content Calendar với Pillar % dynamic theo business stage + goal."""
+
+    def __init__(self):
+        config = _config_for(
+            "content_calendar",
+            CONTENT_CALENDAR_SYSTEM,
+            max_tokens=10000,
+            context_strategy=ContextStrategy.PROFILE_PLUS_CAMPAIGN,
+            primary_deliverable=PrimaryDeliverable.EXCEL,
+        )
+        super().__init__(config)
+
+    def build_user_msg(self, session: Session) -> str:
+        base_msg = super().build_user_msg(session)
+        # Inject dynamic pillar mix
+        synthesis = session.get_latest_result("synthesis") or ""
+        pillar_mix = calc_dynamic_pillar_mix(session.profile, synthesis)
+        pillar_str = " / ".join(
+            f"{k.title()} {int(v*100)}%" for k, v in pillar_mix.items()
+        )
+        return (
+            base_msg
+            + "\n\n---\n\n**PILLAR MIX TÍNH ĐỘNG cho business này (dùng đúng số này, không tự thay):**\n"
+            + pillar_str
+            + "\n\n_(Tính dựa trên: stage = "
+            + str(session.profile.stage or "unknown")
+            + ", goal = "
+            + str(session.profile.primary_goal or "unknown")
+            + ")_"
+        )
+
 
 class AdsCopySkill(AgentSkill):
     """Special ops skill: user picks which tier(s) to generate.
@@ -256,12 +365,15 @@ Lưu ý: KHÔNG bao gồm hợp đồng/commercial terms."""
 
 OPS_SKILL_FACTORIES: dict[str, callable] = {
     "campaign_brief":      make_campaign_brief_skill,
-    "content_calendar":    make_content_calendar_skill,
+    "content_calendar":    ContentCalendarDynamicSkill,  # Sprint 3.4 — Pillar dynamic
+    "content_generator":   make_content_generator_skill,
+    "competitor_spy":      make_competitor_spy_skill,
     "landing_page":        make_landing_page_skill,
     "sales_inbox_script":  make_sales_inbox_script_skill,
     "email_zalo_sequence": make_email_zalo_sequence_skill,
     "performance_audit":   make_performance_audit_skill,
     "ads_copy":            AdsCopySkill,
+    "ads_generator":       AdsCopySkill,
     "video_scripts":       VideoScriptsSkill,
 }
 

@@ -26,14 +26,17 @@ STAGE_META = {
     "pricing":            {"title": "Marketing Psychology & Pricing", "icon": "💡", "color": "pricing"},
     "strategy":           {"title": "Marketing Strategy",          "icon": "🎯", "color": "strategy"},
     # Operational skills
-    "campaign_brief":      {"title": "Campaign Brief",              "icon": "📋", "color": "strategy"},
-    "content_calendar":    {"title": "Content Calendar",            "icon": "📅", "color": "market"},
-    "ads_copy":            {"title": "Ads Copy",                    "icon": "✍️", "color": "pricing"},
-    "video_scripts":       {"title": "Video Scripts",               "icon": "🎬", "color": "customer"},
-    "landing_page":        {"title": "Landing Page Brief",          "icon": "🌐", "color": "competitor"},
-    "sales_inbox_script":  {"title": "Sales/Inbox Script",          "icon": "💬", "color": "customer"},
-    "email_zalo_sequence": {"title": "Email/Zalo Nurture",          "icon": "📧", "color": "pricing"},
-    "performance_audit":   {"title": "Performance Audit",           "icon": "📈", "color": "strategy"},
+    "campaign_brief":      {"title": "Viết Brief Campaign",         "icon": "📋", "color": "strategy"},
+    "content_calendar":    {"title": "Lịch Nội Dung",               "icon": "📅", "color": "market"},
+    "content_generator":   {"title": "Sản Xuất Nội Dung",           "icon": "✍️", "color": "customer"},
+    "ads_copy":            {"title": "Sản Xuất Nội Dung Ads",       "icon": "📢", "color": "pricing"},
+    "ads_generator":       {"title": "Sản Xuất Nội Dung Ads",       "icon": "📢", "color": "pricing"},
+    "video_scripts":       {"title": "Viết Kịch Bản Video",         "icon": "🎬", "color": "customer"},
+    "landing_page":        {"title": "Thiết Kế Website",            "icon": "🌐", "color": "competitor"},
+    "sales_inbox_script":  {"title": "Kịch Bản Sales",              "icon": "💬", "color": "customer"},
+    "email_zalo_sequence": {"title": "Chăm Sóc Khách Hàng",         "icon": "📧", "color": "pricing"},
+    "competitor_spy":      {"title": "Theo Dõi Đối Thủ",            "icon": "🔍", "color": "competitor"},
+    "performance_audit":   {"title": "Báo Cáo Ads",                 "icon": "📊", "color": "strategy"},
 }
 
 

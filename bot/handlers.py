@@ -551,7 +551,9 @@ async def _handle_callback_inner(update, context, query, session, data, user_id)
         session.pending_intake["selected_tiers"] = tier
         await save_session(session)
         await query.edit_message_reply_markup(reply_markup=None)
-        await _send_single_shot_form(query.message, session, "ads_copy")
+        # Use selected_task (already set to ads_generator) or fallback
+        skill_name = session.selected_task or "ads_generator"
+        await _send_single_shot_form(query.message, session, skill_name)
         return
 
     if data.startswith("video_creator_"):
@@ -574,16 +576,19 @@ async def _handle_callback_inner(update, context, query, session, data, user_id)
             await query.edit_message_reply_markup(reply_markup=None)
 
             # Special skills with variant chooser
-            if task_type == "ads_copy":
+            if task_type in ("ads_copy", "ads_generator"):
+                # Lưu real skill name (cùng AdsCopySkill class)
+                session.selected_task = "ads_generator"
+                await save_session(session)
                 await query.message.reply_text(
-                    "✍️ *Ads Copy* — Bạn muốn gen tier nào trước?",
+                    "📢 *Sản Xuất Nội Dung Ads* — Sếp muốn gen tier nào trước ạ?",
                     parse_mode=ParseMode.MARKDOWN,
                     reply_markup=ADS_COPY_TIER_KEYBOARD,
                 )
                 return
             if task_type == "video_scripts":
                 await query.message.reply_text(
-                    "🎬 *Video Scripts* — Brief cho loại creator nào?",
+                    "🎬 *Viết Kịch Bản Video* — Brief cho loại creator nào ạ?",
                     parse_mode=ParseMode.MARKDOWN,
                     reply_markup=VIDEO_CREATOR_KEYBOARD,
                 )
