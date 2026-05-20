@@ -117,6 +117,8 @@ class OperationalSkill(AgentSkill):
 
         # Sprint 2: nếu có user_correction từ regen flow → append vào msg
         user_correction = intake.pop("_user_correction", None)
+        # FB live data (competitor spy / performance audit) — injected by handlers
+        fb_data = intake.pop("_fb_data", None)
         # Remove all internal markers (start with _) before formatting
         intake = {k: v for k, v in intake.items() if not k.startswith("_")}
 
@@ -138,6 +140,14 @@ class OperationalSkill(AgentSkill):
                 "{" + str(e).strip("'") + "}",
                 f"[missing: {e}]"
             ).format(**{k: v for k, v in intake.items()})
+
+        # Append FB live data nếu có (competitor spy / performance audit)
+        if fb_data:
+            msg += (
+                "\n\n---\n\n"
+                "**LIVE DATA TỪ FACEBOOK API (đã tự động fetch — ưu tiên phân tích data thực này):**\n\n"
+                f"{fb_data}"
+            )
 
         # Append user correction nếu đang regen (Sprint 2)
         if user_correction:

@@ -7,6 +7,12 @@ TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
 ANTHROPIC_API_KEY  = os.getenv("ANTHROPIC_API_KEY", "")
 OPENAI_API_KEY     = os.getenv("OPENAI_API_KEY", "")  # cho image gen (gpt-image-1)
 
+# Facebook APIs
+FB_ACCESS_TOKEN    = os.getenv("FB_ACCESS_TOKEN", "")   # User/System token (ads_read, read_insights)
+FB_APP_ID          = os.getenv("FB_APP_ID", "")         # App ID
+FB_APP_SECRET      = os.getenv("FB_APP_SECRET", "")     # App Secret
+FB_AD_ACCOUNT_ID   = os.getenv("FB_AD_ACCOUNT_ID", "")  # act_XXXXXXXXXX (để pull data ads của sếp)
+
 # Supabase — dùng HTTPS (port 443), không bao giờ bị block
 SUPABASE_URL       = os.getenv("SUPABASE_URL", "")
 SUPABASE_KEY       = os.getenv("SUPABASE_SERVICE_KEY", "")  # service_role key

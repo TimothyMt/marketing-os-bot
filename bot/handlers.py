@@ -1053,6 +1053,12 @@ async def _handle_ops_intake_reply(update: Update, context: ContextTypes.DEFAULT
     )
 
     try:
+        # Pre-fetch live FB data cho các skills cần (competitor_spy, performance_audit)
+        if task_name == "competitor_spy":
+            await _prefetch_competitor_ads(update.message, session)
+        elif task_name == "performance_audit":
+            await _prefetch_performance_data(update.message, session)
+
         # Dispatch theo task type
         if task_name in SINGLE_SHOT_STRATEGIC:
             from agents.pipeline import run_strategic_single_skill
@@ -1323,6 +1329,95 @@ async def _run_pipeline_sequentially(message: Message, session):
                 parse_mode=ParseMode.MARKDOWN,
                 reply_markup=RATING_KEYBOARD,
             )
+
+
+# ─── Facebook API pre-fetch helpers ─────────────────────────────
+
+async def _prefetch_competitor_ads(message: Message, session):
+    """Pre-fetch FB Ads Library data cho competitor_spy skill.
+    Lấy tên đối thủ từ pending_intake, search Ads Library, inject vào _fb_data."""
+    try:
+        from tools.fb_ads_library import search_competitor_ads, format_ads_for_analysis, is_available
+        if not is_available():
+            logger.info("FB Ads Library not configured — skipping pre-fetch")
+            return
+
+        competitor_name = (
+            session.pending_intake.get("competitor_name")
+            or session.pending_intake.get("competitor")
+            or session.profile.competitors
+            or ""
+        )
+        if not competitor_name:
+            logger.info("No competitor name found — skipping Ads Library fetch")
+            return
+
+        # Notify user
+        await message.reply_text(
+            f"🔍 Em đang tìm ads của *{competitor_name}* trên Facebook Ads Library...",
+            parse_mode=ParseMode.MARKDOWN,
+        )
+
+        ads = await search_competitor_ads(
+            search_terms=competitor_name,
+            country="VN",
+            limit=20,
+        )
+        fb_data = format_ads_for_analysis(ads, competitor_name)
+        session.pending_intake["_fb_data"] = fb_data
+        logger.info("FB Ads Library: fetched %d ads for '%s'", len(ads), competitor_name)
+
+    except Exception as e:
+        logger.warning("FB Ads Library pre-fetch failed (non-blocking): %s", e)
+        # Non-blocking — skill vẫn chạy mà không có live data
+
+
+async def _prefetch_performance_data(message: Message, session):
+    """Pre-fetch FB Marketing API data cho performance_audit skill.
+    Lấy date range từ pending_intake, pull insights, inject vào _fb_data."""
+    try:
+        from tools.fb_marketing import get_account_insights, format_insights_for_analysis, is_available
+        if not is_available():
+            logger.info("FB Marketing API not configured (need FB_AD_ACCOUNT_ID) — skipping pre-fetch")
+            return
+
+        # Map date label → FB date_preset
+        period_raw = (
+            session.pending_intake.get("date_range")
+            or session.pending_intake.get("period")
+            or "30 ngày"
+        ).lower()
+
+        date_preset_map = {
+            "7":  "last_7d",  "7 ngày":  "last_7d",
+            "14": "last_14d", "14 ngày": "last_14d",
+            "30": "last_30d", "30 ngày": "last_30d",
+            "90": "last_90d", "90 ngày": "last_90d",
+            "tháng này": "this_month",
+            "tháng trước": "last_month",
+        }
+        date_preset = "last_30d"
+        for keyword, preset in date_preset_map.items():
+            if keyword in period_raw:
+                date_preset = preset
+                break
+
+        await message.reply_text(
+            "📊 Em đang pull data Facebook Ads của sếp...",
+            parse_mode=ParseMode.MARKDOWN,
+        )
+
+        insights = await get_account_insights(
+            date_preset=date_preset,
+            level="campaign",
+        )
+        fb_data = format_insights_for_analysis(insights, period_raw)
+        session.pending_intake["_fb_data"] = fb_data
+        logger.info("FB Marketing API: fetched %d rows | preset=%s", len(insights), date_preset)
+
+    except Exception as e:
+        logger.warning("FB Marketing pre-fetch failed (non-blocking): %s", e)
+        # Non-blocking — skill vẫn chạy, user tự paste data
 
 
 async def _send_html_report(message: Message, html_str: str, session):
