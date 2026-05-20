@@ -232,11 +232,19 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
     elif session.stage == PipelineStage.INTAKE:
+        # Sprint 2: Check feedback flow first (user typing feedback after rating ≤3)
+        if session.pending_intake.get("_awaiting_feedback_for"):
+            await _handle_feedback_text(update, context, session, text)
+            return
         # Route to ops single-shot intake if marker present, else strategic multi-turn
         if session.pending_intake.get(OPS_INTAKE_AWAITING):
             await _handle_ops_intake_reply(update, context, session, text)
         else:
             await _handle_intake(update, context, session, text)
+
+    elif session.pending_intake.get("_awaiting_feedback_for"):
+        # User trong stage khác nhưng đang đợi feedback text → vẫn handle
+        await _handle_feedback_text(update, context, session, text)
 
     elif session.stage == PipelineStage.CONFIRMED:
         await update.message.reply_text(
@@ -366,6 +374,115 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def _handle_callback_inner(update, context, query, session, data, user_id):
+
+    # ── Rating callback (Sprint 2) ───────────────────────────────
+    if data.startswith("rate_"):
+        try:
+            rating = int(data.replace("rate_", ""))
+        except ValueError:
+            return
+        if rating < 1 or rating > 5:
+            return
+
+        skill_name = session.pending_intake.get("_awaiting_rating_for")
+        if not skill_name:
+            await query.message.reply_text("Cảm ơn sếp! 🙏")
+            return
+
+        # Lưu rating vào session.feedback
+        from datetime import datetime
+        versions = session.results.get(skill_name, [])
+        latest_version = versions[-1].version if versions else 0
+        session.feedback.setdefault(skill_name, []).append({
+            "version": latest_version,
+            "rating": rating,
+            "feedback": "",
+            "created_at": datetime.utcnow().isoformat(),
+        })
+
+        await query.edit_message_reply_markup(reply_markup=None)
+
+        if rating >= 4:
+            # Rating cao → cảm ơn, hiện next action
+            session.pending_intake.pop("_awaiting_rating_for", None)
+            await save_session(session)
+            await query.message.reply_text(
+                "Cảm ơn sếp đã feedback! 🙏\n\nGiờ em chạy thêm task khác hay sếp hỏi follow-up?",
+                reply_markup=stage_done_keyboard(is_last=True),
+            )
+        else:
+            # Rating ≤ 3 → hỏi feedback chi tiết
+            session.pending_intake["_awaiting_feedback_for"] = skill_name
+            session.pending_intake.pop("_awaiting_rating_for", None)
+            await save_session(session)
+            await query.message.reply_text(
+                "Cảm ơn sếp! Sếp note giúp em chỗ nào chưa OK để em note lại nhé ạ?\n\n"
+                "_Sếp gõ thoải mái — càng cụ thể em càng sửa được chính xác._",
+                parse_mode=ParseMode.MARKDOWN,
+            )
+        return
+
+    # ── Regen decision (Sprint 2) ────────────────────────────────
+    if data == "regen_yes":
+        skill_name = session.pending_intake.get("_pending_regen_skill")
+        feedback = session.pending_intake.get("_pending_feedback", "")
+        if not skill_name:
+            await query.edit_message_text("Có lỗi, sếp gõ /start lại nhé.")
+            return
+
+        await query.edit_message_reply_markup(reply_markup=None)
+        await query.message.reply_text(
+            "Em đang chạy lại theo feedback của sếp...",
+            parse_mode=ParseMode.MARKDOWN,
+        )
+
+        # Inject user correction vào pending_intake để build_user_msg đọc
+        session.pending_intake["_user_correction"] = feedback
+        session.pending_intake.pop("_pending_regen_skill", None)
+        session.pending_intake.pop("_pending_feedback", None)
+        await save_session(session)
+
+        try:
+            # Dispatch lại theo loại skill
+            from agents.task_registry import OPERATIONAL_TASKS
+            SINGLE_SHOT_STRATEGIC = {"market", "competitor", "customer", "pricing"}
+
+            if skill_name in SINGLE_SHOT_STRATEGIC:
+                from agents.pipeline import run_strategic_single_skill
+                result = await run_strategic_single_skill(skill_name, session)
+            elif skill_name in OPERATIONAL_TASKS:
+                result = await run_operational_skill(skill_name, session)
+            else:
+                await query.message.reply_text("⚠️ Em không re-run được skill này.")
+                return
+
+            # Clear correction marker sau khi dùng
+            session.pending_intake.pop("_user_correction", None)
+            await save_session(session)
+            await _send_ops_result(query.message, session, skill_name, result)
+        except Exception as e:
+            logger.exception("Regen failed: %s", e)
+            await query.message.reply_text(f"⚠️ Re-run gặp lỗi: {str(e)[:200]}")
+        return
+
+    if data == "regen_no":
+        # Note feedback vào DB rồi thôi
+        skill_name = session.pending_intake.get("_pending_regen_skill")
+        feedback = session.pending_intake.get("_pending_feedback", "")
+        session.pending_intake.pop("_pending_regen_skill", None)
+        session.pending_intake.pop("_pending_feedback", None)
+        await save_session(session)
+
+        await query.edit_message_reply_markup(reply_markup=None)
+        await query.message.reply_text(
+            "OK ạ, em note vào hệ thống. Cảm ơn sếp đã feedback! 🙏\n"
+            "_Admin sẽ review tuần sau để cải thiện skill này._",
+            parse_mode=ParseMode.MARKDOWN,
+            reply_markup=stage_done_keyboard(is_last=True),
+        )
+        # TODO Sprint future: forward feedback to admin Telegram
+        logger.info("FEEDBACK [%s] rating_low: %s", skill_name, feedback[:200])
+        return
 
     # ── Language preference setup (Sprint 1.III) ─────────────────
     if data.startswith("lang_"):
@@ -727,6 +844,55 @@ def _parse_single_shot_intake(text: str, task_name: str) -> dict:
     return parsed
 
 
+async def _handle_feedback_text(update: Update, context: ContextTypes.DEFAULT_TYPE, session, text: str):
+    """Sprint 2: User gửi feedback text sau khi rate ≤3.
+    Save feedback, hỏi user có muốn regen không."""
+    skill_name = session.pending_intake.get("_awaiting_feedback_for")
+    if not skill_name:
+        return
+
+    # Update last feedback entry với text
+    if session.feedback.get(skill_name):
+        session.feedback[skill_name][-1]["feedback"] = text
+
+    # Store pending feedback for regen decision
+    session.pending_intake["_pending_feedback"] = text
+    session.pending_intake["_pending_regen_skill"] = skill_name
+    session.pending_intake.pop("_awaiting_feedback_for", None)
+    await save_session(session)
+
+    # Try detect source mention từ Max's previous output (Layer 3 simplified)
+    versions = session.results.get(skill_name, [])
+    last_output = versions[-1].content if versions else ""
+    KNOWN_SOURCES = ["Statista", "GSO", "Tổng cục Thống kê", "WorldBank", "World Bank",
+                     "Nielsen", "Q&Me", "Decision Lab", "Vietcetera", "CafeF",
+                     "VnEconomy", "Brands Vietnam", "Adsota", "Kantar"]
+    cited = [s for s in KNOWN_SOURCES if s in last_output]
+
+    if cited:
+        # Max output có cite source → bot hỏi user có nguồn không
+        msg = (
+            f"Em note rồi ạ.\n\n"
+            f"Em hiểu sếp nói output em có chỗ chưa đúng. Em note rằng output trước em có dẫn nguồn từ "
+            f"*{', '.join(cited[:2])}*.\n\n"
+            f"Sếp có nguồn nào khác đáng tin hơn không ạ? Hoặc em chạy lại với feedback của sếp luôn?"
+        )
+    else:
+        msg = (
+            f"Em note rồi ạ. Sếp có muốn em chạy lại ngay với feedback này không?\n\n"
+            f"_Em sẽ giữ nguyên context của sếp, chỉ điều chỉnh theo correction sếp đưa._"
+        )
+
+    await update.message.reply_text(
+        msg,
+        parse_mode=ParseMode.MARKDOWN,
+        reply_markup=REGEN_PROMPT_KEYBOARD,
+    )
+
+    # Log feedback
+    logger.info("Feedback collected for %s: %s", skill_name, text[:200])
+
+
 async def _handle_ops_intake_reply(update: Update, context: ContextTypes.DEFAULT_TYPE, session, text: str):
     """Handle user's paste reply for single-shot form (ops + strategic single-skill).
     Phase 3: also handles strategic single-skill tasks (market/competitor/customer/pricing).
@@ -895,11 +1061,14 @@ async def _send_ops_result(message: Message, session, task_name: str, result: st
                 parse_mode=ParseMode.MARKDOWN,
             )
 
-    # Final action keyboard
+    # Sprint 2: Send RATING_KEYBOARD trước, sau khi rate xong mới hiện next action
+    session.pending_intake["_awaiting_rating_for"] = task_name
+    await save_session(session)
+
     await message.reply_text(
-        f"✅ *Hoàn thành {task.label}!*\n\nChạy task khác hoặc hỏi thêm?",
+        f"✅ *Hoàn thành {task.label}!*\n\nSếp đánh giá output em vừa làm thế nào ạ?",
         parse_mode=ParseMode.MARKDOWN,
-        reply_markup=stage_done_keyboard(is_last=True),
+        reply_markup=RATING_KEYBOARD,
     )
 
 
@@ -961,17 +1130,21 @@ async def _run_pipeline_sequentially(message: Message, session):
             )
 
     if stage_count > 0 and stage_count == total_stages:
+        # Sprint 2: Rating loop sau khi xong pipeline
+        session.pending_intake["_awaiting_rating_for"] = task
+        await save_session(session)
+
         if total_stages > 1:
             await message.reply_text(
-                "✅ *Hoàn thành phân tích!*\n\nMở file HTML để xem báo cáo đầy đủ.\nCó câu hỏi gì thêm? Nhắn thẳng vào đây nhé! 💬",
+                "✅ *Hoàn thành phân tích!*\n\nMở file HTML để xem báo cáo đầy đủ.\n\nSếp đánh giá output em vừa làm thế nào ạ?",
                 parse_mode=ParseMode.MARKDOWN,
-                reply_markup=stage_done_keyboard(is_last=True),
+                reply_markup=RATING_KEYBOARD,
             )
         else:
             await message.reply_text(
-                f"✅ *Hoàn thành {task_label}!*\n\nMở file HTML để xem báo cáo đẹp hơn.\nCó câu hỏi gì thêm? 💬",
+                f"✅ *Hoàn thành {task_label}!*\n\nSếp đánh giá output em vừa làm thế nào ạ?",
                 parse_mode=ParseMode.MARKDOWN,
-                reply_markup=stage_done_keyboard(is_last=True),
+                reply_markup=RATING_KEYBOARD,
             )
 
 

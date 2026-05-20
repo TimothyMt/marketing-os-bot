@@ -115,6 +115,11 @@ class OperationalSkill(AgentSkill):
         # Pending intake answers (from single-shot form)
         intake = dict(session.pending_intake or {})
 
+        # Sprint 2: nếu có user_correction từ regen flow → append vào msg
+        user_correction = intake.pop("_user_correction", None)
+        # Remove all internal markers (start with _) before formatting
+        intake = {k: v for k, v in intake.items() if not k.startswith("_")}
+
         # Common profile fallbacks accessible in template
         profile = session.profile
         intake.setdefault("industry",         profile.industry or "chưa xác định")
@@ -127,13 +132,22 @@ class OperationalSkill(AgentSkill):
         intake.setdefault("main_challenge",   profile.main_challenge or "chưa xác định")
 
         try:
-            return self._config.user_msg_template.format(**intake)
+            msg = self._config.user_msg_template.format(**intake)
         except KeyError as e:
-            # Missing field — return template with placeholder warning
-            return self._config.user_msg_template.replace(
+            msg = self._config.user_msg_template.replace(
                 "{" + str(e).strip("'") + "}",
                 f"[missing: {e}]"
             ).format(**{k: v for k, v in intake.items()})
+
+        # Append user correction nếu đang regen (Sprint 2)
+        if user_correction:
+            msg += (
+                "\n\n---\n\n"
+                "**USER CORRECTION (sếp đã feedback ở lần chạy trước, hãy fix theo):**\n"
+                f"{user_correction}\n\n"
+                "Apply correction này vào output mới. Giữ nguyên các phần khác."
+            )
+        return msg
 
     # ─── Intake helpers ───────────────────────────────────────────
 

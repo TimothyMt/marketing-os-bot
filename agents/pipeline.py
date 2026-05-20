@@ -273,8 +273,18 @@ async def _run_skill(skill: AgentSkill, session: Session) -> str:
     """
     context = skill.build_context(session)
     user_msg = skill.build_user_msg(session)
+
+    # Sprint 2: Strategic skills cũng cần inject user_correction nếu đang regen
+    user_correction = (session.pending_intake or {}).get("_user_correction")
+    if user_correction and "USER CORRECTION" not in user_msg:
+        user_msg += (
+            "\n\n---\n\n"
+            "**USER CORRECTION (sếp đã feedback ở lần chạy trước):**\n"
+            f"{user_correction}\n\n"
+            "Apply correction vào output mới."
+        )
+
     format_instruction = get_format_instruction(skill.output_format)
-    # Inject language preference (Sprint 1.III)
     en_level = (session.preferences or {}).get("en_level", "moderate")
     lang_instruction = get_lang_instruction(en_level)
     augmented_system = skill.system_prompt + format_instruction + "\n\n---\n\n" + lang_instruction
