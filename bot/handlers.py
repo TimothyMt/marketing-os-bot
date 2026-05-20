@@ -475,7 +475,6 @@ async def _handle_callback_inner(update, context, query, session, data, user_id)
 
         try:
             # Dispatch lại theo loại skill
-            from agents.task_registry import OPERATIONAL_TASKS
             SINGLE_SHOT_STRATEGIC = {"market", "competitor", "customer", "pricing"}
 
             if skill_name in SINGLE_SHOT_STRATEGIC:
