@@ -30,6 +30,9 @@ from bot.keyboards import (
     RATING_KEYBOARD,
     REGEN_PROMPT_KEYBOARD,
     COMPARE_PROMPT_KEYBOARD,
+    ADS_FORMAT_KEYBOARD,
+    IMAGE_GEN_PROMPT_KEYBOARD,
+    IMAGE_SIZE_KEYBOARD,
 )
 
 logger = logging.getLogger(__name__)
@@ -579,9 +582,89 @@ async def _handle_callback_inner(update, context, query, session, data, user_id)
         session.pending_intake["selected_tiers"] = tier
         await save_session(session)
         await query.edit_message_reply_markup(reply_markup=None)
-        # Use selected_task (already set to ads_generator) or fallback
+        # Sprint 5: Sau tier chọn → ask format (Video / Ảnh)
+        tier_label = {"tofu": "TOFU (Tệp lạnh)", "mofu": "MOFU (Tệp ấm)",
+                      "bofu": "BOFU (Tệp nóng)", "all": "All 3 tầng"}.get(tier, tier)
+        await query.message.reply_text(
+            f"✅ Tier: *{tier_label}*\n\nSếp muốn format Video hay Ảnh ạ?",
+            parse_mode=ParseMode.MARKDOWN,
+            reply_markup=ADS_FORMAT_KEYBOARD,
+        )
+        return
+
+    if data.startswith("ads_format_"):
+        ads_format = data.replace("ads_format_", "")  # "video" or "image"
+        session.pending_intake["ads_format"] = ads_format
+        await save_session(session)
+        await query.edit_message_reply_markup(reply_markup=None)
         skill_name = session.selected_task or "ads_generator"
         await _send_single_shot_form(query.message, session, skill_name)
+        return
+
+    # Sprint 5: Image generation flow ──────────────────────────────
+    if data.startswith("img_gen_"):
+        choice = data.replace("img_gen_", "")  # "1", "3", or "skip"
+        if choice == "skip":
+            await query.edit_message_reply_markup(reply_markup=None)
+            await query.message.reply_text(
+                "OK ạ, em chỉ gửi brief thôi. Team design của sếp tự làm tiếp nhé.",
+                reply_markup=stage_done_keyboard(is_last=True),
+            )
+            return
+
+        n_images = int(choice) if choice.isdigit() else 1
+        session.pending_intake["_img_n"] = str(n_images)
+        await save_session(session)
+        await query.edit_message_reply_markup(reply_markup=None)
+        await query.message.reply_text(
+            f"OK ạ, em sẽ tạo *{n_images} ảnh*. Sếp pick kích thước:",
+            parse_mode=ParseMode.MARKDOWN,
+            reply_markup=IMAGE_SIZE_KEYBOARD,
+        )
+        return
+
+    if data.startswith("img_size_"):
+        size_choice = data.replace("img_size_", "")
+        size_map = {"vertical": "1024x1536", "square": "1024x1024", "horizontal": "1536x1024"}
+        img_size = size_map.get(size_choice, "1024x1024")
+        n_images = int(session.pending_intake.get("_img_n", "1"))
+        img_prompt = session.pending_intake.get("_img_prompt", "")
+
+        if not img_prompt:
+            await query.edit_message_text("⚠️ Chưa có brief ảnh để gen. Sếp /start lại.")
+            return
+
+        await query.edit_message_reply_markup(reply_markup=None)
+        await query.message.reply_text(
+            f"🎨 Em đang tạo {n_images} ảnh ({img_size})... (~30-60s)",
+            parse_mode=ParseMode.MARKDOWN,
+        )
+
+        try:
+            from tools.image_gen import generate_image, estimate_cost
+            images = await generate_image(img_prompt, size=img_size, quality="standard", n=n_images)
+            cost = estimate_cost("standard", img_size, n_images)
+            import io as _io
+            for i, img_bytes in enumerate(images, start=1):
+                buf = _io.BytesIO(img_bytes)
+                buf.name = f"ads_image_{i}.png"
+                await query.message.reply_photo(
+                    photo=buf,
+                    caption=f"🖼️ Ảnh {i}/{n_images}",
+                )
+            # Clean markers
+            session.pending_intake.pop("_img_n", None)
+            session.pending_intake.pop("_img_prompt", None)
+            await save_session(session)
+            await query.message.reply_text(
+                f"✅ Em tạo xong {n_images} ảnh! Chi phí: ~${cost:.2f}",
+                reply_markup=stage_done_keyboard(is_last=True),
+            )
+        except Exception as e:
+            logger.exception("Image gen failed: %s", e)
+            await query.message.reply_text(
+                f"⚠️ Gen ảnh thất bại: {str(e)[:200]}\n\nSếp check OPENAI_API_KEY trong Railway env vars."
+            )
         return
 
     if data.startswith("video_creator_"):
@@ -1009,6 +1092,38 @@ def _infer_industry(product: str, customer: str = "") -> str | None:
     return None
 
 
+def _extract_image_prompt_from_brief(parsed: dict, session) -> str:
+    """Sprint 5: Extract image gen prompt từ Ads Generator output (brief ảnh).
+    Tổng hợp: product + insight + offer + visual style mention trong deliverable."""
+    intake = session.pending_intake or {}
+    product = intake.get("product", "")
+    insight = intake.get("insight", "")
+    offer = intake.get("offer", "")
+    deliverable = parsed.get("deliverable", "") or parsed.get("raw", "")[:500]
+
+    # Try extract "Visual" or "Style" lines from deliverable
+    import re as _re
+    visual_hints = _re.findall(
+        r"(?:Visual|Concept|Mood|Style|Color)[:\s]+([^\n]+)",
+        deliverable, flags=_re.IGNORECASE
+    )
+    visual_str = " ".join(visual_hints[:3]) if visual_hints else ""
+
+    # Compose image prompt (English works best for gpt-image-1)
+    prompt = (
+        f"Marketing ad image for: {product}. "
+        f"Key insight: {insight}. "
+        f"Offer: {offer}. "
+    )
+    if visual_str:
+        prompt += f"Visual style: {visual_str}. "
+    prompt += (
+        "Vietnamese market, modern professional style, "
+        "high quality commercial photography, clean composition with space for text overlay."
+    )
+    return prompt[:1000]  # gpt-image-1 prompt limit
+
+
 async def _send_ops_result(message: Message, session, task_name: str, result: str):
     """Render single-skill result (ops + strategic single-shot): Telegram card + files."""
     from bot.renderers import (
@@ -1102,6 +1217,26 @@ async def _send_ops_result(message: Message, session, task_name: str, result: st
             reply_markup=COMPARE_PROMPT_KEYBOARD,
         )
         return
+
+    # Sprint 5: Special follow-up sau ads_generator (format=image) → hỏi gen ảnh
+    if task_name in ("ads_generator", "ads_copy") and session.pending_intake.get("ads_format") == "image":
+        from tools.image_gen import is_available
+        if is_available():
+            # Extract image gen prompt từ output (deliverable section)
+            img_prompt = _extract_image_prompt_from_brief(parsed, session)
+            session.pending_intake["_img_prompt"] = img_prompt
+            await save_session(session)
+            await message.reply_text(
+                f"✅ *Hoàn thành brief ảnh!*\n\nSếp muốn em tạo ảnh thật luôn từ brief này không ạ?",
+                parse_mode=ParseMode.MARKDOWN,
+                reply_markup=IMAGE_GEN_PROMPT_KEYBOARD,
+            )
+            return
+        else:
+            await message.reply_text(
+                "⚠️ _Image gen chưa setup (cần OPENAI_API_KEY). Em chỉ gửi brief thôi._",
+                parse_mode=ParseMode.MARKDOWN,
+            )
 
     # Sprint 2: Default — send RATING_KEYBOARD
     session.pending_intake["_awaiting_rating_for"] = task_name

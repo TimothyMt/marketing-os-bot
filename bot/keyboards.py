@@ -46,6 +46,26 @@ COMPARE_PROMPT_KEYBOARD = InlineKeyboardMarkup([
     [InlineKeyboardButton("⏭️ Để sau",                                callback_data="skip_compare")],
 ])
 
+# Sprint 5: Ads Generator — sau tier chooser, hỏi format (Video hay Ảnh)
+ADS_FORMAT_KEYBOARD = InlineKeyboardMarkup([
+    [InlineKeyboardButton("🎥 Video",     callback_data="ads_format_video")],
+    [InlineKeyboardButton("🖼️ Ảnh tĩnh",  callback_data="ads_format_image")],
+])
+
+# Sprint 5: Sau khi Ads Generator output brief ảnh — hỏi có gen ảnh thật luôn không
+IMAGE_GEN_PROMPT_KEYBOARD = InlineKeyboardMarkup([
+    [InlineKeyboardButton("🎨 Tạo 1 ảnh test (~$0.04)",    callback_data="img_gen_1")],
+    [InlineKeyboardButton("🎨 Tạo 3 variants (~$0.12)",     callback_data="img_gen_3")],
+    [InlineKeyboardButton("⏭️ Chỉ brief, không gen ảnh",   callback_data="img_gen_skip")],
+])
+
+# Sprint 5: Chọn size ảnh
+IMAGE_SIZE_KEYBOARD = InlineKeyboardMarkup([
+    [InlineKeyboardButton("📱 Vertical (Story/Reels) 1024×1536", callback_data="img_size_vertical")],
+    [InlineKeyboardButton("🖼️ Square (Feed) 1024×1024",          callback_data="img_size_square")],
+    [InlineKeyboardButton("🖥️ Horizontal (Landscape) 1536×1024", callback_data="img_size_horizontal")],
+])
+
 
 # ─────────────────────────────────────────────────────────────────
 # STRATEGIC MENU — Tier 2
