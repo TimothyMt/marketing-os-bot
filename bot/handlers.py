@@ -411,7 +411,18 @@ async def _handle_callback_inner(update, context, query, session, data, user_id)
             await _show_profile_reuse_confirm(query.message, session, task_type)
             return
 
-        # Profile chưa đủ → flow multi-turn intake bình thường
+        # Phase 3: Strategic single-skill (market/competitor/customer/pricing) → single-shot form
+        # KHÔNG dùng multi-turn để tránh hỏi đi hỏi lại
+        # ONLY full + strategy giữ multi-turn (vì cần full profile + explore)
+        SINGLE_SHOT_STRATEGIC = {"market", "competitor", "customer", "pricing"}
+        if task_type in SINGLE_SHOT_STRATEGIC:
+            task = get_task(task_type)
+            if task and task.intake_fields:  # Phase 3: nếu task có template form
+                await query.edit_message_reply_markup(reply_markup=None)
+                await _send_single_shot_form(query.message, session, task_type)
+                return
+
+        # Profile chưa đủ + không phải single-shot → multi-turn intake (full / strategy)
         session.stage = PipelineStage.INTAKE
         await save_session(session)
 
@@ -645,18 +656,34 @@ def _parse_single_shot_intake(text: str, task_name: str) -> dict:
 
 
 async def _handle_ops_intake_reply(update: Update, context: ContextTypes.DEFAULT_TYPE, session, text: str):
-    """Handle user's paste reply for ops skill single-shot form."""
+    """Handle user's paste reply for single-shot form (ops + strategic single-skill).
+    Phase 3: also handles strategic single-skill tasks (market/competitor/customer/pricing).
+    """
     task_name = session.pending_intake.get(OPS_INTAKE_AWAITING)
     if not task_name:
         return
 
     parsed = _parse_single_shot_intake(text, task_name)
 
+    # Strategic single-shot: also merge parsed values into session.profile
+    # (so future skills can reuse via profile reuse logic)
+    SINGLE_SHOT_STRATEGIC = {"market", "competitor", "customer", "pricing"}
+    if task_name in SINGLE_SHOT_STRATEGIC:
+        # Map intake keys → BusinessProfile attributes
+        profile = session.profile
+        for k, v in parsed.items():
+            if v and hasattr(profile, k):
+                setattr(profile, k, v)
+        # Try to infer industry from product_service if not set
+        if not profile.industry and parsed.get("product_service"):
+            inferred = _infer_industry(parsed["product_service"], parsed.get("target_customer", ""))
+            if inferred:
+                profile.industry = inferred
+
     # Merge into pending_intake (preserves variant chooser values like selected_tiers)
     for k, v in parsed.items():
         session.pending_intake[k] = v
 
-    # Clear marker so next typed message doesn't re-trigger
     session.pending_intake.pop(OPS_INTAKE_AWAITING, None)
     await save_session(session)
 
@@ -664,24 +691,55 @@ async def _handle_ops_intake_reply(update: Update, context: ContextTypes.DEFAULT
         chat_id=update.effective_chat.id,
         action=ChatAction.TYPING,
     )
+
+    task_label = get_task(task_name).label if get_task(task_name) else task_name
     await update.message.reply_text(
-        f"⚡ *Đang chạy {get_task(task_name).label}...*\nThời gian dự kiến: 30-60 giây.",
+        f"⚡ *Đang chạy {task_label}...*\nThời gian dự kiến: 30-90 giây.",
         parse_mode=ParseMode.MARKDOWN,
     )
 
     try:
-        result = await run_operational_skill(task_name, session)
-        await save_session(session)
-        await _send_ops_result(update.message, session, task_name, result)
+        # Dispatch theo task type
+        if task_name in SINGLE_SHOT_STRATEGIC:
+            from agents.pipeline import run_strategic_single_skill
+            result = await run_strategic_single_skill(task_name, session)
+            await save_session(session)
+            # Strategic single-skill render via existing pipeline-sequentially logic
+            # but for 1 stage only — reuse _send_ops_result for uniform UX
+            await _send_ops_result(update.message, session, task_name, result)
+        else:
+            result = await run_operational_skill(task_name, session)
+            await save_session(session)
+            await _send_ops_result(update.message, session, task_name, result)
     except Exception as e:
-        logger.exception("Ops skill %s failed: %s", task_name, e)
+        logger.exception("Skill %s failed: %s", task_name, e)
         await update.message.reply_text(
             f"⚠️ Skill {task_name} gặp lỗi: {str(e)[:200]}\n\nThử /start lại nhé."
         )
 
 
+def _infer_industry(product: str, customer: str = "") -> str | None:
+    """Phase 3 helper: infer industry from product description.
+    Returns industry key or None if cannot infer."""
+    text = f"{product} {customer}".lower()
+    # Simple keyword matching for VN context
+    if any(k in text for k in ["spa", "beauty", "skincare", "salon", "nails", "facial", "thẩm mỹ"]):
+        return "health_beauty"
+    if any(k in text for k in ["cafe", "quán", "nhà hàng", "f&b", "đồ ăn", "thức uống", "restaurant", "coffee"]):
+        return "fnb"
+    if any(k in text for k in ["saas", "phần mềm", "app", "platform", "tech"]):
+        return "tech_saas"
+    if any(k in text for k in ["khóa học", "course", "edu", "đào tạo", "training"]):
+        return "education"
+    if any(k in text for k in ["shop", "thời trang", "fashion", "ecommerce", "online store"]):
+        return "ecommerce"
+    if any(k in text for k in ["bđs", "bất động sản", "real estate", "căn hộ", "nhà"]):
+        return "real_estate"
+    return None
+
+
 async def _send_ops_result(message: Message, session, task_name: str, result: str):
-    """Render ops skill result: Telegram bullet card + primary deliverable file."""
+    """Render single-skill result (ops + strategic single-shot): Telegram card + files."""
     from bot.renderers import (
         parse_by_format,
         format_telegram_card,
@@ -689,11 +747,19 @@ async def _send_ops_result(message: Message, session, task_name: str, result: st
         render_excel_file,
     )
     from bot.html_report import build_single_skill_report
-    from agents.operational_skills_config import get_operational_skill
     from agents.skills import PrimaryDeliverable
     import io
 
-    skill = get_operational_skill(task_name)
+    # Resolve skill instance: strategic single-shot uses STRATEGIC_SKILL_CLASSES,
+    # operational uses get_operational_skill factory
+    SINGLE_SHOT_STRATEGIC = {"market", "competitor", "customer", "pricing"}
+    if task_name in SINGLE_SHOT_STRATEGIC:
+        from agents.pipeline import STRATEGIC_SKILL_CLASSES
+        skill = STRATEGIC_SKILL_CLASSES[task_name]()
+    else:
+        from agents.operational_skills_config import get_operational_skill
+        skill = get_operational_skill(task_name)
+
     task = get_task(task_name)
     parsed = parse_by_format(result, skill.output_format)
 

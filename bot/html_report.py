@@ -13,13 +13,18 @@ except ImportError:
 
 
 STAGE_META = {
-    # Strategic skills
+    # Strategic skills — by stage_key (used in full pipeline + ops result rendering)
     "market_research":    {"title": "Nghiên cứu Thị trường",       "icon": "📊", "color": "market"},
     "competitor":         {"title": "Phân tích Đối thủ",            "icon": "🕵️", "color": "competitor"},
     "customer_insight":   {"title": "Customer Insight & ICP",      "icon": "👥", "color": "customer"},
     "psychology_pricing": {"title": "Marketing Psychology & Pricing", "icon": "💡", "color": "pricing"},
     "social_listening":   {"title": "Social Listening System",     "icon": "📡", "color": "market"},
     "synthesis":          {"title": "Marketing Strategy",          "icon": "🚀", "color": "strategy"},
+    # Strategic single-shot task aliases (Phase 3 — task names used in handler dispatch)
+    "market":             {"title": "Nghiên cứu Thị trường",       "icon": "📊", "color": "market"},
+    "customer":           {"title": "Customer Insight & ICP",      "icon": "👥", "color": "customer"},
+    "pricing":            {"title": "Marketing Psychology & Pricing", "icon": "💡", "color": "pricing"},
+    "strategy":           {"title": "Marketing Strategy",          "icon": "🎯", "color": "strategy"},
     # Operational skills
     "campaign_brief":      {"title": "Campaign Brief",              "icon": "📋", "color": "strategy"},
     "content_calendar":    {"title": "Content Calendar",            "icon": "📅", "color": "market"},

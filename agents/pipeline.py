@@ -346,6 +346,41 @@ async def run_operational_skill(skill_name: str, session: Session) -> str:
     return result
 
 
+# Phase 3: Strategic single-shot tasks runner — dùng skill class trực tiếp
+# (4 strategic skills market/competitor/customer/pricing đã chuyển sang single-shot template)
+
+# Map task name → result key trong session.results
+STRATEGIC_RESULT_KEYS = {
+    "market":     "market_research",
+    "competitor": "competitor",
+    "customer":   "customer_insight",
+    "pricing":    "psychology_pricing",
+    "strategy":   "synthesis",
+}
+
+# Map task name → AgentSkill class
+STRATEGIC_SKILL_CLASSES = {
+    "market":     MarketResearchSkill,
+    "competitor": CompetitorSkill,
+    "customer":   CustomerInsightSkill,
+    "pricing":    PsychologyPricingSkill,
+    "strategy":   StrategySynthesisSkill,
+}
+
+
+async def run_strategic_single_skill(task_name: str, session: Session) -> str:
+    """Phase 3: Run 1 strategic skill standalone (single-shot mode).
+    Different from full pipeline — only runs 1 stage, no aggregate report.
+    """
+    skill_class = STRATEGIC_SKILL_CLASSES.get(task_name)
+    if not skill_class:
+        raise ValueError(f"Unknown strategic task: {task_name}")
+    result = await _run_skill(skill_class(), session)
+    result_key = STRATEGIC_RESULT_KEYS[task_name]
+    session.add_result(result_key, result)
+    return result
+
+
 # ─────────────────────────────────────────────────────────────────
 # PIPELINE RUNNER — orchestrates all stages
 # ─────────────────────────────────────────────────────────────────
