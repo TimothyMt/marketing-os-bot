@@ -641,8 +641,8 @@ async def _handle_callback_inner(update, context, query, session, data, user_id)
 
         try:
             from tools.image_gen import generate_image, estimate_cost
-            images = await generate_image(img_prompt, size=img_size, quality="standard", n=n_images)
-            cost = estimate_cost("standard", img_size, n_images)
+            images = await generate_image(img_prompt, size=img_size, quality="medium", n=n_images)
+            cost = estimate_cost("medium", img_size, n_images)
             import io as _io
             for i, img_bytes in enumerate(images, start=1):
                 buf = _io.BytesIO(img_bytes)

@@ -54,8 +54,8 @@ ADS_FORMAT_KEYBOARD = InlineKeyboardMarkup([
 
 # Sprint 5: Sau khi Ads Generator output brief ảnh — hỏi có gen ảnh thật luôn không
 IMAGE_GEN_PROMPT_KEYBOARD = InlineKeyboardMarkup([
-    [InlineKeyboardButton("🎨 Tạo 1 ảnh test (~$0.04)",    callback_data="img_gen_1")],
-    [InlineKeyboardButton("🎨 Tạo 3 variants (~$0.12)",     callback_data="img_gen_3")],
+    [InlineKeyboardButton("🎨 Tạo 1 ảnh test (~$0.07)",    callback_data="img_gen_1")],
+    [InlineKeyboardButton("🎨 Tạo 3 variants (~$0.21)",     callback_data="img_gen_3")],
     [InlineKeyboardButton("⏭️ Chỉ brief, không gen ảnh",   callback_data="img_gen_skip")],
 ])
 
