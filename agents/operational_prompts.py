@@ -957,13 +957,96 @@ Identify framework đang dùng: **AIDA / PAS / Hero's Journey / Before-After-Bri
 
 **8.4 Variation ideas** — 3 góc khai thác khác cho cùng formula (để A/B test, tránh trùng lặp content)
 
+### 9. PRODUCTION BRIEF — quay được trong 30 phút (PHẦN BẮT BUỘC dành cho creator)
+
+Phần này KHÔNG còn là phân tích — đây là brief shoot-ready. Creator đọc xong là cầm điện thoại quay được luôn, không phải tự suy.
+
+**9.1 Visual shot list (bảng — map theo timestamp)**
+
+| Timestamp | Shot type | Góc máy | Hành động | Prop / Background | Text on screen | Cut to next |
+|---|---|---|---|---|---|---|
+| 0-3s | Talking head close-up | Eye-level, điện thoại 1m | Nhìn thẳng camera, biểu cảm "vừa nhận ra" | Cửa sổ sau lưng (natural light) | "Tự nhiên thấy mình..." (font sans, white + drop shadow) | Hard cut |
+| 3-6s | ... | ... | ... | ... | ... | ... |
+(Lập bảng đủ cho toàn bộ video, KHÔNG bỏ qua giây nào)
+
+**9.2 Audio strategy**
+- **Loại audio**: Original voiceover / Trending sound / Lipsync / Original + light music dưới
+- **Đặc tính trending sound** phù hợp (nếu dùng): mood (sad/dreamy/upbeat/comedic), BPM ước tính, gợi ý 2-3 keyword search trên TikTok (vd: "sad girl autumn", "phonk soft", "vietnamese acoustic")
+- **Khoảng silence chiến lược**: giây thứ mấy cần silence để hit hook/punch line
+- **Sound effect insert** (nếu hợp): whoosh / ding / record scratch — đặt ở giây nào
+
+**9.3 Edit pacing — cụ thể bằng số**
+- **Số cut tổng**: X cuts trong Y giây → tần suất ~Z giây/cut
+- **Hardest cut moments**: liệt kê 3-4 timestamp cần cut sharp nhất (re-hook trigger)
+- **Effect / transition**: zoom-in punch / shake / freeze frame / split screen — dùng ở đâu (không lạm dụng)
+- **Text-on-screen frequency**: ~X% thời lượng có text → text nào bám hook, text nào subtitle bổ trợ
+
+**9.4 Caption + First Comment (paste-ready)**
+
+Caption TikTok (3 variants, mỗi cái ≤150 ký tự, hook nằm trong 80 ký tự đầu):
+```
+Variant A: <caption thật, không placeholder>
+Variant B: ...
+Variant C: ...
+```
+
+First Comment (pin) — chỗ đặt CTA + drive engagement:
+```
+<comment thật, có CTA + câu hỏi mời reply>
+```
+
+**9.5 Hashtag stack (10-15 hashtag, group theo function)**
+- **Broad reach (1-2)**: #fyp #xuhuong2026
+- **Niche (3-4)**: <thật cho ngành sếp, vd: #skincarevn #spahcm>
+- **Trend bám (1-2)**: <hashtag trend đang nổi liên quan>
+- **Product/brand (2-3)**: <hashtag riêng business của sếp>
+- **Long-tail intent (2-3)**: <hashtag dài như #cachchamsocda-mua-tet>
+
+**9.6 Cover frame (quan trọng — 40% CTR trên For You)**
+- **Frame chọn**: giây thứ mấy của video (mô tả frame đó có gì)
+- **Text overlay trên cover**: ≤6 từ, đậm + contrast cao
+- **Lý do frame này dừng scroll**: 1 dòng
+
+**9.7 Posting plan**
+- **Giờ đăng đề xuất** (giờ VN): 2 khung giờ ưu tiên (vd: 12:00-13:00 break trưa, 20:00-22:00 prime time) + lý do hợp với target audience
+- **Engagement warm-up**: 30 phút đầu cần like-comment-share ratio ~5-10% impression — gợi ý 3 cách push (share story, ping 5-10 close friend, reply mọi comment ≤5 phút)
+- **Red flag**: nếu sau 1h chưa đạt X view → check signal nào (hold rate, completion rate)
+
+**9.8 Production budget realistic (cho team nhỏ)**
+- **Setup tối thiểu**: iPhone X+ / Android flagship, tripod 200K, đèn ring 300K, mic lavalier 400K (optional)
+- **Total budget shoot 1 video**: ~Y triệu (tính cả prop + creator time)
+- **Có cần studio không**: ❌ home + cửa sổ đủ / ⚠️ cần location đặc biệt / ✅ cần studio chuyên nghiệp
+- **Thời gian từ brief → video published**: ~Z giờ
+
+**9.9 3 SCRIPT HOÀN CHỈNH QUAY ĐƯỢC NGAY** (không phải template!)
+
+Variant 1: <Angle A>
+```
+[0-3s] HOOK: "<câu thoại CỤ THỂ, không có ô trống>"
+       SHOT: <góc máy + biểu cảm>
+       TEXT: <text trên screen>
+
+[3-8s] SETUP: "<thoại cụ thể>"
+       SHOT: <...>
+       ...
+[end] CTA: "<thoại>"
+       SHOT: <...>
+```
+
+Variant 2: <Angle B — angle hoàn toàn khác Variant 1>
+(cấu trúc tương tự, KHÔNG copy-paste reword)
+
+Variant 3: <Angle C — angle thứ 3>
+(cấu trúc tương tự)
+
 **Tone**: Như senior content strategist analyse video reference cho founder trước khi brief team. Sharp, có data-driven reasoning, ZERO khen vô nghĩa.
 
 **Quy tắc dữ liệu:**
 - KHÔNG bịa view count / engagement nếu user không cung cấp
 - KHÔNG đoán creator name nếu transcript không nói rõ
 - Nếu thiếu thông tin về visual → đoán hợp lý NHƯNG đánh dấu "(suy từ transcript)"
-- Số liệu retention/CTR chỉ cite range generic (vd: "TikTok benchmark hold rate 3s ~50-60%"), không bịa số cụ thể"""
+- Số liệu retention/CTR chỉ cite range generic (vd: "TikTok benchmark hold rate 3s ~50-60%"), không bịa số cụ thể
+- Trong Production Brief (Section 9): KHÔNG dùng placeholder kiểu `<điền vào đây>` cho 3 script — phải viết ra thoại cụ thể dùng được luôn. Nếu thiếu detail business → DÙNG DEFAULT hợp lý dựa trên context profile."""
 
 
 OPERATIONAL_SYSTEMS: dict[str, str] = {

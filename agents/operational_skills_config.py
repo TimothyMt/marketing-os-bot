@@ -413,6 +413,7 @@ class ViralVideoAnalyzerSkill(AgentSkill):
         video_source = (intake.get("video_source") or "").strip()
         platform = intake.get("platform") or "chưa rõ"
         niche_context = intake.get("niche_context") or "chưa cung cấp"
+        creator_persona = intake.get("creator_persona") or "chưa rõ — Max default UGC nữ 24-30t"
         engagement_data = intake.get("engagement_data") or "không rõ"
         why_picked = intake.get("why_picked") or ""
         profile = session.profile
@@ -426,6 +427,7 @@ class ViralVideoAnalyzerSkill(AgentSkill):
 
 **Platform:** {platform}
 **Niche video:** {niche_context}
+**Creator persona sẽ quay video replicate:** {creator_persona}
 **Số liệu engagement (nếu có):** {engagement_data}{why_line}
 
 **Context business sếp (để tailor công thức replicate):**
@@ -442,7 +444,14 @@ class ViralVideoAnalyzerSkill(AgentSkill):
 
 ---
 
-Phân tích đầy đủ 8 sections theo system prompt. Section 8 (Replicate Formula) phải dùng được ngay cho business của sếp — không generic."""
+Phân tích đầy đủ 9 sections theo system prompt.
+
+QUAN TRỌNG:
+- Section 8 (Replicate Formula): tailor cho business sếp — không generic
+- Section 9 (Production Brief): BẮT BUỘC viết shoot-ready cho creator persona đã nêu —
+  shot list theo timestamp, audio strategy, edit pacing số cụ thể, caption + first comment
+  paste-ready, hashtag stack 10-15 cái, cover frame, posting plan, budget realistic,
+  và 3 SCRIPT HOÀN CHỈNH (KHÔNG dùng placeholder, viết thoại cụ thể quay được luôn)."""
 
     def _resolve_transcript(self, video_source: str) -> str:
         """Resolve video_source → formatted transcript block.

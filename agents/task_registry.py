@@ -300,7 +300,7 @@ OPERATIONAL_TASKS: dict[str, TaskConfig] = {
         label="Phân Tích Video Viral",
         button_emoji="🎥",
         category="analysis",
-        description="Reverse-engineer kịch bản video viral → công thức replicate cho business",
+        description="Reverse-engineer kịch bản video viral → công thức replicate + production brief shoot-ready",
         skill_class_name="ViralVideoAnalyzerSkill",
         intake_fields=[
             {"key": "video_source",      "label": "Link video HOẶC paste transcript",
@@ -309,6 +309,8 @@ OPERATIONAL_TASKS: dict[str, TaskConfig] = {
              "example": "TikTok / Reels / Shorts / YouTube", "required": True},
             {"key": "niche_context",     "label": "Niche / chủ đề video (để Max so sánh với business sếp)",
              "example": "Review skincare cho da dầu — tệp nữ 22-30", "required": True},
+            {"key": "creator_persona",   "label": "Ai sẽ quay (để Max tailor shot list + script)",
+             "example": "Em founder nữ 30t, ngại lên hình / Có nhân viên nữ 24t sweet vibe / Sẽ thuê KOC", "required": True},
             {"key": "engagement_data",   "label": "Số liệu video (view / like / comment / share — nếu biết)",
              "example": "2.4M view, 180K like, 5K comment — hoặc 'không rõ'", "required": False},
             {"key": "why_picked",        "label": "Vì sao sếp chọn video này để phân tích",
