@@ -2036,7 +2036,7 @@ async def _send_ops_result(message: Message, session, task_name: str, result: st
         file_attached_hint=primary_label,
     )
 
-    await message.reply_text(card_text, parse_mode=ParseMode.MARKDOWN)
+    await _safe_reply(message, card_text, parse_mode=ParseMode.MARKDOWN)
 
     business_slug = re.sub(r"[^a-zA-Z0-9_-]", "_", session.profile.business_name or task_name)[:30]
     business_name = session.profile.business_name or "Business"
