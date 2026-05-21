@@ -162,6 +162,10 @@ class Session:
     # Schema: {skill_name: [{"version": int, "rating": 1-5, "feedback": str, "created_at": iso}]}
     feedback: dict[str, list[dict]] = field(default_factory=dict)
 
+    # When user opts to "Chạy A→Z, rồi quay lại task này", store the original task here.
+    # After pipeline completes, bot auto-launches this skill.
+    pending_followup_skill: Optional[str] = None
+
     created_at: Optional[str] = None
     updated_at: Optional[str] = None
 

@@ -266,8 +266,9 @@ OPERATIONAL_TASKS: dict[str, TaskConfig] = {
         description="Phân tích Facebook Ads Library của đối thủ — pattern + insight",
         skill_class_name="CompetitorSpySkill",
         intake_fields=[
-            {"key": "competitor_name", "label": "Tên đối thủ + Facebook Page URL nếu có", "example": "Cocoon — https://facebook.com/cocoonvn", "required": True},
-            {"key": "focus_area",      "label": "Sếp muốn em focus phân tích gì",         "example": "Hook style / Offer mechanics / Creative format", "required": False},
+            {"key": "competitor_name", "label": "Tên đối thủ",                          "example": "Cocoon Vietnam",                                  "required": True},
+            {"key": "fanpage_url",     "label": "Link Facebook Page (nếu có, để chính xác)", "example": "https://facebook.com/cocoonvn",              "required": False},
+            {"key": "focus_area",      "label": "Sếp muốn em focus phân tích gì",       "example": "Hook style / Offer mechanics / Creative format",  "required": False},
         ],
     ),
     "competitor_comparison": TaskConfig(

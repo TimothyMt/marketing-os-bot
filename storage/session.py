@@ -71,6 +71,7 @@ def _row_to_session(row: dict) -> Session:
     pending_intake = raw_results.pop("_pending_intake", {}) or {}
     preferences = raw_results.pop("_preferences", {}) or {}
     feedback = raw_results.pop("_feedback", {}) or {}
+    pending_followup_skill = raw_results.pop("_pending_followup_skill", None) or None
     raw_results.pop("_brand_candidates", None)  # backward-compat: drop old field
 
     results = _normalize_results(raw_results)
@@ -85,6 +86,7 @@ def _row_to_session(row: dict) -> Session:
         pending_intake=pending_intake if isinstance(pending_intake, dict) else {},
         preferences=preferences if isinstance(preferences, dict) else {},
         feedback=feedback if isinstance(feedback, dict) else {},
+        pending_followup_skill=pending_followup_skill,
         created_at=str(row.get("created_at") or ""),
         updated_at=str(row.get("updated_at") or ""),
     )
@@ -126,6 +128,8 @@ async def save_session(session: Session):
         results_serialized["_preferences"] = session.preferences
     if session.feedback:
         results_serialized["_feedback"] = session.feedback
+    if session.pending_followup_skill:
+        results_serialized["_pending_followup_skill"] = session.pending_followup_skill
 
     payload = {
         "user_id":          session.user_id,

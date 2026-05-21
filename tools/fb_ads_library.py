@@ -196,3 +196,61 @@ def format_ads_for_analysis(ads: list[dict], competitor_name: str) -> str:
 def is_available() -> bool:
     """Check nếu FB Ads Library đã được config."""
     return bool(FB_ACCESS_TOKEN)
+
+
+# ─────────────────────────────────────────────────────────────────
+# URL → page_id extraction
+# ─────────────────────────────────────────────────────────────────
+
+async def resolve_page_id_from_url(url: str, access_token: Optional[str] = None) -> Optional[str]:
+    """Best-effort extract page_id từ Facebook URL.
+
+    Supports:
+    - https://facebook.com/{page_name}
+    - https://www.facebook.com/{page_name}
+    - https://facebook.com/{page_id} (numeric)
+    - https://facebook.com/pages/{name}/{id}
+    - https://m.facebook.com/{page_name}
+
+    Returns numeric page_id or None.
+    """
+    import re as _re
+    if not url:
+        return None
+
+    url = url.strip().rstrip('/')
+
+    # Pattern: /pages/Name/123456789
+    m = _re.search(r"/pages/[^/]+/(\d+)", url)
+    if m:
+        return m.group(1)
+
+    # Extract slug (last path segment), strip query string
+    m = _re.search(r"facebook\.com/([^/?#]+)", url)
+    if not m:
+        return None
+    slug = m.group(1)
+
+    # Skip known non-page paths
+    if slug.lower() in ("profile.php", "people", "groups", "events", "watch", "marketplace"):
+        return None
+
+    # Already numeric → it IS the page_id
+    if slug.isdigit():
+        return slug
+
+    # Lookup page_id from slug via Graph API
+    token = access_token or FB_ACCESS_TOKEN
+    if not token:
+        return None
+
+    try:
+        params = {"fields": "id,name", "access_token": token}
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            response = await client.get(f"{FB_BASE_URL}/{slug}", params=params)
+        if response.status_code == 200:
+            data = response.json()
+            return data.get("id")
+    except Exception as e:
+        logger.warning("Resolve page_id from URL failed: %s", e)
+    return None

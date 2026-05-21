@@ -20,6 +20,7 @@ from bot.handlers import (
     cmd_settings,
     handle_message,
     handle_callback,
+    handle_photo,
 )
 
 logging.basicConfig(
@@ -57,6 +58,9 @@ def main():
 
     # Inline keyboard callbacks
     app.add_handler(CallbackQueryHandler(handle_callback))
+
+    # Photo messages (image reference upload for Ads Gen)
+    app.add_handler(MessageHandler(filters.PHOTO, handle_photo))
 
     # Text messages
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))

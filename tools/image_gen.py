@@ -78,6 +78,93 @@ async def generate_image(
     return images_bytes
 
 
+async def edit_image(
+    base_image_bytes: bytes,
+    edit_prompt: str,
+    size: str = "1024x1024",
+    quality: str = "medium",
+    n: int = 1,
+) -> list[bytes]:
+    """Edit ảnh có sẵn theo prompt mới (giữ concept, sửa chi tiết).
+    Dùng GPT-image-2 edit endpoint.
+
+    Args:
+        base_image_bytes: PNG bytes của ảnh gốc
+        edit_prompt: Mô tả thay đổi muốn áp dụng
+        size: Kích thước ảnh output
+        quality: low / medium / high / auto
+        n: Số ảnh muốn gen
+
+    Returns:
+        List of edited image bytes
+    """
+    if not OPENAI_API_KEY:
+        raise RuntimeError("OPENAI_API_KEY chưa setup")
+
+    client = _get_client()
+
+    image_file = io.BytesIO(base_image_bytes)
+    image_file.name = "base.png"
+
+    response = await client.images.edit(
+        model="gpt-image-2",
+        image=image_file,
+        prompt=edit_prompt,
+        size=size,
+        quality=quality,
+        n=n,
+    )
+
+    images_bytes = []
+    for img in response.data:
+        if img.b64_json:
+            images_bytes.append(base64.b64decode(img.b64_json))
+        elif img.url:
+            import httpx
+            async with httpx.AsyncClient() as h:
+                r = await h.get(img.url)
+                images_bytes.append(r.content)
+    return images_bytes
+
+
+async def analyze_image_style(image_bytes: bytes, api_key: Optional[str] = None) -> str:
+    """Phân tích style của ảnh mẫu (composition, lighting, mood) với GPT-4o vision.
+    Returns short text description dùng để build prompt cho gpt-image-2.
+    """
+    if not OPENAI_API_KEY:
+        raise RuntimeError("OPENAI_API_KEY chưa setup")
+
+    client = _get_client()
+
+    image_b64 = base64.b64encode(image_bytes).decode("ascii")
+    response = await client.chat.completions.create(
+        model="gpt-4o-mini",
+        max_tokens=400,
+        messages=[{
+            "role": "user",
+            "content": [
+                {
+                    "type": "text",
+                    "text": (
+                        "Phân tích style của ảnh marketing này. Mô tả NGẮN GỌN (3-5 câu):\n"
+                        "1. Composition (góc chụp, framing, focal point)\n"
+                        "2. Lighting + color palette (warm/cool, contrast)\n"
+                        "3. Mood + style (luxury/casual/minimalist/etc.)\n"
+                        "4. Subject + props (gì xuất hiện chính)\n"
+                        "5. Genre (commercial/lifestyle/UGC/editorial)\n\n"
+                        "Output English (ưu tiên cho image gen prompt). Không quá 100 từ."
+                    ),
+                },
+                {
+                    "type": "image_url",
+                    "image_url": {"url": f"data:image/png;base64,{image_b64}"},
+                },
+            ],
+        }],
+    )
+    return response.choices[0].message.content or ""
+
+
 def estimate_cost(quality: str, size: str, n: int) -> float:
     """Estimate USD cost for gpt-image-2 generation."""
     base_cost = {

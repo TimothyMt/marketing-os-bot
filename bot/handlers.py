@@ -24,6 +24,8 @@ from bot.keyboards import (
     CONFIRM_KEYBOARD,
     RESTART_KEYBOARD,
     stage_done_keyboard,
+    get_action_keyboard,
+    ASK_FOLLOWUP_KEYBOARD,
     ADS_COPY_TIER_KEYBOARD,
     VIDEO_CREATOR_KEYBOARD,
     LANG_LEVEL_KEYBOARD,
@@ -31,8 +33,14 @@ from bot.keyboards import (
     REGEN_PROMPT_KEYBOARD,
     COMPARE_PROMPT_KEYBOARD,
     ADS_FORMAT_KEYBOARD,
+    IMAGE_REFERENCE_KEYBOARD,
     IMAGE_GEN_PROMPT_KEYBOARD,
     IMAGE_SIZE_KEYBOARD,
+    IMAGE_REVIEW_KEYBOARD,
+    NEEDS_STRATEGY_KEYBOARD,
+    MONITOR_PROMPT_KEYBOARD,
+    MONITOR_INTERVAL_KEYBOARD,
+    MONITOR_NEW_ADS_KEYBOARD,
 )
 
 logger = logging.getLogger(__name__)
@@ -226,6 +234,16 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text.strip()
     session = await get_session(user_id)
 
+    # Sprint 5 v2: Image edit text reply
+    if session.pending_intake.get("_awaiting_image_edit"):
+        await _handle_image_edit_text(update, context, session, text)
+        return
+
+    # Sprint 2: Q&A follow-up (stage COMPLETE + awaiting_followup_for OR stage COMPLETE)
+    if session.pending_intake.get("_awaiting_followup_for") or session.stage == PipelineStage.COMPLETE:
+        await _handle_followup(update, context, session, text)
+        return
+
     if session.stage in (PipelineStage.IDLE, PipelineStage.TASK_SELECT):
         # User typed instead of using the keyboard — show task menu
         session.stage = PipelineStage.TASK_SELECT
@@ -257,12 +275,122 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             reply_markup=CONFIRM_KEYBOARD,
         )
 
-    elif session.stage == PipelineStage.COMPLETE:
-        await _handle_followup(update, context, session, text)
-
     else:
         await update.message.reply_text(
             "⏳ Đang phân tích... Vui lòng chờ tôi hoàn thành nhé."
+        )
+
+
+async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Sprint 5 v2: User upload ảnh mẫu để bot làm theo style."""
+    user_id = update.effective_user.id
+    session = await get_session(user_id)
+
+    if not session.pending_intake.get("_awaiting_image_reference"):
+        await update.message.reply_text(
+            "📸 Em nhận ảnh nhưng chưa biết dùng làm gì ạ. "
+            "Sếp vào *Sản Xuất Nội Dung Ads* để gửi ảnh mẫu nhé!",
+            parse_mode=ParseMode.MARKDOWN,
+        )
+        return
+
+    await context.bot.send_chat_action(chat_id=update.effective_chat.id, action=ChatAction.TYPING)
+    await update.message.reply_text(
+        "🔍 Em đang phân tích style ảnh mẫu... (~10s)",
+        parse_mode=ParseMode.MARKDOWN,
+    )
+
+    try:
+        # Download highest-res photo
+        photo = update.message.photo[-1]
+        file = await context.bot.get_file(photo.file_id)
+        import io as _io
+        buf = _io.BytesIO()
+        await file.download_to_memory(out=buf)
+        image_bytes = buf.getvalue()
+
+        # Analyze style
+        from tools.image_gen import analyze_image_style
+        style_desc = await analyze_image_style(image_bytes)
+
+        # Build final prompt = original brief + style description
+        original_prompt = session.pending_intake.get("_img_prompt", "")
+        combined_prompt = f"{original_prompt}\n\nStyle reference (giữ style này): {style_desc}"
+        session.pending_intake["_img_prompt"] = combined_prompt[:1500]
+        session.pending_intake.pop("_awaiting_image_reference", None)
+        await save_session(session)
+
+        await update.message.reply_text(
+            f"✅ *Em đã phân tích style:*\n\n_{style_desc[:300]}_\n\n"
+            f"Sếp muốn em tạo mấy ảnh ạ?",
+            parse_mode=ParseMode.MARKDOWN,
+            reply_markup=IMAGE_GEN_PROMPT_KEYBOARD,
+        )
+    except Exception as e:
+        logger.exception("Image reference analysis failed: %s", e)
+        await update.message.reply_text(
+            f"⚠️ Em không phân tích được ảnh: {str(e)[:200]}\n\nSếp thử ảnh khác hoặc skip ạ.",
+            reply_markup=IMAGE_GEN_PROMPT_KEYBOARD,
+        )
+
+
+async def _handle_image_edit_text(update, context, session, text):
+    """User gõ description sửa ảnh → call image edit API."""
+    if not session.pending_intake.get("_last_image_b64"):
+        await update.message.reply_text(
+            "⚠️ Em không tìm thấy ảnh cũ. Sếp gen ảnh mới nhé.",
+            reply_markup=IMAGE_GEN_PROMPT_KEYBOARD,
+        )
+        session.pending_intake.pop("_awaiting_image_edit", None)
+        await save_session(session)
+        return
+
+    await context.bot.send_chat_action(chat_id=update.effective_chat.id, action=ChatAction.TYPING)
+    await update.message.reply_text(
+        "🎨 Em đang sửa ảnh theo yêu cầu... (~30s)",
+        parse_mode=ParseMode.MARKDOWN,
+    )
+
+    try:
+        import base64 as _b64
+        from tools.image_gen import edit_image
+        base_b64 = session.pending_intake["_last_image_b64"]
+        base_bytes = _b64.b64decode(base_b64)
+        img_size = session.pending_intake.get("_last_image_size", "1024x1024")
+
+        new_images = await edit_image(
+            base_image_bytes=base_bytes,
+            edit_prompt=text,
+            size=img_size,
+            quality="medium",
+            n=1,
+        )
+
+        import io as _io
+        new_bytes = new_images[0] if new_images else None
+        if not new_bytes:
+            raise RuntimeError("Không nhận được ảnh sau edit")
+
+        buf = _io.BytesIO(new_bytes)
+        buf.name = "ads_image_edited.png"
+        await update.message.reply_photo(photo=buf, caption="✨ Ảnh đã sửa")
+
+        # Update last image for chained edits
+        session.pending_intake["_last_image_b64"] = _b64.b64encode(new_bytes).decode("ascii")
+        session.pending_intake.pop("_awaiting_image_edit", None)
+        await save_session(session)
+
+        await update.message.reply_text(
+            "Sếp muốn sửa tiếp hay chốt ạ?",
+            reply_markup=IMAGE_REVIEW_KEYBOARD,
+        )
+    except Exception as e:
+        logger.exception("Image edit failed: %s", e)
+        session.pending_intake.pop("_awaiting_image_edit", None)
+        await save_session(session)
+        await update.message.reply_text(
+            f"⚠️ Sửa ảnh thất bại: {str(e)[:200]}\n\nSếp thử lại hoặc gen ảnh mới?",
+            reply_markup=IMAGE_REVIEW_KEYBOARD,
         )
 
 
@@ -320,6 +448,10 @@ async def _handle_intake(update, context, session, text):
 # ─── Follow-up Q&A after analysis complete ───────────────────────
 
 async def _handle_followup(update, context, session, text):
+    """Multi-turn Q&A về output skill vừa xong.
+    Ưu tiên context = latest result của skill được follow-up.
+    Fallback = full pipeline context.
+    """
     await context.bot.send_chat_action(
         chat_id=update.effective_chat.id,
         action=ChatAction.TYPING,
@@ -327,17 +459,37 @@ async def _handle_followup(update, context, session, text):
 
     import anthropic
     from config import CLAUDE_MODEL, ANTHROPIC_API_KEY
-    from agents.prompts import STRATEGY_SYNTHESIZER_SYSTEM
 
     client = anthropic.AsyncAnthropic(api_key=ANTHROPIC_API_KEY)
-    context_str = session.build_pipeline_context()
+
+    # Chọn context: ưu tiên latest output của skill đang follow-up
+    skill_name = session.pending_intake.get("_awaiting_followup_for") or session.selected_task or ""
+    latest_output = session.get_latest_result(skill_name) if skill_name else None
+
+    if latest_output:
+        context_str = (
+            f"## Output em vừa đưa ra cho sếp ({skill_name}):\n\n"
+            f"{latest_output}\n\n"
+            f"## Profile business:\n{session.profile.to_context_string()}"
+        )
+    else:
+        context_str = session.build_pipeline_context()
+
+    system_text = (
+        "Bạn là Max, AI CMO của founder Việt Nam. "
+        "Sếp vừa hỏi follow-up về output em đưa ra. "
+        "Trả lời BÁM SÁT output đã có. Nếu sếp hỏi ngoài scope, "
+        "gợi ý chạy skill khác phù hợp.\n\n"
+        "Tone: em/sếp, professional nhưng thân thiện. "
+        "Trả lời ngắn gọn (1-3 đoạn), tập trung. Không lặp lại nguyên output."
+    )
 
     response = await client.messages.create(
         model=CLAUDE_MODEL,
         max_tokens=1500,
         system=[{
             "type": "text",
-            "text": STRATEGY_SYNTHESIZER_SYSTEM + "\n\nBạn đã hoàn thành phân tích. Trả lời câu hỏi follow-up dựa trên kết quả đã có.",
+            "text": system_text,
             "cache_control": {"type": "ephemeral"},
         }],
         messages=[{
@@ -350,7 +502,7 @@ async def _handle_followup(update, context, session, text):
         update.message,
         response.content[0].text,
         parse_mode=ParseMode.MARKDOWN,
-        reply_markup=stage_done_keyboard(is_last=True),
+        reply_markup=ASK_FOLLOWUP_KEYBOARD,
     )
 
 
@@ -408,6 +560,19 @@ async def _handle_callback_inner(update, context, query, session, data, user_id)
 
     # ── Rating callback (Sprint 2) ───────────────────────────────
     if data.startswith("rate_"):
+        skill_name = session.pending_intake.get("_awaiting_rating_for")
+
+        # Skip rating → đi thẳng action keyboard
+        if data == "rate_skip":
+            session.pending_intake.pop("_awaiting_rating_for", None)
+            await save_session(session)
+            await query.edit_message_reply_markup(reply_markup=None)
+            await query.message.reply_text(
+                "OK ạ! Sếp muốn làm gì tiếp?",
+                reply_markup=get_action_keyboard(skill_name or ""),
+            )
+            return
+
         try:
             rating = int(data.replace("rate_", ""))
         except ValueError:
@@ -415,7 +580,6 @@ async def _handle_callback_inner(update, context, query, session, data, user_id)
         if rating < 1 or rating > 5:
             return
 
-        skill_name = session.pending_intake.get("_awaiting_rating_for")
         if not skill_name:
             await query.message.reply_text("Cảm ơn sếp! 🙏")
             return
@@ -431,15 +595,21 @@ async def _handle_callback_inner(update, context, query, session, data, user_id)
             "created_at": datetime.utcnow().isoformat(),
         })
 
+        # Log to feedback_log table (Task #12)
+        try:
+            await _log_feedback_to_db(session, skill_name, rating, "")
+        except Exception as e:
+            logger.warning("Feedback DB log failed (non-blocking): %s", e)
+
         await query.edit_message_reply_markup(reply_markup=None)
 
         if rating >= 4:
-            # Rating cao → cảm ơn, hiện next action
+            # Rating cao → cảm ơn, hiện action keyboard theo category
             session.pending_intake.pop("_awaiting_rating_for", None)
             await save_session(session)
             await query.message.reply_text(
-                "Cảm ơn sếp đã feedback! 🙏\n\nGiờ em chạy thêm task khác hay sếp hỏi follow-up?",
-                reply_markup=stage_done_keyboard(is_last=True),
+                "Cảm ơn sếp đã feedback! 🙏\n\nSếp muốn làm gì tiếp?",
+                reply_markup=get_action_keyboard(skill_name),
             )
         else:
             # Rating ≤ 3 → hỏi feedback chi tiết
@@ -496,7 +666,7 @@ async def _handle_callback_inner(update, context, query, session, data, user_id)
         return
 
     if data == "regen_no":
-        # Note feedback vào DB rồi thôi
+        # User skip regen — feedback đã lưu DB rồi qua _handle_feedback_text
         skill_name = session.pending_intake.get("_pending_regen_skill")
         feedback = session.pending_intake.get("_pending_feedback", "")
         session.pending_intake.pop("_pending_regen_skill", None)
@@ -505,13 +675,10 @@ async def _handle_callback_inner(update, context, query, session, data, user_id)
 
         await query.edit_message_reply_markup(reply_markup=None)
         await query.message.reply_text(
-            "OK ạ, em note vào hệ thống. Cảm ơn sếp đã feedback! 🙏\n"
-            "_Admin sẽ review tuần sau để cải thiện skill này._",
-            parse_mode=ParseMode.MARKDOWN,
-            reply_markup=stage_done_keyboard(is_last=True),
+            "OK ạ, cảm ơn sếp! 🙏",
+            reply_markup=get_action_keyboard(skill_name or ""),
         )
-        # TODO Sprint future: forward feedback to admin Telegram
-        logger.info("FEEDBACK [%s] rating_low: %s", skill_name, feedback[:200])
+        logger.info("FEEDBACK [%s] rating_low (regen_skip): %s", skill_name, feedback[:200])
         return
 
     # ── Language preference setup (Sprint 1.III) ─────────────────
@@ -640,10 +807,10 @@ async def _handle_callback_inner(update, context, query, session, data, user_id)
         )
 
         try:
-            from tools.image_gen import generate_image, estimate_cost
+            from tools.image_gen import generate_image
             images = await generate_image(img_prompt, size=img_size, quality="medium", n=n_images)
-            cost = estimate_cost("medium", img_size, n_images)
             import io as _io
+            last_image_bytes = None
             for i, img_bytes in enumerate(images, start=1):
                 buf = _io.BytesIO(img_bytes)
                 buf.name = f"ads_image_{i}.png"
@@ -651,19 +818,219 @@ async def _handle_callback_inner(update, context, query, session, data, user_id)
                     photo=buf,
                     caption=f"🖼️ Ảnh {i}/{n_images}",
                 )
-            # Clean markers
-            session.pending_intake.pop("_img_n", None)
-            session.pending_intake.pop("_img_prompt", None)
+                last_image_bytes = img_bytes
+            # Lưu ảnh cuối cùng (để edit nếu user muốn sửa)
+            if last_image_bytes:
+                import base64 as _b64
+                session.pending_intake["_last_image_b64"] = _b64.b64encode(last_image_bytes).decode("ascii")
+                session.pending_intake["_last_image_size"] = img_size
             await save_session(session)
             await query.message.reply_text(
-                f"✅ Em tạo xong {n_images} ảnh! Chi phí: ~${cost:.2f}",
-                reply_markup=stage_done_keyboard(is_last=True),
+                f"✅ *Em tạo xong {n_images} ảnh!*\n\nSếp muốn sửa hay chốt ảnh này ạ?",
+                parse_mode=ParseMode.MARKDOWN,
+                reply_markup=IMAGE_REVIEW_KEYBOARD,
             )
         except Exception as e:
             logger.exception("Image gen failed: %s", e)
             await query.message.reply_text(
                 f"⚠️ Gen ảnh thất bại: {str(e)[:200]}\n\nSếp check OPENAI_API_KEY trong Railway env vars."
             )
+        return
+
+    # ── Auto monitor flow ────────────────────────────────────────
+    if data == "monitor_yes":
+        # User chấp nhận → hỏi interval
+        await query.edit_message_reply_markup(reply_markup=None)
+        await query.message.reply_text(
+            "⏰ *Em check mỗi bao lâu 1 lần ạ?*",
+            parse_mode=ParseMode.MARKDOWN,
+            reply_markup=MONITOR_INTERVAL_KEYBOARD,
+        )
+        return
+
+    if data == "monitor_no":
+        # Skip monitor → tiếp tục flow rating bình thường
+        session.pending_intake.pop("_monitor_pending_page_id", None)
+        session.pending_intake.pop("_monitor_pending_page_name", None)
+        await save_session(session)
+        await query.edit_message_reply_markup(reply_markup=None)
+        # Show rating cho competitor_spy
+        task_name = session.selected_task or "competitor_spy"
+        session.pending_intake["_awaiting_rating_for"] = task_name
+        await save_session(session)
+        await query.message.reply_text(
+            "OK ạ! Sếp đánh giá output em vừa làm thế nào ạ?",
+            reply_markup=RATING_KEYBOARD,
+        )
+        return
+
+    if data.startswith("monitor_iv_"):
+        # User chọn interval → lưu DB
+        try:
+            interval_hours = int(data.replace("monitor_iv_", ""))
+        except ValueError:
+            return
+
+        page_id = session.pending_intake.get("_monitor_pending_page_id")
+        page_name = session.pending_intake.get("_monitor_pending_page_name") or ""
+        ad_ids_str = session.pending_intake.get("_fb_ad_ids", "")
+        ad_ids = [aid for aid in ad_ids_str.split(",") if aid]
+
+        if not page_id:
+            await query.edit_message_text("⚠️ Có lỗi, sếp /start lại nhé.")
+            return
+
+        await query.edit_message_reply_markup(reply_markup=None)
+        try:
+            from storage.tracked_competitors import add_tracked
+            ok = await add_tracked(
+                user_id=user_id,
+                page_id=page_id,
+                page_name=page_name,
+                interval_hours=interval_hours,
+                ad_ids=ad_ids,
+            )
+            interval_label = {3: "3 giờ", 6: "6 giờ", 12: "12 giờ", 24: "1 ngày", 168: "1 tuần"}.get(interval_hours, f"{interval_hours}h")
+            if ok:
+                await query.message.reply_text(
+                    f"✅ *Em sẽ theo dõi {page_name}!*\n\n"
+                    f"_Mỗi {interval_label}, em check 1 lần và báo sếp ngay khi có ads mới._",
+                    parse_mode=ParseMode.MARKDOWN,
+                )
+            else:
+                await query.message.reply_text(
+                    "⚠️ Có lỗi khi lưu tracking. Em báo admin để fix ạ.",
+                )
+        except Exception as e:
+            logger.exception("Add tracked failed: %s", e)
+            await query.message.reply_text(
+                f"⚠️ Lưu tracking thất bại: {str(e)[:200]}",
+            )
+
+        # Cleanup markers
+        session.pending_intake.pop("_monitor_pending_page_id", None)
+        session.pending_intake.pop("_monitor_pending_page_name", None)
+        await save_session(session)
+
+        # Tiếp tục rating
+        task_name = session.selected_task or "competitor_spy"
+        session.pending_intake["_awaiting_rating_for"] = task_name
+        await save_session(session)
+        await query.message.reply_text(
+            "Tiện thể — sếp đánh giá output em vừa làm thế nào ạ?",
+            reply_markup=RATING_KEYBOARD,
+        )
+        return
+
+    if data.startswith("monitor_diff_"):
+        # User click "Phân tích ads mới" từ notification
+        page_id = data.replace("monitor_diff_", "")
+        await query.edit_message_reply_markup(reply_markup=None)
+        await query.message.reply_text(
+            f"🔍 Em đang phân tích ads mới của đối thủ này...",
+            parse_mode=ParseMode.MARKDOWN,
+        )
+        try:
+            from tools.fb_ads_library import search_by_page_id, format_ads_for_analysis
+            ads = await search_by_page_id(page_id, country="VN", limit=10)
+            # Chỉ phân tích N ads mới nhất (sort by start_time desc)
+            ads_sorted = sorted(ads, key=lambda a: a.get("ad_delivery_start_time", ""), reverse=True)[:5]
+            fb_data = format_ads_for_analysis(ads_sorted, "đối thủ")
+
+            # Inject diff-mode data + run competitor_spy
+            session.pending_intake["_fb_data"] = (
+                "**[DIFF MODE — phân tích ads MỚI nhất]**\n\n" + fb_data +
+                "\n\nFocus: đối thủ vừa thay đổi gì? Hint angle/strategy mới? Mình react thế nào (3 action cụ thể)?"
+            )
+            session.selected_task = "competitor_spy"
+            await save_session(session)
+
+            result = await run_operational_skill("competitor_spy", session)
+            await save_session(session)
+            await _send_ops_result(query.message, session, "competitor_spy", result)
+        except Exception as e:
+            logger.exception("Monitor diff analysis failed: %s", e)
+            await query.message.reply_text(f"⚠️ Phân tích thất bại: {str(e)[:200]}")
+        return
+
+    if data == "monitor_skip_diff":
+        await query.edit_message_reply_markup(reply_markup=None)
+        await query.message.reply_text("OK ạ! Em tiếp tục theo dõi và báo sếp lần sau nhé.")
+        return
+
+    # Sprint 5 v2: Image reference upload flow
+    if data == "img_ref_upload":
+        await query.edit_message_reply_markup(reply_markup=None)
+        session.pending_intake["_awaiting_image_reference"] = "1"
+        await save_session(session)
+        await query.message.reply_text(
+            "📤 *Sếp gửi ảnh mẫu vào đây nhé!*\n\n"
+            "_Em sẽ phân tích style ảnh đó và làm theo._",
+            parse_mode=ParseMode.MARKDOWN,
+        )
+        return
+
+    if data == "img_ref_skip":
+        # Tự gen theo brief, không có ảnh mẫu
+        await query.edit_message_reply_markup(reply_markup=None)
+        session.pending_intake.pop("_awaiting_image_reference", None)
+        await save_session(session)
+        await query.message.reply_text(
+            "🎨 OK, em tự gen theo brief. Sếp muốn em tạo mấy ảnh ạ?",
+            reply_markup=IMAGE_GEN_PROMPT_KEYBOARD,
+        )
+        return
+
+    if data == "img_ref_no_gen":
+        await query.edit_message_reply_markup(reply_markup=None)
+        session.pending_intake.pop("_awaiting_image_reference", None)
+        await save_session(session)
+        await query.message.reply_text(
+            "OK ạ, em chỉ gửi copy thôi. Sếp đánh giá output em vừa làm thế nào ạ?",
+            reply_markup=RATING_KEYBOARD,
+        )
+        session.pending_intake["_awaiting_rating_for"] = session.selected_task or ""
+        await save_session(session)
+        return
+
+    # Sprint 5 v2: Image review (Sửa / Chốt / Regen)
+    if data == "img_edit":
+        await query.edit_message_reply_markup(reply_markup=None)
+        session.pending_intake["_awaiting_image_edit"] = "1"
+        await save_session(session)
+        await query.message.reply_text(
+            "✏️ *Sếp muốn sửa gì ạ?*\n\n"
+            "_Vd:_\n"
+            "_• 'đổi nền sang biển'_\n"
+            "_• 'thêm text \"Giảm 50%\" góc phải'_\n"
+            "_• 'sáng hơn, ấm hơn'_\n"
+            "_• 'bỏ logo bên góc trái'_",
+            parse_mode=ParseMode.MARKDOWN,
+        )
+        return
+
+    if data == "img_confirm":
+        await query.edit_message_reply_markup(reply_markup=None)
+        # Clean image buffers
+        session.pending_intake.pop("_last_image_b64", None)
+        session.pending_intake.pop("_last_image_size", None)
+        session.pending_intake.pop("_img_n", None)
+        session.pending_intake.pop("_img_prompt", None)
+        await save_session(session)
+        await query.message.reply_text(
+            "✅ Chốt! Sếp đánh giá output em vừa làm thế nào ạ?",
+            reply_markup=RATING_KEYBOARD,
+        )
+        session.pending_intake["_awaiting_rating_for"] = session.selected_task or ""
+        await save_session(session)
+        return
+
+    if data == "img_regen":
+        await query.edit_message_reply_markup(reply_markup=None)
+        await query.message.reply_text(
+            "🔁 OK, em gen ảnh khác. Mấy ảnh ạ?",
+            reply_markup=IMAGE_GEN_PROMPT_KEYBOARD,
+        )
         return
 
     if data.startswith("video_creator_"):
@@ -680,6 +1047,34 @@ async def _handle_callback_inner(update, context, query, session, data, user_id)
         session.selected_task = task_type
         session.pending_intake = {}  # reset for fresh single-shot intake
         await save_session(session)
+
+        # ── Smart gating: skill cần Strategy base ─────────────────
+        STRATEGY_GATED_SKILLS = {"campaign_brief", "content_calendar", "landing_page"}
+        if task_type in STRATEGY_GATED_SKILLS:
+            await query.edit_message_reply_markup(reply_markup=None)
+            # Check session có synthesis result chưa
+            has_strategy = bool(
+                session.get_latest_result("synthesis")
+                or session.get_latest_result("strategy")
+            )
+            if has_strategy:
+                # YES branch — leverage roadmap
+                await _send_strategy_aware_form(query.message, session, task_type)
+                return
+            # NO branch — suggest A→Z
+            task_label = (get_task(task_type).label if get_task(task_type) else task_type)
+            session.pending_followup_skill = task_type  # store for chain
+            await save_session(session)
+            await query.message.reply_text(
+                f"📋 *{task_label} chuyên sâu cần có Marketing Strategy nền.*\n\n"
+                f"Em chưa có data Strategy của sếp.\n\n"
+                f"Để output chính xác (đúng audience, đúng goals, đúng channels), "
+                f"em chạy *Phân Tích Tổng Hợp A→Z* trước nhé. (~5-7 phút, 5 bước)\n\n"
+                f"_Sau khi A→Z xong, em tự động tiếp tục {task_label} cho sếp._",
+                parse_mode=ParseMode.MARKDOWN,
+                reply_markup=NEEDS_STRATEGY_KEYBOARD,
+            )
+            return
 
         # Operational skills → single-shot form (or variant chooser first)
         if task_type in OPERATIONAL_TASKS:
@@ -779,10 +1174,102 @@ async def _handle_callback_inner(update, context, query, session, data, user_id)
             reply_markup=TASK_SELECT_KEYBOARD,
         )
 
+    elif data == "run_az_then_back":
+        # User chấp nhận chạy A→Z, sau đó tự quay lại skill ban đầu
+        # pending_followup_skill đã được set ở bước trước
+        await query.edit_message_reply_markup(reply_markup=None)
+        session.selected_task = "full"
+        await save_session(session)
+
+        # Nếu profile đã đủ → CONFIRMED, chạy luôn
+        if session.profile.is_ready_for_analysis():
+            session.stage = PipelineStage.CONFIRMED
+            await save_session(session)
+            await query.message.reply_text(
+                "🚀 *Bắt đầu Phân Tích Tổng Hợp A→Z...*",
+                parse_mode=ParseMode.MARKDOWN,
+            )
+            session.stage = PipelineStage.MARKET_RESEARCH
+            await save_session(session)
+            await _run_pipeline_sequentially(query.message, session)
+        else:
+            # Cần multi-turn intake trước
+            session.stage = PipelineStage.INTAKE
+            await save_session(session)
+            opening = TASK_OPENING_QUESTIONS.get("full", TASK_OPENING_QUESTIONS["full"])
+            await query.message.reply_text(
+                f"✅ *Chuẩn bị Phân Tích Tổng Hợp A→Z*\n\n{opening}",
+                parse_mode=ParseMode.MARKDOWN,
+            )
+        return
+
     elif data == "ask_followup":
+        # Multi-turn Q&A về output skill vừa xong
+        skill_name = session.selected_task
+        session.pending_intake["_awaiting_followup_for"] = skill_name or ""
+        session.stage = PipelineStage.COMPLETE
+        await save_session(session)
         await query.edit_message_reply_markup(reply_markup=None)
         await query.message.reply_text(
-            "💬 Bạn muốn hỏi thêm gì về kết quả phân tích? Cứ nhắn thẳng vào đây nhé!"
+            "💬 *Sếp hỏi gì về output vừa rồi?*\n\n"
+            "_Em trả lời bám sát kết quả em vừa đưa ra. "
+            "Gõ thoải mái nhé._",
+            parse_mode=ParseMode.MARKDOWN,
+        )
+
+    elif data == "rerun_current_task":
+        # Chạy lại cùng task với input mới (fresh form, giữ profile)
+        task_name = session.selected_task
+        if not task_name:
+            await query.edit_message_reply_markup(reply_markup=None)
+            await query.message.reply_text(
+                "⚠️ Em không nhớ task vừa chạy. Sếp chọn lại từ menu nhé.",
+                reply_markup=MAIN_MENU_KEYBOARD,
+            )
+            return
+
+        # Clear intake cũ (giữ preferences, profile, results)
+        session.pending_intake = {}
+        await save_session(session)
+        await query.edit_message_reply_markup(reply_markup=None)
+
+        # Dispatch lại theo loại task
+        SINGLE_SHOT_STRATEGIC = {"market", "competitor", "customer", "pricing"}
+
+        if task_name in OPERATIONAL_TASKS:
+            # Special skills cần variant chooser trước
+            if task_name in ("ads_copy", "ads_generator"):
+                await query.message.reply_text(
+                    "📢 *Sản Xuất Nội Dung Ads* — Sếp muốn gen tier nào ạ?",
+                    parse_mode=ParseMode.MARKDOWN,
+                    reply_markup=ADS_COPY_TIER_KEYBOARD,
+                )
+                return
+            if task_name == "video_scripts":
+                await query.message.reply_text(
+                    "🎬 *Viết Kịch Bản Video* — Brief cho loại creator nào ạ?",
+                    parse_mode=ParseMode.MARKDOWN,
+                    reply_markup=VIDEO_CREATOR_KEYBOARD,
+                )
+                return
+            await _send_single_shot_form(query.message, session, task_name)
+            return
+
+        if task_name in SINGLE_SHOT_STRATEGIC:
+            task = get_task(task_name)
+            if task and task.intake_fields:
+                await _send_single_shot_form(query.message, session, task_name)
+                return
+
+        # Full pipeline / strategy → confirm với profile cũ rồi chạy
+        if not needs_intake(session, task_name):
+            await _show_profile_reuse_confirm(query.message, session, task_name)
+            return
+
+        # Fallback: về menu
+        await query.message.reply_text(
+            "Sếp chọn task từ menu nhé:",
+            reply_markup=MAIN_MENU_KEYBOARD,
         )
 
 
@@ -867,6 +1354,92 @@ async def _show_profile_reuse_confirm(message: Message, session, task_name: str)
         parse_mode=ParseMode.MARKDOWN,
         reply_markup=CONFIRM_KEYBOARD,
     )
+
+
+async def _send_strategy_aware_form(message: Message, session, task_name: str):
+    """Khi user đã có Strategy (synthesis) — show form rút gọn tham chiếu roadmap.
+    Áp dụng cho: campaign_brief, content_calendar, landing_page.
+    """
+    task = get_task(task_name)
+    if not task:
+        await _send_single_shot_form(message, session, task_name)
+        return
+
+    # Extract roadmap campaigns từ synthesis nếu parse được
+    synthesis = session.get_latest_result("synthesis") or session.get_latest_result("strategy") or ""
+    campaigns_hint = _extract_campaigns_from_strategy(synthesis)
+
+    lines = [
+        f"✅ *{task.button_emoji} {task.label}*",
+        "",
+        f"_Em thấy sếp đã có Marketing Strategy rồi. Em dùng strategy đó làm base._",
+        "",
+        "─────────────────────────",
+    ]
+
+    if campaigns_hint:
+        lines.append("📅 *Roadmap của sếp có các campaigns:*")
+        lines.append("")
+        for i, c in enumerate(campaigns_hint, 1):
+            lines.append(f"{i}️⃣ {c}")
+        lines.append("")
+        lines.append("─────────────────────────")
+
+    lines.extend([
+        "*Sếp trả lời 1 lần các ý sau:*",
+        "",
+        "**1️⃣ Chọn campaign nào?**",
+        "  - Gõ số (1/2/3...) để chọn từ roadmap",
+        "  - Hoặc tả campaign mới (ngoài roadmap)",
+        "",
+        "**2️⃣ Có muốn đổi thời gian / ngân sách không?**",
+        "  _Vd: 'kéo 12 tuần thay vì 8, budget 80tr'_",
+        "  _Hoặc 'giữ nguyên theo roadmap'_",
+        "",
+        "**3️⃣ Audience có khác ICP đã định không?**",
+        "  _Nếu không nói gì, em dùng ICP cũ._",
+        "",
+        "─────────────────────────",
+        "💬 *Gửi tin trả lời theo format trên — Max sẽ tự parse và chạy.*",
+    ])
+
+    # Mark session: form này có Strategy context
+    session.pending_intake[OPS_INTAKE_AWAITING] = task_name
+    session.pending_intake["_strategy_aware"] = "1"
+    session.selected_task = task_name
+    session.stage = PipelineStage.INTAKE
+    await save_session(session)
+
+    await message.reply_text("\n".join(lines), parse_mode=ParseMode.MARKDOWN)
+
+
+def _extract_campaigns_from_strategy(synthesis_text: str) -> list[str]:
+    """Best-effort extract campaign names from strategy text.
+    Looks for bullet points / numbered lists in roadmap sections."""
+    if not synthesis_text:
+        return []
+    import re as _re
+    candidates = []
+
+    # Pattern 1: "Q1: xxx" or "Tháng 1: xxx"
+    matches = _re.findall(r"(?:Q[1-4]|Tháng \d+|Week \d+)[:\s-]+([^\n]{10,120})", synthesis_text)
+    candidates.extend(m.strip(' .*-') for m in matches)
+
+    # Pattern 2: Bullet "- Campaign X: ..."
+    matches2 = _re.findall(r"[-*•]\s*Campaign[:\s]+([^\n]{5,120})", synthesis_text, flags=_re.IGNORECASE)
+    candidates.extend(m.strip(' .*-') for m in matches2)
+
+    # Dedupe + cap 5
+    seen = set()
+    result = []
+    for c in candidates:
+        c_low = c.lower()[:50]
+        if c_low not in seen:
+            seen.add(c_low)
+            result.append(c[:120])
+        if len(result) >= 5:
+            break
+    return result
 
 
 async def _send_single_shot_form(message: Message, session, task_name: str):
@@ -969,6 +1542,12 @@ async def _handle_feedback_text(update: Update, context: ContextTypes.DEFAULT_TY
     # Update last feedback entry với text
     if session.feedback.get(skill_name):
         session.feedback[skill_name][-1]["feedback"] = text
+        # Persist updated feedback to DB feedback_log
+        last_rating = session.feedback[skill_name][-1].get("rating", 0)
+        try:
+            await _log_feedback_to_db(session, skill_name, last_rating, text)
+        except Exception as e:
+            logger.warning("Feedback DB log failed (non-blocking): %s", e)
 
     # Store pending feedback for regen decision
     session.pending_intake["_pending_feedback"] = text
@@ -1098,10 +1677,39 @@ def _infer_industry(product: str, customer: str = "") -> str | None:
 
 
 def _extract_image_prompt_from_brief(parsed: dict, session) -> str:
-    """Sprint 5: Extract image gen prompt từ Ads Generator output (brief ảnh).
-    Tổng hợp: product + insight + offer + visual style mention trong deliverable."""
+    """Sprint 5 v2: Build image gen prompt từ Ads output dùng prompt library.
+    Match category dựa industry + product → template phù hợp → fill placeholders."""
     intake = session.pending_intake or {}
-    product = intake.get("product", "")
+    product = intake.get("product", "") or session.profile.product_service or "sản phẩm"
+    offer = intake.get("offer", "") or ""
+    brand = session.profile.business_name or "Brand"
+    industry = session.profile.industry or ""
+    ads_format = intake.get("ads_format", "image")
+
+    # Map size → aspect ratio
+    aspect_map = {"vertical": "vertical", "square": "square", "horizontal": "horizontal"}
+    aspect = aspect_map.get(intake.get("_last_image_size_hint", "square"), "square")
+
+    # Build context_text từ industry + product để categorize
+    context_text = f"{industry} {product} {ads_format}"
+
+    try:
+        from tools.image_prompt_library import build_prompt
+        final_prompt, template_slug = build_prompt(
+            product=product[:200],
+            brand=brand[:100],
+            offer=offer[:150],
+            style_note="",
+            category=None,  # auto-detect from context_text
+            aspect_ratio=aspect,
+        )
+        intake["_template_slug"] = template_slug
+        logger.info("Image prompt: template=%s for industry=%s", template_slug, industry)
+        return final_prompt[:1500]
+    except Exception as e:
+        logger.warning("Prompt library failed, falling back: %s", e)
+
+    # Fallback: legacy logic
     insight = intake.get("insight", "")
     offer = intake.get("offer", "")
     deliverable = parsed.get("deliverable", "") or parsed.get("raw", "")[:500]
@@ -1223,25 +1831,40 @@ async def _send_ops_result(message: Message, session, task_name: str, result: st
         )
         return
 
-    # Sprint 5: Special follow-up sau ads_generator (format=image) → hỏi gen ảnh
+    # Sprint 5 v2: Sau ads_generator (format=image) → hỏi upload ảnh mẫu hoặc gen luôn
     if task_name in ("ads_generator", "ads_copy") and session.pending_intake.get("ads_format") == "image":
         from tools.image_gen import is_available
         if is_available():
-            # Extract image gen prompt từ output (deliverable section)
+            # Lưu copy output để build prompt sau
             img_prompt = _extract_image_prompt_from_brief(parsed, session)
             session.pending_intake["_img_prompt"] = img_prompt
             await save_session(session)
             await message.reply_text(
-                f"✅ *Hoàn thành brief ảnh!*\n\nSếp muốn em tạo ảnh thật luôn từ brief này không ạ?",
+                "📸 *Sếp có ảnh mẫu muốn em làm theo style không ạ?*",
                 parse_mode=ParseMode.MARKDOWN,
-                reply_markup=IMAGE_GEN_PROMPT_KEYBOARD,
+                reply_markup=IMAGE_REFERENCE_KEYBOARD,
             )
             return
         else:
             await message.reply_text(
-                "⚠️ _Image gen chưa setup (cần OPENAI_API_KEY). Em chỉ gửi brief thôi._",
+                "⚠️ _Image gen chưa setup (cần OPENAI_API_KEY). Em chỉ gửi copy thôi._",
                 parse_mode=ParseMode.MARKDOWN,
             )
+
+    # Sprint 4: Special follow-up sau monitor setup
+    if task_name == "competitor_spy" and session.pending_intake.get("_fb_page_id"):
+        page_id = session.pending_intake["_fb_page_id"]
+        page_name = session.pending_intake.get("competitor_name", "đối thủ")
+        session.pending_intake["_monitor_pending_page_id"] = page_id
+        session.pending_intake["_monitor_pending_page_name"] = page_name
+        await save_session(session)
+        await message.reply_text(
+            f"🔔 *Sếp muốn em theo dõi tự động ads mới của {page_name} không ạ?*\n\n"
+            f"_Em sẽ check định kỳ và báo sếp ngay khi đối thủ tung ads mới._",
+            parse_mode=ParseMode.MARKDOWN,
+            reply_markup=MONITOR_PROMPT_KEYBOARD,
+        )
+        return
 
     # Sprint 2: Default — send RATING_KEYBOARD
     session.pending_intake["_awaiting_rating_for"] = task_name
@@ -1290,7 +1913,9 @@ async def _run_pipeline_sequentially(message: Message, session):
             message,
             card_text,
             parse_mode=ParseMode.MARKDOWN,
-            reply_markup=stage_done_keyboard(is_last=is_last) if is_last else None,
+            # Intermediate stages: no keyboard (auto continue)
+            # Last stage: handled below (Rating + chained followup)
+            reply_markup=None,
         )
         await save_session(session)
         await asyncio.sleep(0.5)
@@ -1308,10 +1933,26 @@ async def _run_pipeline_sequentially(message: Message, session):
         except Exception as e:
             logger.exception("Failed to generate HTML report: %s", e)
             await message.reply_text(
-                "⚠️ Không generate được file HTML — phần tóm tắt ở trên đã đủ. Bạn có thể hỏi thêm tự do."
+                "⚠️ Không generate được file HTML — phần tóm tắt ở trên đã đủ. Sếp có thể hỏi thêm tự do."
             )
 
     if stage_count > 0 and stage_count == total_stages:
+        # Chained followup — Brief Campaign hoặc skill khác đang chờ Strategy
+        followup_skill = session.pending_followup_skill
+        if followup_skill:
+            session.pending_followup_skill = None
+            await save_session(session)
+            from agents.task_registry import get_task as _get_task
+            followup_label = (_get_task(followup_skill).label if _get_task(followup_skill) else followup_skill)
+            await message.reply_text(
+                f"✅ *A→Z xong rồi ạ!* Em tiếp tục *{followup_label}* cho sếp luôn nhé...",
+                parse_mode=ParseMode.MARKDOWN,
+            )
+            session.selected_task = followup_skill
+            await save_session(session)
+            await _send_single_shot_form(message, session, followup_skill)
+            return
+
         # Sprint 2: Rating loop sau khi xong pipeline
         session.pending_intake["_awaiting_rating_for"] = task
         await save_session(session)
@@ -1330,13 +1971,41 @@ async def _run_pipeline_sequentially(message: Message, session):
             )
 
 
+# ─── Feedback log DB helper ──────────────────────────────────────
+
+async def _log_feedback_to_db(session, skill_name: str, rating: int, feedback_text: str = ""):
+    """Persist feedback vào table feedback_log (Task #12). Non-blocking."""
+    try:
+        from storage.feedback_log import log_feedback
+        output = session.get_latest_result(skill_name) or ""
+        user_correction = session.pending_intake.get("_pending_feedback", "")
+        await log_feedback(
+            user_id=session.user_id,
+            skill_name=skill_name,
+            rating=rating,
+            feedback_text=feedback_text,
+            industry=session.profile.industry or "",
+            stage=session.profile.stage or "",
+            business_name=session.profile.business_name or "",
+            output_excerpt=output[:500],
+            user_correction=user_correction,
+        )
+    except Exception as e:
+        logger.warning("Feedback DB log failed (non-blocking): %s", e)
+
+
 # ─── Facebook API pre-fetch helpers ─────────────────────────────
 
 async def _prefetch_competitor_ads(message: Message, session):
     """Pre-fetch FB Ads Library data cho competitor_spy skill.
-    Lấy tên đối thủ từ pending_intake, search Ads Library, inject vào _fb_data."""
+    Ưu tiên link fanpage (search_by_page_id) → chính xác hơn search_terms.
+    Inject _fb_data + _fb_page_id (để dùng cho auto-monitor sau).
+    """
     try:
-        from tools.fb_ads_library import search_competitor_ads, format_ads_for_analysis, is_available
+        from tools.fb_ads_library import (
+            search_competitor_ads, search_by_page_id,
+            format_ads_for_analysis, resolve_page_id_from_url, is_available,
+        )
         if not is_available():
             logger.info("FB Ads Library not configured — skipping pre-fetch")
             return
@@ -1347,24 +2016,45 @@ async def _prefetch_competitor_ads(message: Message, session):
             or session.profile.competitors
             or ""
         )
-        if not competitor_name:
-            logger.info("No competitor name found — skipping Ads Library fetch")
+        fanpage_url = session.pending_intake.get("fanpage_url", "").strip()
+
+        if not competitor_name and not fanpage_url:
+            logger.info("No competitor name or URL — skipping Ads Library fetch")
             return
+
+        # Try resolve page_id từ URL trước
+        page_id = None
+        if fanpage_url:
+            await message.reply_text(
+                f"🔗 Em đang resolve Page ID từ link {fanpage_url}...",
+                parse_mode=ParseMode.MARKDOWN,
+            )
+            page_id = await resolve_page_id_from_url(fanpage_url)
+            if page_id:
+                logger.info("Resolved page_id %s from URL %s", page_id, fanpage_url)
 
         # Notify user
         await message.reply_text(
-            f"🔍 Em đang tìm ads của *{competitor_name}* trên Facebook Ads Library...",
+            f"🔍 Em đang tìm ads của *{competitor_name or fanpage_url}* trên Facebook Ads Library...",
             parse_mode=ParseMode.MARKDOWN,
         )
 
-        ads = await search_competitor_ads(
-            search_terms=competitor_name,
-            country="VN",
-            limit=20,
-        )
-        fb_data = format_ads_for_analysis(ads, competitor_name)
+        # Ưu tiên search by page_id (chính xác hơn) → fallback to text search
+        if page_id:
+            ads = await search_by_page_id(page_id, country="VN", limit=20)
+            session.pending_intake["_fb_page_id"] = page_id
+        else:
+            ads = await search_competitor_ads(
+                search_terms=competitor_name or fanpage_url,
+                country="VN",
+                limit=20,
+            )
+
+        fb_data = format_ads_for_analysis(ads, competitor_name or "đối thủ")
         session.pending_intake["_fb_data"] = fb_data
-        logger.info("FB Ads Library: fetched %d ads for '%s'", len(ads), competitor_name)
+        # Lưu ad IDs cho monitor diff sau
+        session.pending_intake["_fb_ad_ids"] = ",".join(a.get("id", "") for a in ads if a.get("id"))
+        logger.info("FB Ads Library: fetched %d ads (page_id=%s)", len(ads), page_id)
 
     except Exception as e:
         logger.warning("FB Ads Library pre-fetch failed (non-blocking): %s", e)
