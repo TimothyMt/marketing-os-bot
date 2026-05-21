@@ -31,6 +31,7 @@ from bot.keyboards import (
     LANG_LEVEL_KEYBOARD,
     RATING_KEYBOARD,
     REGEN_PROMPT_KEYBOARD,
+    FEEDBACK_PROMPT_KEYBOARD,
     COMPARE_PROMPT_KEYBOARD,
     ADS_FORMAT_KEYBOARD,
     IMAGE_REFERENCE_KEYBOARD,
@@ -621,7 +622,20 @@ async def _handle_callback_inner(update, context, query, session, data, user_id)
                 "Cảm ơn sếp! Sếp note giúp em chỗ nào chưa OK để em note lại nhé ạ?\n\n"
                 "_Sếp gõ thoải mái — càng cụ thể em càng sửa được chính xác._",
                 parse_mode=ParseMode.MARKDOWN,
+                reply_markup=FEEDBACK_PROMPT_KEYBOARD,
             )
+        return
+
+    # Sprint 2 v2: User skip feedback text → action keyboard
+    if data == "feedback_skip":
+        skill_name = session.pending_intake.get("_awaiting_feedback_for", "")
+        session.pending_intake.pop("_awaiting_feedback_for", None)
+        await save_session(session)
+        await query.edit_message_reply_markup(reply_markup=None)
+        await query.message.reply_text(
+            "OK ạ, cảm ơn sếp! 🙏",
+            reply_markup=get_action_keyboard(skill_name),
+        )
         return
 
     # ── Regen decision (Sprint 2) ────────────────────────────────

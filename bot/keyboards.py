@@ -40,6 +40,11 @@ REGEN_PROMPT_KEYBOARD = InlineKeyboardMarkup([
     [InlineKeyboardButton("⏭️ Bỏ qua",                  callback_data="regen_no")],
 ])
 
+# Sprint 2 v2: After rating ≤ 3 — trước khi user gõ feedback, cho skip luôn
+FEEDBACK_PROMPT_KEYBOARD = InlineKeyboardMarkup([
+    [InlineKeyboardButton("⏭️ Bỏ qua, không feedback", callback_data="feedback_skip")],
+])
+
 # Sprint 4: Sau competitor analysis — hỏi user có muốn so sánh business sếp không
 COMPARE_PROMPT_KEYBOARD = InlineKeyboardMarkup([
     [InlineKeyboardButton("🆚 So sánh business của sếp với đối thủ", callback_data="run_compare")],
