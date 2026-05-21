@@ -189,6 +189,7 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "_pending_regen_skill", "_pending_feedback",
         "_monitor_pending_page_id", "_monitor_pending_page_name",
         "_last_image_b64", "_last_image_size", "_img_prompt", "_img_n",
+        "_advisor_mode",
     ]
     for k in transient_keys:
         session.pending_intake.pop(k, None)
@@ -281,14 +282,16 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await _handle_followup(update, context, session, text)
         return
 
+    # Advisor mode chain — sau khi user click "Hỏi tiếp"
+    if session.pending_intake.get("_advisor_mode"):
+        await _claude_advisor_fallback(update, context, session, text)
+        return
+
     if session.stage in (PipelineStage.IDLE, PipelineStage.TASK_SELECT):
-        # User typed instead of using the keyboard — show task menu
-        session.stage = PipelineStage.TASK_SELECT
-        await save_session(session)
-        await update.message.reply_text(
-            "Chọn task bạn muốn Max thực hiện nhé 👇",
-            reply_markup=TASK_SELECT_KEYBOARD,
-        )
+        # User typed free-form text instead of using keyboard
+        # → Fallback: Sonnet advisor with full context
+        await _claude_advisor_fallback(update, context, session, text)
+        return
 
     elif session.stage == PipelineStage.INTAKE:
         # Sprint 2: Check feedback flow first (user typing feedback after rating ≤3)
@@ -762,11 +765,22 @@ async def _handle_callback_inner(update, context, query, session, data, user_id)
 
     # ── Menu navigation (tier 1 → tier 2) ─────────────────────────
     if data == "menu_main":
-        await query.edit_message_text(
-            WELCOME_MESSAGE,
-            parse_mode=ParseMode.MARKDOWN,
-            reply_markup=MAIN_MENU_KEYBOARD,
-        )
+        # Clear advisor mode marker khi về menu
+        session.pending_intake.pop("_advisor_mode", None)
+        await save_session(session)
+        try:
+            await query.edit_message_text(
+                WELCOME_MESSAGE,
+                parse_mode=ParseMode.MARKDOWN,
+                reply_markup=MAIN_MENU_KEYBOARD,
+            )
+        except Exception:
+            # Nếu edit fail (message quá cũ), send new message
+            await query.message.reply_text(
+                WELCOME_MESSAGE,
+                parse_mode=ParseMode.MARKDOWN,
+                reply_markup=MAIN_MENU_KEYBOARD,
+            )
         return
 
     if data == "menu_strategic":
@@ -1272,6 +1286,15 @@ async def _handle_callback_inner(update, context, query, session, data, user_id)
                 f"✅ *Chuẩn bị Phân Tích Tổng Hợp A→Z*\n\n{opening}",
                 parse_mode=ParseMode.MARKDOWN,
             )
+        return
+
+    elif data == "continue_advisor":
+        await query.edit_message_reply_markup(reply_markup=None)
+        session.pending_intake["_advisor_mode"] = "1"
+        await save_session(session)
+        await query.message.reply_text(
+            "💬 Sếp gõ tiếp câu hỏi nhé!",
+        )
         return
 
     elif data == "ask_followup":
@@ -2040,6 +2063,110 @@ async def _run_pipeline_sequentially(message: Message, session):
                 parse_mode=ParseMode.MARKDOWN,
                 reply_markup=RATING_KEYBOARD,
             )
+
+
+# ─── Claude advisor fallback ────────────────────────────────────
+
+async def _claude_advisor_fallback(update, context, session, text: str):
+    """User nhắn free-form ngoài skill flow → Sonnet trả lời với full context.
+
+    Context bao gồm: profile + tất cả results đã chạy + Strategy synthesis.
+    Sau khi reply, kèm gợi ý các task có sẵn.
+    """
+    await context.bot.send_chat_action(
+        chat_id=update.effective_chat.id,
+        action=ChatAction.TYPING,
+    )
+
+    import anthropic
+    from config import CLAUDE_SONNET_MODEL, ANTHROPIC_API_KEY
+
+    # Build context: profile + key results
+    parts = []
+    if session.profile and session.profile.business_name:
+        parts.append(session.profile.to_context_string())
+
+    synthesis = session.get_latest_result("synthesis") or session.get_latest_result("strategy")
+    if synthesis:
+        parts.append(f"## Marketing Strategy đã có:\n{synthesis[:3500]}")
+
+    # Inject summaries của các skill đã chạy
+    for skill_key in ("market_research", "competitor", "customer_insight", "psychology_pricing",
+                       "campaign_brief", "content_calendar"):
+        r = session.get_latest_result(skill_key)
+        if r:
+            parts.append(f"## Kết quả {skill_key}:\n{r[:1500]}")
+
+    context_str = "\n\n---\n\n".join(parts) if parts else "_(User chưa chạy task nào, chưa có profile)_"
+
+    en_level = session.preferences.get("en_level", "moderate")
+    en_note = {
+        "none":     "Dùng THUẦN VIỆT 100% — kể cả thuật ngữ marketing dịch sang VN.",
+        "moderate": "Có thể dùng thuật ngữ EN nhưng kèm giải thích VN trong ngoặc.",
+        "fluent":   "Dùng thuật ngữ EN tự nhiên, không cần giải thích.",
+    }.get(en_level, "Moderate EN level.")
+
+    system_text = f"""Bạn là Max — AI CMO cho founder Việt Nam.
+
+Tone: xưng "em" gọi user "sếp", professional + thân thiện.
+Language: {en_note}
+
+NHIỆM VỤ: User nhắn câu hỏi/yêu cầu free-form ngoài flow skill chuẩn.
+Trả lời như 1 marketing advisor có context business của sếp.
+
+QUY TẮC:
+- BÁM SÁT business profile + results đã có (đừng generic)
+- Trả lời NGẮN GỌN (2-4 đoạn, max ~400 từ)
+- Nếu câu hỏi liên quan task có sẵn → GỢI Ý chạy task đó cuối câu trả lời
+  (vd: "Để có data đầy đủ về đối thủ, sếp chạy task *Phân Tích Đối Thủ* nhé")
+- Nếu user hỏi vu vơ / chào / cảm ơn → reply ngắn, gợi ý mở menu
+- KHÔNG bịa số liệu cụ thể, chỉ đưa khuyến nghị dựa trên framework
+
+Skills có sẵn (gợi ý nếu phù hợp):
+🎯 Chiến lược: Tìm Hiểu Thị Trường, Phân Tích Đối Thủ, Insight Khách Hàng,
+   Chiến Lược Giá, Lập Kế Hoạch Tổng, Phân Tích Tổng Hợp A→Z
+⚙️ Sản xuất: Viết Brief Campaign, Lịch Nội Dung, Sản Xuất Nội Dung,
+   Sản Xuất Ads, Kịch Bản Video, Thiết Kế Website, Kịch Bản Sales,
+   Chăm Sóc Khách Hàng
+📊 Theo dõi: Theo Dõi Đối Thủ, Báo Cáo Ads"""
+
+    client = anthropic.AsyncAnthropic(api_key=ANTHROPIC_API_KEY)
+    try:
+        response = await client.messages.create(
+            model=CLAUDE_SONNET_MODEL,
+            max_tokens=1200,
+            system=[{
+                "type": "text",
+                "text": system_text,
+                "cache_control": {"type": "ephemeral"},
+            }],
+            messages=[{
+                "role": "user",
+                "content": f"{context_str}\n\n---\n\nUser nhắn: {text}",
+            }],
+        )
+        reply = response.content[0].text
+    except Exception as e:
+        logger.exception("Claude advisor fallback failed: %s", e)
+        await update.message.reply_text(
+            "⚠️ Em đang gặp lỗi kết nối. Sếp thử chọn task từ menu nhé:",
+            reply_markup=MAIN_MENU_KEYBOARD,
+        )
+        return
+
+    await send_long_message(
+        update.message,
+        reply,
+        parse_mode=ParseMode.MARKDOWN,
+        reply_markup=InlineKeyboardMarkup([
+            [InlineKeyboardButton("💬 Hỏi tiếp",      callback_data="continue_advisor")],
+            [InlineKeyboardButton("⚙️ Mở menu task", callback_data="menu_main")],
+        ]),
+    )
+
+    # Set marker để turn tiếp theo cũng route qua advisor
+    session.pending_intake["_advisor_mode"] = "1"
+    await save_session(session)
 
 
 # ─── Feedback log DB helper ──────────────────────────────────────
