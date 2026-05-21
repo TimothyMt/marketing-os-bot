@@ -139,22 +139,38 @@ STRATEGIC_4_SECTION_FORMAT = f"""
 
 ---
 
-**OUTPUT FORMAT (BẮT BUỘC) — Tuân thủ chính xác cấu trúc 4 sections sau:**
+**OUTPUT FORMAT (BẮT BUỘC) — 4 sections, TUYỆT ĐỐI ĐỦ cả 4:**
 
 ## 💡 Insight quan trọng nhất
-[1-2 câu cốt lõi, đặt trong dấu ngoặc kép — điều quan trọng nhất user cần nhớ về phân tích này.]
+[1-2 câu cốt lõi, đặt trong dấu ngoặc kép — điều quan trọng nhất user cần nhớ.]
 
 ## 🎯 Tóm tắt
 - bullet 1 (key finding ngắn, max 15 từ)
 - bullet 2
 - bullet 3
-- bullet 4 (tối đa 5 bullets, mỗi bullet 1 finding)
+- bullet 4
+- bullet 5 (tối đa 5 bullets)
 
 ## 📊 Benchmarks
-[2-4 dòng KPI/số liệu/threshold cụ thể. Bỏ qua section này nếu không có data số.]
+[2-4 dòng KPI/số liệu/threshold cụ thể. Bỏ qua section này CHỈ nếu thực sự không có data số.]
 
 ## 📄 Phân tích chi tiết
-[Full analysis dài, có sub-sections]
+[BẮT BUỘC PHẢI CÓ. Đây là CORE OUTPUT — full analysis dài 500-1500 từ với sub-headings (### ...), bảng, lý luận sâu. KHÔNG được bỏ qua hay viết qua loa.
+
+VD cấu trúc:
+### 1. [Tên sub-section đầu]
+[Phân tích...]
+
+### 2. [Tên sub-section 2]
+[Phân tích...]
+
+### 3. [Strategic implication]
+[3-5 takeaway actionable cho founder]]
+
+⚠️ **QUY TẮC NGHIÊM CẤM:**
+- KHÔNG được bỏ section "📄 Phân tích chi tiết" — đây là phần value nhất
+- KHÔNG được đổi emoji 📄 sang 📋/📑 — parser cần đúng emoji
+- KHÔNG được rút gọn "Phân tích chi tiết" thành 1-2 đoạn — phải đủ chi tiết để user đọc 3-5 phút
 
 ---
 

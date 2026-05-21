@@ -224,21 +224,36 @@ def _md_to_html(text: str) -> str:
 
 def parse_agent_output(text: str) -> dict:
     """Extract structured sections from agent output.
-    Returns {insight, summary, benchmarks, detail} — all strings (markdown)."""
+    Returns {insight, summary, benchmarks, detail} — all strings (markdown).
+    Matches by emoji OR keyword (lenient — LLM có thể dùng emoji khác)."""
     result = {"insight": "", "summary": "", "benchmarks": "", "detail": ""}
 
+    # Lenient patterns: match emoji OR keyword
     patterns = {
-        "insight":    r"##\s*💡[^\n]*\n+(.*?)(?=\n##\s|\Z)",
-        "summary":    r"##\s*🎯[^\n]*\n+(.*?)(?=\n##\s|\Z)",
-        "benchmarks": r"##\s*📊[^\n]*\n+(.*?)(?=\n##\s|\Z)",
-        "detail":     r"##\s*📄[^\n]*\n+(.*?)(?=\n##\s|\Z)",
+        "insight":    r"##\s*(?:💡|🔑|⭐|✨)?\s*Insight[^\n]*\n+(.*?)(?=\n##\s|\Z)",
+        "summary":    r"##\s*(?:🎯|📌|📝)?\s*(?:Tóm tắt|Tom tat|Summary)[^\n]*\n+(.*?)(?=\n##\s|\Z)",
+        "benchmarks": r"##\s*(?:📊|📈|📉)?\s*(?:Benchmarks?|KPIs?|Số liệu)[^\n]*\n+(.*?)(?=\n##\s|\Z)",
+        "detail":     r"##\s*(?:📄|📋|📑|🔍|🧠)?\s*(?:Phân tích chi tiết|Phan tich|Detail|Chi tiết|Full analysis)[^\n]*\n+(.*?)(?=\n##\s|\Z)",
     }
     for key, pat in patterns.items():
-        m = re.search(pat, text, flags=re.DOTALL)
+        m = re.search(pat, text, flags=re.DOTALL | re.IGNORECASE)
         if m:
             result[key] = m.group(1).strip()
 
-    # Fallback: if nothing parsed, treat all as detail
+    # Heuristic: nếu chỉ có 3 sections nhưng output dài hơn nhiều → còn nội dung không có header
+    if not result["detail"] and (result["insight"] or result["summary"] or result["benchmarks"]):
+        # Lấy phần text NGOÀI 3 sections đã extract — coi như detail
+        used_text = " ".join([result["insight"], result["summary"], result["benchmarks"]])
+        # Tìm tất cả ## headers, lấy content sau header cuối cùng
+        all_headers = list(re.finditer(r"##\s+[^\n]+", text))
+        if all_headers:
+            # Lấy phần sau header cuối — nếu phần đó dài >300 chars và chưa match section khác
+            last = all_headers[-1]
+            tail = text[last.end():].strip()
+            if len(tail) > 300 and tail[:200] not in used_text:
+                result["detail"] = tail
+
+    # Fallback: nếu vẫn không có gì parsed → toàn bộ text là detail
     if not any(result.values()):
         result["detail"] = text.strip()
 
