@@ -250,9 +250,10 @@ async def cmd_settings(update: Update, context: ContextTypes.DEFAULT_TYPE):
     name = session.preferences.get("user_name", "")
     label_map = {"none": "🔴 Không rành", "moderate": "🟡 Hiểu cơ bản", "fluent": "🟢 Thông thạo"}
 
-    # Token info (placeholder — actual tracking sẽ add sau)
-    token_balance = session.preferences.get("token_balance", "1,000,000")  # default 1M tokens free
-    token_used    = session.preferences.get("token_used",    "0")
+    # Token info (real tracking)
+    from tools.token_tracker import usage_summary, is_low, get_remaining, fmt
+    token_line = usage_summary(session)
+    low_warning = "\n⚠️ _Token gần hết, sếp liên hệ admin để nạp thêm._" if is_low(session) else ""
 
     name_line = f"👤 *Tên em đang gọi:* {name}" if name else "👤 *Tên:* chưa đặt"
     kb = InlineKeyboardMarkup([
@@ -264,7 +265,7 @@ async def cmd_settings(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"⚙️ *Cài đặt Max của sếp*\n\n"
         f"{name_line}\n"
         f"🔤 *Ngôn ngữ:* {label_map.get(current, '🟡')}\n"
-        f"💎 *Token còn lại:* {token_balance} _(đã dùng: {token_used})_\n",
+        f"💎 *Token usage:* {token_line}{low_warning}",
         parse_mode=ParseMode.MARKDOWN,
         reply_markup=kb,
     )
@@ -622,6 +623,14 @@ async def _handle_followup(update, context, session, text):
         }],
     )
 
+    # Token tracking
+    try:
+        from tools.token_tracker import track_usage
+        track_usage(session, response, label="followup_qa")
+        await save_session(session)
+    except Exception as e:
+        logger.warning("Token tracking failed (followup): %s", e)
+
     await send_long_message(
         update.message,
         response.content[0].text,
@@ -839,18 +848,36 @@ async def _handle_callback_inner(update, context, query, session, data, user_id)
 
     if data == "settings_tokens":
         await query.edit_message_reply_markup(reply_markup=None)
-        token_balance = session.preferences.get("token_balance", "1,000,000")
-        token_used    = session.preferences.get("token_used",    "0")
+        from tools.token_tracker import (
+            get_used, get_remaining, get_quota, fmt, is_low, is_exhausted,
+        )
+        used = get_used(session)
+        remaining = get_remaining(session)
+        quota = get_quota(session)
+        pct_used = (used / quota * 100) if quota else 0
+
         name = _get_user_name(session)
         addr = f"sếp {name}" if name else "sếp"
-        await query.message.reply_text(
-            f"💎 *Token của {addr}*\n\n"
-            f"📊 *Còn lại:* {token_balance}\n"
-            f"📉 *Đã dùng:* {token_used}\n\n"
-            f"_Mỗi skill chạy 1 lần tốn ~10-50K token. Token reset hàng tháng (cho gói free)._\n\n"
-            f"_Tính năng tracking chính xác đang phát triển — số liệu hiện là estimate._",
-            parse_mode=ParseMode.MARKDOWN,
+
+        status_emoji = "🟢"
+        if is_exhausted(session): status_emoji = "🔴"
+        elif is_low(session):     status_emoji = "🟡"
+
+        msg = (
+            f"💎 *Chi tiết token của {addr}*\n\n"
+            f"{status_emoji} *Quota:* {fmt(quota)}\n"
+            f"📉 *Đã dùng:* {fmt(used)} ({pct_used:.1f}%)\n"
+            f"📊 *Còn lại:* {fmt(remaining)}\n\n"
+            f"_Mỗi skill chạy 1 lần tốn ~10-50K token._\n"
+            f"_Q&A advisor ~3-5K token / câu._\n"
+            f"_Intake (Haiku) ~1-2K token / turn._\n"
         )
+        if is_exhausted(session):
+            msg += "\n🔴 *Hết quota!* Sếp liên hệ admin để nạp thêm hoặc chờ reset hàng tháng."
+        elif is_low(session):
+            msg += "\n⚠️ Sếp còn dưới 10% quota — cân nhắc dùng tiết kiệm."
+
+        await query.message.reply_text(msg, parse_mode=ParseMode.MARKDOWN)
         return
 
     if data.startswith("lang_"):
@@ -1230,6 +1257,22 @@ async def _handle_callback_inner(update, context, query, session, data, user_id)
     # ── Task selection ────────────────────────────────────────────
     if data.startswith("task_"):
         task_type = data[5:]
+
+        # Pre-check token quota
+        try:
+            from tools.token_tracker import is_exhausted, get_used, get_quota, fmt
+            if is_exhausted(session):
+                await query.answer("Đã hết quota token", show_alert=True)
+                await query.message.reply_text(
+                    f"🔴 *Đã hết quota token!*\n\n"
+                    f"Đã dùng: {fmt(get_used(session))} / {fmt(get_quota(session))}\n\n"
+                    f"_Sếp liên hệ admin để nạp thêm hoặc chờ reset hàng tháng._",
+                    parse_mode=ParseMode.MARKDOWN,
+                )
+                return
+        except Exception as e:
+            logger.warning("Token quota pre-check failed: %s", e)
+
         session.selected_task = task_type
         session.pending_intake = {}  # reset for fresh single-shot intake
         await save_session(session)
@@ -2320,6 +2363,12 @@ Skills có sẵn (gợi ý nếu phù hợp):
                 "content": f"{context_str}\n\n---\n\nUser nhắn: {text}",
             }],
         )
+        # Token tracking
+        try:
+            from tools.token_tracker import track_usage
+            track_usage(session, response, label="advisor")
+        except Exception as e:
+            logger.warning("Token tracking failed (advisor): %s", e)
         reply = response.content[0].text
     except Exception as e:
         logger.exception("Claude advisor fallback failed: %s", e)
@@ -2328,6 +2377,10 @@ Skills có sẵn (gợi ý nếu phù hợp):
             reply_markup=MAIN_MENU_KEYBOARD,
         )
         return
+
+    # Set marker để turn tiếp theo cũng route qua advisor
+    session.pending_intake["_advisor_mode"] = "1"
+    await save_session(session)
 
     await send_long_message(
         update.message,
@@ -2338,10 +2391,6 @@ Skills có sẵn (gợi ý nếu phù hợp):
             [InlineKeyboardButton("⚙️ Mở menu task", callback_data="menu_main")],
         ]),
     )
-
-    # Set marker để turn tiếp theo cũng route qua advisor
-    session.pending_intake["_advisor_mode"] = "1"
-    await save_session(session)
 
 
 # ─── Feedback log DB helper ──────────────────────────────────────

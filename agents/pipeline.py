@@ -5,9 +5,12 @@ Manages the sequential execution of all 8 agents via Claude API.
 import json
 import re
 import asyncio
+import logging
 from typing import AsyncGenerator, Optional
 
 import anthropic
+
+logger = logging.getLogger(__name__)
 
 from config import (
     CLAUDE_SONNET_MODEL,
@@ -202,6 +205,13 @@ async def run_intake(session: Session, user_message: str) -> tuple[str, bool]:
         messages=messages,
     )
 
+    # Token tracking
+    try:
+        from tools.token_tracker import track_usage
+        track_usage(session, response, label="intake")
+    except Exception as e:
+        logger.warning("Token tracking failed (intake): %s", e)
+
     assistant_text = response.content[0].text
     session.add_to_history("assistant", assistant_text)
     profile, is_complete = _extract_profile_from_response(assistant_text)
@@ -318,6 +328,14 @@ async def _run_skill(skill: AgentSkill, session: Session) -> str:
             {"role": "user", "content": f"{context}\n\n---\n\n{user_msg}"}
         ],
     )
+
+    # Token tracking
+    try:
+        from tools.token_tracker import track_usage
+        track_usage(session, response, label=skill.name)
+    except Exception as e:
+        logger.warning("Token tracking failed (%s): %s", skill.name, e)
+
     raw_output = response.content[0].text
 
     if skill.enable_critic:
