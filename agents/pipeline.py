@@ -185,6 +185,13 @@ async def run_intake(session: Session, user_message: str) -> tuple[str, bool]:
     session.add_to_history("user", user_message)
 
     system_prompt = get_intake_system(session.selected_task or "full")
+    # Inject user name nếu có
+    user_name = (session.preferences.get("user_name", "") or "").strip()
+    if user_name:
+        system_prompt = system_prompt + (
+            f"\n\n**Tên user:** {user_name}. Khi xưng hô gọi 'sếp {user_name}' "
+            f"(vd: 'Em cảm ơn sếp {user_name}'), KHÔNG chỉ gọi 'sếp'."
+        )
     messages = session.intake_history.copy()
 
     # Intake = classification + JSON extract → dùng Haiku (rẻ, nhanh)
@@ -287,7 +294,15 @@ async def _run_skill(skill: AgentSkill, session: Session) -> str:
     format_instruction = get_format_instruction(skill.output_format)
     en_level = (session.preferences or {}).get("en_level", "moderate")
     lang_instruction = get_lang_instruction(en_level)
-    augmented_system = skill.system_prompt + format_instruction + "\n\n---\n\n" + lang_instruction
+
+    # Inject user name directive
+    user_name = ((session.preferences or {}).get("user_name", "") or "").strip()
+    name_directive = (
+        f"\n\n---\n\n**Tên user:** {user_name}. Khi xưng hô gọi 'sếp {user_name}' "
+        f"(vd: 'Em recommend sếp {user_name}'), KHÔNG chỉ gọi 'sếp'."
+    ) if user_name else ""
+
+    augmented_system = skill.system_prompt + format_instruction + "\n\n---\n\n" + lang_instruction + name_directive
 
     response = await client.messages.create(
         model=CLAUDE_SONNET_MODEL,

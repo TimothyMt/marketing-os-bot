@@ -227,15 +227,24 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def cmd_settings(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Sprint 1.III: /settings — đổi en_level."""
+    """/settings — đổi en_level + user_name."""
     user_id = update.effective_user.id
     session = await get_session(user_id)
     current = session.preferences.get("en_level", "moderate")
+    name = session.preferences.get("user_name", "")
     label_map = {"none": "🔴 Không rành", "moderate": "🟡 Hiểu cơ bản", "fluent": "🟢 Thông thạo"}
+
+    name_line = f"Tên sếp em đang gọi: *{name}*\n" if name else "Em chưa biết tên sếp.\n"
+    kb = InlineKeyboardMarkup([
+        [InlineKeyboardButton("✏️ Đổi tên",          callback_data="settings_change_name")],
+        [InlineKeyboardButton("🔤 Đổi mức tiếng Anh", callback_data="settings_change_lang")],
+    ])
     await update.message.reply_text(
-        f"Khả năng tiếng Anh hiện tại của sếp: *{label_map.get(current, '🟡')}*\n\nĐổi lại nhé:",
+        f"⚙️ *Cài đặt cá nhân*\n\n"
+        f"{name_line}"
+        f"Mức tiếng Anh: *{label_map.get(current, '🟡')}*",
         parse_mode=ParseMode.MARKDOWN,
-        reply_markup=LANG_LEVEL_KEYBOARD,
+        reply_markup=kb,
     )
 
 
@@ -271,6 +280,32 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     text = update.message.text.strip()
     session = await get_session(user_id)
+
+    # NEW: First-time name capture
+    if session.pending_intake.get("_awaiting_user_name"):
+        name = text.strip()[:50]  # Cap 50 chars
+        # Strip common prefixes
+        for prefix in ("em là ", "tớ là ", "tôi là ", "mình là ", "anh ", "chị "):
+            if name.lower().startswith(prefix):
+                name = name[len(prefix):].strip()
+                break
+        if name:
+            session.preferences["user_name"] = name
+            session.pending_intake.pop("_awaiting_user_name", None)
+            await save_session(session)
+            await update.message.reply_text(
+                f"✨ *Em chào sếp {name}!*\n\n"
+                f"Em sẽ gọi sếp đúng tên này ở các lần làm việc sau. "
+                f"Đổi tên bất kỳ lúc nào qua /settings.\n\n"
+                f"Giờ vào việc thôi sếp {name}! 👇",
+                parse_mode=ParseMode.MARKDOWN,
+                reply_markup=MAIN_MENU_KEYBOARD,
+            )
+        else:
+            await update.message.reply_text(
+                "Em chưa nhận được tên rõ. Sếp gõ lại 1 tên ngắn nhé (vd: Nhiên / Lily / Anh Minh)."
+            )
+        return
 
     # Sprint 5 v2: Image edit text reply
     if session.pending_intake.get("_awaiting_image_edit"):
@@ -516,12 +551,17 @@ async def _handle_followup(update, context, session, text):
     else:
         context_str = session.build_pipeline_context()
 
+    user_name = _get_user_name(session)
+    name_hint = (
+        f"User tên là '{user_name}' — khi xưng hô gọi 'sếp {user_name}', không chỉ 'sếp'."
+    ) if user_name else ""
+
     system_text = (
         "Bạn là Max, AI CMO của founder Việt Nam. "
         "Sếp vừa hỏi follow-up về output em đưa ra. "
         "Trả lời BÁM SÁT output đã có. Nếu sếp hỏi ngoài scope, "
         "gợi ý chạy skill khác phù hợp.\n\n"
-        "Tone: em/sếp, professional nhưng thân thiện. "
+        f"Tone: em/sếp, professional nhưng thân thiện. {name_hint}\n"
         "Trả lời ngắn gọn (1-3 đoạn), tập trung. Không lặp lại nguyên output."
     )
 
@@ -736,6 +776,24 @@ async def _handle_callback_inner(update, context, query, session, data, user_id)
         return
 
     # ── Language preference setup (Sprint 1.III) ─────────────────
+    if data == "settings_change_name":
+        await query.edit_message_reply_markup(reply_markup=None)
+        session.pending_intake["_awaiting_user_name"] = "1"
+        await save_session(session)
+        await query.message.reply_text(
+            "✏️ *Sếp gõ tên mới em sẽ gọi nhé:*",
+            parse_mode=ParseMode.MARKDOWN,
+        )
+        return
+
+    if data == "settings_change_lang":
+        await query.edit_message_reply_markup(reply_markup=None)
+        await query.message.reply_text(
+            "🔤 Chọn mức tiếng Anh em dùng trong output:",
+            reply_markup=LANG_LEVEL_KEYBOARD,
+        )
+        return
+
     if data.startswith("lang_"):
         level = data.replace("lang_", "")  # "none" / "moderate" / "fluent"
         if level not in ("none", "moderate", "fluent"):
@@ -751,13 +809,27 @@ async def _handle_callback_inner(update, context, query, session, data, user_id)
 
         try:
             await query.edit_message_text(
-                f"✅ Em ghi nhận ạ: *{level_label}*\n\nGiờ vào việc thôi sếp! 👇",
+                f"✅ Em ghi nhận ạ: *{level_label}*",
                 parse_mode=ParseMode.MARKDOWN,
             )
         except Exception:
             pass
+
+        # NEW: Nếu chưa có user_name → hỏi tên
+        if not session.preferences.get("user_name"):
+            session.pending_intake["_awaiting_user_name"] = "1"
+            await save_session(session)
+            await query.message.reply_text(
+                "👋 *Em gọi sếp thế nào ạ?*\n\n"
+                "_Sếp gõ tên hoặc nickname để em ghi nhớ — em sẽ gọi sếp đúng tên ở các lần sau._\n\n"
+                "_Vd: \"Nhiên\" / \"Anh Minh\" / \"Founder Lily\"_",
+                parse_mode=ParseMode.MARKDOWN,
+            )
+            return
+
+        # Đã có name → vào menu thẳng
         await query.message.reply_text(
-            WELCOME_MESSAGE,
+            _personalize(WELCOME_MESSAGE, session),
             parse_mode=ParseMode.MARKDOWN,
             reply_markup=MAIN_MENU_KEYBOARD,
         )
@@ -2065,6 +2137,34 @@ async def _run_pipeline_sequentially(message: Message, session):
             )
 
 
+# ─── Name personalization helpers ───────────────────────────────
+
+def _get_user_name(session) -> str:
+    """Lấy user_name từ preferences, fallback empty string."""
+    return (session.preferences.get("user_name", "") or "").strip()
+
+
+def _addr(session) -> str:
+    """Cách xưng hô: 'sếp Nhiên' hoặc 'sếp' nếu chưa có tên."""
+    name = _get_user_name(session)
+    return f"sếp {name}" if name else "sếp"
+
+
+def _personalize(text: str, session) -> str:
+    """Replace 'sếp' với 'sếp {name}' trong text nếu có user_name."""
+    name = _get_user_name(session)
+    if not name:
+        return text
+    import re as _re
+    # Match standalone 'sếp' (case-insensitive) NOT already followed by a name
+    def repl(m):
+        head = m.group(1)  # 'S' or 's'
+        rest = m.group(2)  # 'ếp'
+        return f"{head}{rest} {name}"
+    # 'sếp' at word boundary, not followed by ' <Name>' already
+    return _re.sub(r"\b(s|S)(ếp)\b(?!\s+[A-ZÀÁẢÃẠĂẰẮẲẴẶÂẦẤẨẪẬÈÉẺẼẸÊỀẾỂỄỆÌÍỈĨỊÒÓỎÕỌÔỒỐỔỖỘƠỜỚỞỠỢÙÚỦŨỤƯỪỨỬỮỰỲÝỶỸỴĐ])", repl, text)
+
+
 # ─── Claude advisor fallback ────────────────────────────────────
 
 async def _claude_advisor_fallback(update, context, session, text: str):
@@ -2106,9 +2206,16 @@ async def _claude_advisor_fallback(update, context, session, text: str):
         "fluent":   "Dùng thuật ngữ EN tự nhiên, không cần giải thích.",
     }.get(en_level, "Moderate EN level.")
 
+    user_name = _get_user_name(session)
+    name_directive = (
+        f"User name: '{user_name}'. Khi xưng hô gọi 'sếp {user_name}' (vd: 'Em chào sếp {user_name}', "
+        f"'Sếp {user_name} ơi'), KHÔNG gọi chỉ 'sếp' nếu có tên này."
+    ) if user_name else "User chưa cho biết tên, gọi 'sếp' thôi."
+
     system_text = f"""Bạn là Max — AI CMO cho founder Việt Nam.
 
 Tone: xưng "em" gọi user "sếp", professional + thân thiện.
+{name_directive}
 Language: {en_note}
 
 NHIỆM VỤ: User nhắn câu hỏi/yêu cầu free-form ngoài flow skill chuẩn.
