@@ -2332,6 +2332,18 @@ Tone: xưng "em" gọi user "sếp", professional + thân thiện.
 {name_directive}
 Language: {en_note}
 
+🎛️ **INTENT ROUTING — khi user yêu cầu mở menu / xem task / xem skill / hỏi em làm được gì:**
+- Reply ngắn 1-2 câu giới thiệu rồi kết thúc bằng marker `[OPEN_MENU]` ở dòng cuối cùng
+- Vd: "OK ạ, đây là menu task em hỗ trợ:\n[OPEN_MENU]"
+- KHÔNG dùng marker này nếu user chỉ hỏi advisor bình thường
+
+🎯 **INTENT ROUTING — khi user chỉ định rõ 1 skill cụ thể:**
+- Nếu user nói rõ tên 1 task (vd: "chạy phân tích đối thủ", "viết brief campaign Tết") → kết thúc bằng marker `[RUN_TASK:<task_name>]`
+- Vd: "OK em chạy ngay ạ.\n[RUN_TASK:competitor]"
+- task_name available: market / competitor / customer / pricing / strategy / full /
+  campaign_brief / content_calendar / content_generator / ads_generator / video_scripts /
+  landing_page / sales_inbox_script / email_zalo_sequence / competitor_spy / performance_audit
+
 NHIỆM VỤ: User nhắn câu hỏi/yêu cầu free-form ngoài flow skill chuẩn.
 Trả lời như 1 marketing advisor có context business của sếp.
 
@@ -2381,18 +2393,127 @@ Skills có sẵn (gợi ý nếu phù hợp):
         )
         return
 
-    # Set marker để turn tiếp theo cũng route qua advisor
+    # Detect intent markers từ Sonnet response
+    open_menu = "[OPEN_MENU]" in reply
+    run_task_match = re.search(r"\[RUN_TASK:(\w+)\]", reply)
+
+    # Strip markers khỏi text hiển thị
+    clean_reply = re.sub(r"\[OPEN_MENU\]|\[RUN_TASK:\w+\]", "", reply).strip()
+
+    # CASE 1: User yêu cầu mở menu
+    if open_menu:
+        session.pending_intake.pop("_advisor_mode", None)
+        await save_session(session)
+        await send_long_message(
+            update.message,
+            clean_reply or "OK ạ, đây là menu task em hỗ trợ:",
+            parse_mode=ParseMode.MARKDOWN,
+            reply_markup=MAIN_MENU_KEYBOARD,
+        )
+        return
+
+    # CASE 2: User yêu cầu chạy task cụ thể
+    if run_task_match:
+        task_name = run_task_match.group(1)
+        from agents.task_registry import TASK_REGISTRY
+        if task_name in TASK_REGISTRY:
+            session.pending_intake.pop("_advisor_mode", None)
+            session.selected_task = task_name
+            await save_session(session)
+            if clean_reply:
+                await update.message.reply_text(clean_reply, parse_mode=ParseMode.MARKDOWN)
+            # Launch skill flow — same path as task_X callback
+            await _launch_task_from_advisor(update, context, session, task_name)
+            return
+        # Invalid task name → fall through to default advisor reply
+
+    # CASE 3: Default — advisor reply với "Hỏi tiếp" / "Mở menu"
     session.pending_intake["_advisor_mode"] = "1"
     await save_session(session)
 
     await send_long_message(
         update.message,
-        reply,
+        clean_reply or reply,
         parse_mode=ParseMode.MARKDOWN,
         reply_markup=InlineKeyboardMarkup([
             [InlineKeyboardButton("💬 Hỏi tiếp",      callback_data="continue_advisor")],
             [InlineKeyboardButton("⚙️ Mở menu task", callback_data="menu_main")],
         ]),
+    )
+
+
+async def _launch_task_from_advisor(update, context, session, task_name: str):
+    """Khi advisor detect [RUN_TASK:X] → launch skill flow tương đương click button."""
+    from agents.task_registry import OPERATIONAL_TASKS, get_task
+    SINGLE_SHOT_STRATEGIC = {"market", "competitor", "customer", "pricing"}
+    STRATEGY_GATED = {"campaign_brief", "content_calendar", "landing_page"}
+
+    msg = update.message
+
+    # Strategy gating
+    if task_name in STRATEGY_GATED:
+        has_strategy = bool(
+            session.get_latest_result("synthesis") or session.get_latest_result("strategy")
+        )
+        if has_strategy:
+            await _send_strategy_aware_form(msg, session, task_name)
+        else:
+            session.pending_followup_skill = task_name
+            await save_session(session)
+            task_label = (get_task(task_name).label if get_task(task_name) else task_name)
+            await msg.reply_text(
+                f"📋 *{task_label} cần Strategy nền.* Em chạy *A→Z* trước nhé sếp?",
+                parse_mode=ParseMode.MARKDOWN,
+                reply_markup=NEEDS_STRATEGY_KEYBOARD,
+            )
+        return
+
+    # Content Generator cần Calendar
+    if task_name == "content_generator":
+        if not session.get_latest_result("content_calendar"):
+            session.pending_followup_skill = "content_generator"
+            await save_session(session)
+            await msg.reply_text(
+                "✍️ Sản Xuất Nội Dung cần *Lịch Nội Dung* trước. Em chạy Calendar trước nhé?",
+                parse_mode=ParseMode.MARKDOWN,
+                reply_markup=InlineKeyboardMarkup([
+                    [InlineKeyboardButton("📅 Chạy Lịch Nội Dung trước", callback_data="task_content_calendar")],
+                    [InlineKeyboardButton("⏭️ Quay lại menu",              callback_data="menu_main")],
+                ]),
+            )
+            return
+
+    # Special skills with variant chooser
+    if task_name in ("ads_copy", "ads_generator"):
+        session.selected_task = "ads_generator"
+        await save_session(session)
+        await msg.reply_text(
+            "📢 *Sản Xuất Nội Dung Ads* — Sếp muốn gen tier nào trước ạ?",
+            parse_mode=ParseMode.MARKDOWN,
+            reply_markup=ADS_COPY_TIER_KEYBOARD,
+        )
+        return
+    if task_name == "video_scripts":
+        await msg.reply_text(
+            "🎬 *Viết Kịch Bản Video* — Brief cho loại creator nào ạ?",
+            parse_mode=ParseMode.MARKDOWN,
+            reply_markup=VIDEO_CREATOR_KEYBOARD,
+        )
+        return
+
+    # Operational + strategic single-shot → form
+    if task_name in OPERATIONAL_TASKS or task_name in SINGLE_SHOT_STRATEGIC:
+        await _send_single_shot_form(msg, session, task_name)
+        return
+
+    # Strategy multi-turn / full → intake
+    session.stage = PipelineStage.INTAKE
+    await save_session(session)
+    opening = TASK_OPENING_QUESTIONS.get(task_name, TASK_OPENING_QUESTIONS["full"])
+    task_label = (get_task(task_name).label if get_task(task_name) else task_name)
+    await msg.reply_text(
+        f"✅ *{task_label}*\n\n{opening}",
+        parse_mode=ParseMode.MARKDOWN,
     )
 
 
