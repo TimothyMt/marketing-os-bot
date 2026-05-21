@@ -191,6 +191,88 @@ def render_markdown_file(
 # Excel renderer — for content_calendar + performance_audit
 # ─────────────────────────────────────────────────────────────────
 
+def _clean_cell(value) -> str:
+    """Strip markdown chars (** __ *) khỏi cell content. Trả về str."""
+    if value is None:
+        return ""
+    s = str(value)
+    # Remove bold/italic markers
+    s = re.sub(r"\*\*(.+?)\*\*", r"\1", s)
+    s = re.sub(r"__(.+?)__", r"\1", s)
+    s = re.sub(r"(?<!\*)\*(?!\*)([^*\n]+?)\*(?!\*)", r"\1", s)
+    s = re.sub(r"(?<!_)_(?!_)([^_\n]+?)_(?!_)", r"\1", s)
+    return s.strip()
+
+
+def _safe_sheet_name(raw: str, idx: int, used: set) -> str:
+    """Sheet name an toàn (≤31 chars, không có : \\ / ? * [ ], unique)."""
+    cleaned = re.sub(r"[:\\/?*\[\]]", " ", raw or "")
+    # Remove emoji prefix to save chars
+    cleaned = re.sub(r"^[^\w\d]+", "", cleaned).strip()
+    cleaned = cleaned[:28].strip() or f"Sheet {idx+1}"
+    # Ensure unique
+    base = cleaned
+    n = 2
+    while cleaned in used:
+        suffix = f" {n}"
+        cleaned = base[:28 - len(suffix)] + suffix
+        n += 1
+    used.add(cleaned)
+    return cleaned
+
+
+def _is_keyvalue_table(headers: list, rows: list[list]) -> bool:
+    """Detect mini key-value table: 2 columns, headers look generic, repeating field names."""
+    if len(headers) != 2:
+        return False
+    GENERIC = {"field", "value", "key", "thông tin", "chi tiết", "metadata"}
+    h0 = (headers[0] or "").lower().strip("* ")
+    h1 = (headers[1] or "").lower().strip("* ")
+    if h0 in GENERIC or h1 in GENERIC:
+        return True
+    # If first column values look like field names (Ngày, Kênh, Pillar...)
+    FIELD_HINTS = {"ngày", "kênh", "pillar", "funnel", "source", "format", "hook",
+                   "cta", "angle", "topic", "tier", "platform", "campaign"}
+    first_col_vals = [_clean_cell(r[0]).lower() for r in rows[:5]]
+    if sum(1 for v in first_col_vals if any(h in v for h in FIELD_HINTS)) >= 2:
+        return True
+    return False
+
+
+def _pivot_keyvalue_tables(tables: list[tuple]) -> Optional[tuple]:
+    """Convert nhiều mini key-value tables thành 1 master sheet.
+    Mỗi mini-table thành 1 row, key = column header.
+    Returns (title, headers, rows) hoặc None nếu không có cụm KV nào.
+    """
+    kv_tables = [(t, h, r) for (t, h, r) in tables if _is_keyvalue_table(h, r)]
+    if len(kv_tables) < 2:
+        return None
+
+    # Collect all unique field names across all KV tables (preserve order from first)
+    all_fields: list[str] = []
+    seen_fields = set()
+    for _, _, rows in kv_tables:
+        for row in rows:
+            if not row: continue
+            field = _clean_cell(row[0])
+            field_lower = field.lower()
+            if field and field_lower not in seen_fields:
+                seen_fields.add(field_lower)
+                all_fields.append(field)
+
+    # Build master rows: 1 row per table
+    master_headers = ["Bài"] + all_fields
+    master_rows = []
+    for tbl_title, _, rows in kv_tables:
+        # Strip emoji + clean title
+        clean_title = _clean_cell(tbl_title or "")
+        clean_title = re.sub(r"^[^\w\d]+", "", clean_title).strip()[:60]
+        row_dict = {_clean_cell(r[0]).lower(): _clean_cell(r[1] if len(r) > 1 else "") for r in rows if r}
+        master_rows.append([clean_title] + [row_dict.get(f.lower(), "") for f in all_fields])
+
+    return ("📊 Tổng hợp", master_headers, master_rows)
+
+
 def render_excel_file(
     skill_name: str,
     skill_label: str,
@@ -198,8 +280,12 @@ def render_excel_file(
     output_format: OutputFormat,
     business_name: str = "",
 ) -> Optional[bytes]:
-    """Render skill output as .xlsx with markdown tables extracted into sheets.
-    Requires openpyxl. Returns None if no tables found or library missing."""
+    """Render skill output as .xlsx — auto pivot mini key-value tables thành 1 master overview.
+
+    Layout:
+    - Sheet 1 "📊 Tổng hợp" (nếu detect >2 mini-tables): rows = bài, cols = fields
+    - Sheets 2-N: các table khác (skip KV tables đã merge vào overview)
+    """
     try:
         from openpyxl import Workbook
         from openpyxl.styles import Font, PatternFill, Alignment
@@ -207,7 +293,6 @@ def render_excel_file(
         logger.warning("openpyxl not installed — falling back to no Excel export")
         return None
 
-    # Combine all parsed sections for table extraction
     if output_format == OutputFormat.OPERATIONAL_DELIVERABLE:
         full_text = parsed.get("deliverable", "") + "\n\n" + parsed.get("summary", "")
     elif output_format == OutputFormat.OPERATIONAL_ANALYSIS:
@@ -222,42 +307,70 @@ def render_excel_file(
         return None
 
     wb = Workbook()
-    wb.remove(wb.active)  # remove default sheet
+    wb.remove(wb.active)
 
-    header_font = Font(bold=True, color="FFFFFF")
+    header_font = Font(bold=True, color="FFFFFF", name="Arial")
     header_fill = PatternFill(start_color="2563EB", end_color="2563EB", fill_type="solid")
-    header_align = Alignment(horizontal="center", vertical="center")
+    header_align = Alignment(horizontal="center", vertical="center", wrap_text=True)
+    body_font = Font(name="Arial")
+    body_align = Alignment(vertical="top", wrap_text=True)
+    title_font = Font(bold=True, size=14, name="Arial")
 
-    for idx, (table_title, headers, rows) in enumerate(tables[:10]):  # max 10 sheets
-        # Excel sheet name: max 31 chars, cấm các ký tự : \ / ? * [ ]
-        raw_name = table_title or f"Sheet {idx+1}"
-        sheet_name = re.sub(r"[:\\/?*\[\]]", " ", raw_name)[:30].strip() or f"Sheet {idx+1}"
+    # Detect & merge key-value tables
+    overview = _pivot_keyvalue_tables(tables)
+    if overview:
+        sheets_to_render = [overview]
+        # Add non-KV tables
+        for t in tables:
+            if not _is_keyvalue_table(t[1], t[2]):
+                sheets_to_render.append(t)
+    else:
+        sheets_to_render = tables[:8]  # cap 8 sheets
+
+    used_names = set()
+    for idx, (table_title, headers, rows) in enumerate(sheets_to_render):
+        raw_name = table_title or f"Bảng {idx+1}"
+        sheet_name = _safe_sheet_name(raw_name, idx, used_names)
         ws = wb.create_sheet(title=sheet_name)
 
         # Title row
-        if table_title:
-            ws.append([table_title])
-            ws["A1"].font = Font(bold=True, size=14)
-            ws.append([])  # blank row
+        clean_title = _clean_cell(table_title or "")
+        if clean_title:
+            ws.append([clean_title])
+            ws["A1"].font = title_font
+            ws.append([])
 
         # Headers
-        header_row = len(list(ws.rows)) + 1 if list(ws.rows) else 1
-        ws.append(headers)
-        for col_idx, _ in enumerate(headers, start=1):
+        clean_headers = [_clean_cell(h) for h in headers]
+        header_row = ws.max_row + 1 if ws.max_row > 0 else 1
+        ws.append(clean_headers)
+        for col_idx in range(1, len(clean_headers) + 1):
             cell = ws.cell(row=header_row, column=col_idx)
             cell.font = header_font
             cell.fill = header_fill
             cell.alignment = header_align
 
-        # Data rows
+        # Data rows — strip markdown
         for row in rows:
-            ws.append(row)
+            cleaned_row = [_clean_cell(c) for c in row]
+            ws.append(cleaned_row)
+            r_idx = ws.max_row
+            for c_idx in range(1, len(cleaned_row) + 1):
+                cell = ws.cell(row=r_idx, column=c_idx)
+                cell.font = body_font
+                cell.alignment = body_align
 
-        # Auto column width
-        for col_idx, _ in enumerate(headers, start=1):
+        # Auto column width (capped 60)
+        for col_idx in range(1, len(clean_headers) + 1):
             col_letter = ws.cell(row=1, column=col_idx).column_letter
-            max_len = max(len(str(headers[col_idx-1] or "")), *[len(str(r[col_idx-1] or "")) for r in rows if col_idx-1 < len(r)])
-            ws.column_dimensions[col_letter].width = min(max_len + 4, 50)
+            max_len = max(
+                len(clean_headers[col_idx-1]) if col_idx-1 < len(clean_headers) else 0,
+                *[len(str(r[col_idx-1] or "")) for r in rows if col_idx-1 < len(r)],
+            )
+            ws.column_dimensions[col_letter].width = min(max_len + 4, 60)
+
+        # Freeze header row
+        ws.freeze_panes = ws.cell(row=header_row + 1, column=1)
 
     buf = io.BytesIO()
     wb.save(buf)
