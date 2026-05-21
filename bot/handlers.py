@@ -867,10 +867,7 @@ async def _handle_callback_inner(update, context, query, session, data, user_id)
             f"💎 *Chi tiết token của {addr}*\n\n"
             f"{status_emoji} *Quota:* {fmt(quota)}\n"
             f"📉 *Đã dùng:* {fmt(used)} ({pct_used:.1f}%)\n"
-            f"📊 *Còn lại:* {fmt(remaining)}\n\n"
-            f"_Mỗi skill chạy 1 lần tốn ~10-50K token._\n"
-            f"_Q&A advisor ~3-5K token / câu._\n"
-            f"_Intake (Haiku) ~1-2K token / turn._\n"
+            f"📊 *Còn lại:* {fmt(remaining)}\n"
         )
         if is_exhausted(session):
             msg += "\n🔴 *Hết quota!* Sếp liên hệ admin để nạp thêm hoặc chờ reset hàng tháng."
