@@ -70,6 +70,7 @@ async def extract_transcript(
         try:
             result = await _run_krillin(source, language_hint)
             result["video_url"] = source if is_url else ""
+            result.setdefault("local_video_path", "" if is_url else source)
             return result
         except Exception as e:
             logger.warning(f"krillin CLI failed, falling back to whisper: {e}")
@@ -80,6 +81,7 @@ async def extract_transcript(
             local_path = await _ensure_local_file(source) if is_url else source
             result = await _run_whisper_api(local_path, language_hint)
             result["video_url"] = source if is_url else ""
+            result["local_video_path"] = local_path
             return result
         except Exception as e:
             logger.warning(f"whisper API failed: {e}")

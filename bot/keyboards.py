@@ -139,6 +139,7 @@ OPERATIONAL_KEYBOARD = InlineKeyboardMarkup([
 ANALYSIS_KEYBOARD = InlineKeyboardMarkup([
     [InlineKeyboardButton("🔍 Theo Dõi Đối Thủ",      callback_data="task_competitor_spy")],
     [InlineKeyboardButton("📊 Báo Cáo Ads",            callback_data="task_performance_audit")],
+    [InlineKeyboardButton("🎥 Phân Tích Video Viral", callback_data="task_viral_video_analyzer")],
     [InlineKeyboardButton("← Quay lại",                callback_data="menu_main")],
 ])
 
@@ -194,7 +195,7 @@ def get_action_keyboard(task_name: str) -> InlineKeyboardMarkup:
     """Pick action keyboard dựa trên category của skill vừa xong."""
     from agents.task_registry import OPERATIONAL_TASKS, STRATEGIC_TASKS
     SINGLE_SHOT_STRATEGIC = {"market", "competitor", "customer", "pricing", "strategy", "full"}
-    ANALYSIS_TASKS = {"competitor_spy", "performance_audit"}
+    ANALYSIS_TASKS = {"competitor_spy", "performance_audit", "viral_video_analyzer"}
 
     if task_name in ANALYSIS_TASKS:
         return ACTION_AFTER_ANALYSIS

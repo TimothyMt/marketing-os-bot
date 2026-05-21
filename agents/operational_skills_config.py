@@ -378,18 +378,25 @@ class ViralVideoAnalyzerSkill(AgentSkill):
     Flow:
       1. Đọc `session.pending_intake["video_source"]` (URL hoặc transcript paste sẵn)
       2. Nếu là URL → gọi tools.krillin_client.extract_transcript() (KrillinAI binary
-         hoặc Whisper API fallback)
-      3. Nếu là transcript paste → dùng trực tiếp, đánh dấu source="user_paste"
-      4. Inject transcript có timestamps vào user_msg
-      5. Claude phân tích 8 sections (hook / structure / pacing / pattern / triggers / CTA / replicate template)
+         hoặc Whisper API fallback) + trả về local_video_path
+      3. Nếu local_video_path có sẵn → tools.video_vision.extract_visual_analysis()
+         dùng ffmpeg + Claude vision phân tích keyframes
+      4. Nếu là transcript paste → dùng trực tiếp, đánh dấu source="user_paste",
+         skip vision
+      5. Inject transcript + visual analysis vào user_msg
+      6. Claude phân tích 9 sections
+
+    Vision is optional — graceful degrade nếu ffmpeg không có hoặc extract fail.
+    Cache extract result vào session.pending_intake để không gọi 2 lần.
 
     KrillinAI repo: https://github.com/krillinai/KlicStudio
-    Setup: env var KRILLIN_BINARY trỏ tới binary; fallback dùng OPENAI_API_KEY (Whisper).
+    Setup: KRILLIN_BINARY (transcript), OPENAI_API_KEY (whisper fallback),
+    ffmpeg binary + ANTHROPIC_API_KEY (vision).
     """
     name = "viral_video_analyzer"
     system_prompt = VIRAL_VIDEO_ANALYZER_SYSTEM
-    max_tokens = 10000  # 8 sections × replicate template — output dài
-    enable_critic = True  # Có data analysis → critic ngăn bịa view count / benchmark
+    max_tokens = 10000
+    enable_critic = True
     output_format = OutputFormat.OPERATIONAL_ANALYSIS
     intake_pattern = IntakePattern.SINGLE_SHOT_FORM
     context_strategy = ContextStrategy.PROFILE_PLUS_STRATEGY
@@ -407,8 +414,6 @@ class ViralVideoAnalyzerSkill(AgentSkill):
         return "\n\n---\n\n".join(parts)
 
     def build_user_msg(self, session: Session) -> str:
-        from tools import krillin_client
-
         intake = session.pending_intake or {}
         video_source = (intake.get("video_source") or "").strip()
         platform = intake.get("platform") or "chưa rõ"
@@ -418,10 +423,26 @@ class ViralVideoAnalyzerSkill(AgentSkill):
         why_picked = intake.get("why_picked") or ""
         profile = session.profile
 
-        # Extract transcript — URL hoặc paste
-        transcript_block = self._resolve_transcript(video_source)
+        # Resolve transcript (URL → extract, hoặc paste trực tiếp)
+        transcript_block, local_video_path, segments = self._resolve_transcript(video_source)
+
+        # Resolve visual analysis (chỉ chạy nếu có local file từ extract)
+        visual_block = ""
+        if local_video_path:
+            visual_block = self._resolve_visual_analysis(local_video_path, segments)
 
         why_line = f"\n**Lý do sếp chọn video này:** {why_picked}" if why_picked else ""
+
+        visual_section = ""
+        if visual_block:
+            visual_section = f"\n\n---\n\n{visual_block}\n"
+        else:
+            visual_section = (
+                "\n\n---\n\n"
+                "### VISUAL ANALYSIS\n\n"
+                "_(Vision analysis không khả dụng — ffmpeg/Claude vision chưa setup hoặc input là paste transcript. "
+                "Section 9.1 shot list sẽ suy từ transcript, đánh dấu rõ '(suy từ transcript)' những chỗ không chắc.)_\n"
+            )
 
         return f"""## Yêu cầu: Phân Tích Video Viral
 
@@ -440,8 +461,7 @@ class ViralVideoAnalyzerSkill(AgentSkill):
 
 ### TRANSCRIPT VIDEO (đã extract sẵn)
 
-{transcript_block}
-
+{transcript_block}{visual_section}
 ---
 
 Phân tích đầy đủ 9 sections theo system prompt.
@@ -449,21 +469,22 @@ Phân tích đầy đủ 9 sections theo system prompt.
 QUAN TRỌNG:
 - Section 8 (Replicate Formula): tailor cho business sếp — không generic
 - Section 9 (Production Brief): BẮT BUỘC viết shoot-ready cho creator persona đã nêu —
-  shot list theo timestamp, audio strategy, edit pacing số cụ thể, caption + first comment
-  paste-ready, hashtag stack 10-15 cái, cover frame, posting plan, budget realistic,
+  shot list theo timestamp (tham chiếu VISUAL ANALYSIS phía trên nếu có), audio strategy,
+  edit pacing số cụ thể, caption + first comment paste-ready, hashtag stack 10-15 cái,
+  cover frame, posting plan, budget realistic,
   và 3 SCRIPT HOÀN CHỈNH (KHÔNG dùng placeholder, viết thoại cụ thể quay được luôn)."""
 
-    def _resolve_transcript(self, video_source: str) -> str:
-        """Resolve video_source → formatted transcript block.
+    def _resolve_transcript(self, video_source: str) -> tuple[str, str, list]:
+        """Resolve video_source → (formatted_block, local_video_path, segments).
 
-        Nếu là URL → chạy krillin sync (block ngắn chấp nhận được trong intake flow).
-        Nếu là text paste (không match URL regex) → wrap thành block giả.
+        local_video_path != "" chỉ khi extract URL thành công và có file cục bộ
+        → vision có thể dùng tiếp.
         """
         from tools import krillin_client
         import asyncio
 
         if not video_source:
-            return "**(Không có transcript — sếp chưa cung cấp link hay paste lời thoại)**"
+            return ("**(Không có transcript — sếp chưa cung cấp link hay paste lời thoại)**", "", [])
 
         is_url = bool(krillin_client.URL_REGEX.match(video_source))
 
@@ -473,36 +494,71 @@ QUAN TRỌNG:
                     f"**⚠️ Không extract được transcript từ URL** ({video_source})\n\n"
                     f"Engine status:\n{krillin_client.availability_report()}\n\n"
                     "Workaround: sếp paste trực tiếp transcript vào ô `video_source` thay link, "
-                    "Max vẫn phân tích được kịch bản đầy đủ."
+                    "Max vẫn phân tích được kịch bản đầy đủ.",
+                    "",
+                    [],
                 )
             try:
-                # Build_user_msg là sync method → chạy async qua event loop hiện tại
-                loop = asyncio.get_event_loop()
-                if loop.is_running():
-                    # Nếu đang trong loop (pipeline runner) → schedule + wait
-                    import concurrent.futures
-                    with concurrent.futures.ThreadPoolExecutor() as pool:
-                        future = pool.submit(
-                            asyncio.run,
-                            krillin_client.extract_transcript(video_source, language_hint="vi"),
-                        )
-                        extract = future.result(timeout=320)
-                else:
-                    extract = loop.run_until_complete(
-                        krillin_client.extract_transcript(video_source, language_hint="vi")
-                    )
-                return krillin_client.format_transcript_for_prompt(extract)
+                extract = _run_async_sync(
+                    krillin_client.extract_transcript(video_source, language_hint="vi"),
+                    timeout=320,
+                )
+                block = krillin_client.format_transcript_for_prompt(extract)
+                return (
+                    block,
+                    extract.get("local_video_path", "") or "",
+                    extract.get("segments") or [],
+                )
             except Exception as e:
                 return (
                     f"**⚠️ Extract transcript thất bại** ({type(e).__name__}: {str(e)[:200]})\n\n"
-                    "Sếp paste trực tiếp transcript thay link, Max phân tích lại được."
+                    "Sếp paste trực tiếp transcript thay link, Max phân tích lại được.",
+                    "",
+                    [],
                 )
 
-        # User paste transcript trực tiếp
+        # User paste transcript trực tiếp — không có file để vision
         return (
             f"**Transcript engine:** user_paste (sếp đã paste trực tiếp lời thoại)\n\n"
-            f"```\n{video_source[:8000]}\n```"
+            f"```\n{video_source[:8000]}\n```",
+            "",
+            [],
         )
+
+    def _resolve_visual_analysis(self, local_video_path: str, segments: list) -> str:
+        """Run ffmpeg + Claude vision trên video file. Trả về text block hoặc rỗng."""
+        try:
+            from tools import video_vision
+            if not video_vision.is_available():
+                return ""
+            return _run_async_sync(
+                video_vision.extract_visual_analysis(local_video_path, segments),
+                timeout=180,
+            )
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).warning(f"vision analysis failed: {e}")
+            return ""
+
+
+def _run_async_sync(coro, timeout: int = 60):
+    """Run async coro from sync context — handle both 'in loop' and 'no loop' cases.
+
+    Pipeline runner calls build_user_msg synchronously, nhưng nó nằm trong asyncio
+    event loop. Pattern: nếu loop đang chạy → schedule trên thread pool.
+    """
+    import asyncio
+    import concurrent.futures
+    try:
+        loop = asyncio.get_event_loop()
+    except RuntimeError:
+        loop = None
+
+    if loop and loop.is_running():
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+            future = pool.submit(asyncio.run, coro)
+            return future.result(timeout=timeout)
+    return asyncio.run(coro)
 
 
 # ─────────────────────────────────────────────────────────────────
