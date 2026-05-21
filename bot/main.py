@@ -55,6 +55,8 @@ def main():
     app.add_handler(CommandHandler("reset", cmd_reset))
     app.add_handler(CommandHandler("help", cmd_help))
     app.add_handler(CommandHandler("settings", cmd_settings))
+    app.add_handler(CommandHandler("setting",  cmd_settings))  # alias
+    app.add_handler(CommandHandler("config",   cmd_settings))  # alias
 
     # Inline keyboard callbacks
     app.add_handler(CallbackQueryHandler(handle_callback))
