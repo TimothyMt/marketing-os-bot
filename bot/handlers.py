@@ -5,7 +5,7 @@ All storage calls are async (asyncpg-backed).
 import asyncio
 import logging
 import re
-from telegram import Update, Message
+from telegram import Update, Message, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
 from telegram.constants import ParseMode, ChatAction
 
@@ -1126,6 +1126,26 @@ async def _handle_callback_inner(update, context, query, session, data, user_id)
                 reply_markup=NEEDS_STRATEGY_KEYBOARD,
             )
             return
+
+        # ── Content Generator: cần Calendar trước ─────────────────
+        if task_type == "content_generator":
+            has_calendar = bool(session.get_latest_result("content_calendar"))
+            if not has_calendar:
+                await query.edit_message_reply_markup(reply_markup=None)
+                session.pending_followup_skill = "content_generator"
+                await save_session(session)
+                await query.message.reply_text(
+                    "✍️ *Sản Xuất Nội Dung cần có Lịch Nội Dung trước ạ.*\n\n"
+                    "Em chưa có Calendar của sếp.\n\n"
+                    "Em chạy *Lịch Nội Dung* trước nhé — sau đó em tự động "
+                    "tiếp tục sản xuất content theo lịch đó cho sếp.",
+                    parse_mode=ParseMode.MARKDOWN,
+                    reply_markup=InlineKeyboardMarkup([
+                        [InlineKeyboardButton("📅 Chạy Lịch Nội Dung trước", callback_data="task_content_calendar")],
+                        [InlineKeyboardButton("⏭️ Quay lại menu",              callback_data="menu_main")],
+                    ]),
+                )
+                return
 
         # Operational skills → single-shot form (or variant chooser first)
         if task_type in OPERATIONAL_TASKS:

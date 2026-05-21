@@ -155,6 +155,34 @@ class OperationalSkill(AgentSkill):
                 f"{fb_data}"
             )
 
+        # Inject Strategy context nếu có (Brief Campaign / Content Calendar / Landing Page reuse)
+        synthesis = session.get_latest_result("synthesis") or session.get_latest_result("strategy")
+        if synthesis:
+            msg += (
+                "\n\n---\n\n"
+                "**MARKETING STRATEGY ĐÃ CÓ TỪ TRƯỚC (dùng làm base, đừng yêu cầu user cung cấp lại):**\n\n"
+                f"{synthesis[:6000]}"
+            )
+
+        # Inject Calendar context nếu skill cần (Content Generator)
+        calendar = session.get_latest_result("content_calendar")
+        if calendar and self._config.name in ("content_generator",):
+            msg += (
+                "\n\n---\n\n"
+                "**CONTENT CALENDAR ĐÃ CÓ (dựa vào lịch này để gen content, đừng hỏi user):**\n\n"
+                f"{calendar[:6000]}"
+            )
+
+        # Universal directive — bot KHÔNG được hỏi user trong output
+        msg += (
+            "\n\n---\n\n"
+            "**QUY TẮC TUYỆT ĐỐI VỀ OUTPUT:**\n"
+            "- KHÔNG được hỏi user 'em cần thêm thông tin' / 'sếp cho em biết...'\n"
+            "- KHÔNG được output bảng 'thiếu input' hay '5 câu hỏi trả lời nhanh'\n"
+            "- Nếu thiếu chi tiết → DÙNG DEFAULT hợp lý dựa trên context business profile / strategy\n"
+            "- Output PHẢI là deliverable thực sự dùng được, không phải báo cáo về việc thiếu input\n"
+        )
+
         # Append user correction nếu đang regen (Sprint 2)
         if user_correction:
             msg += (
