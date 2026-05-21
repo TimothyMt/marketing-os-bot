@@ -41,7 +41,6 @@ from bot.keyboards import (
     NEEDS_STRATEGY_KEYBOARD,
     MONITOR_PROMPT_KEYBOARD,
     MONITOR_INTERVAL_KEYBOARD,
-    MONITOR_NEW_ADS_KEYBOARD,
 )
 
 logger = logging.getLogger(__name__)
@@ -1062,12 +1061,10 @@ async def _handle_callback_inner(update, context, query, session, data, user_id)
         # Skip monitor → tiếp tục flow rating bình thường
         session.pending_intake.pop("_monitor_pending_page_id", None)
         session.pending_intake.pop("_monitor_pending_page_name", None)
-        await save_session(session)
-        await query.edit_message_reply_markup(reply_markup=None)
-        # Show rating cho competitor_spy
         task_name = session.selected_task or "competitor_spy"
         session.pending_intake["_awaiting_rating_for"] = task_name
         await save_session(session)
+        await query.edit_message_reply_markup(reply_markup=None)
         await query.message.reply_text(
             "OK ạ! Sếp đánh giá output em vừa làm thế nào ạ?",
             reply_markup=RATING_KEYBOARD,
@@ -1194,13 +1191,13 @@ async def _handle_callback_inner(update, context, query, session, data, user_id)
     if data == "img_ref_no_gen":
         await query.edit_message_reply_markup(reply_markup=None)
         session.pending_intake.pop("_awaiting_image_reference", None)
+        # Set rating marker TRƯỚC khi reply
+        session.pending_intake["_awaiting_rating_for"] = session.selected_task or ""
         await save_session(session)
         await query.message.reply_text(
             "OK ạ, em chỉ gửi copy thôi. Sếp đánh giá output em vừa làm thế nào ạ?",
             reply_markup=RATING_KEYBOARD,
         )
-        session.pending_intake["_awaiting_rating_for"] = session.selected_task or ""
-        await save_session(session)
         return
 
     # Sprint 5 v2: Image review (Sửa / Chốt / Regen)
@@ -1221,18 +1218,17 @@ async def _handle_callback_inner(update, context, query, session, data, user_id)
 
     if data == "img_confirm":
         await query.edit_message_reply_markup(reply_markup=None)
-        # Clean image buffers
+        # Clean image buffers + set rating marker BEFORE reply
         session.pending_intake.pop("_last_image_b64", None)
         session.pending_intake.pop("_last_image_size", None)
         session.pending_intake.pop("_img_n", None)
         session.pending_intake.pop("_img_prompt", None)
+        session.pending_intake["_awaiting_rating_for"] = session.selected_task or ""
         await save_session(session)
         await query.message.reply_text(
             "✅ Chốt! Sếp đánh giá output em vừa làm thế nào ạ?",
             reply_markup=RATING_KEYBOARD,
         )
-        session.pending_intake["_awaiting_rating_for"] = session.selected_task or ""
-        await save_session(session)
         return
 
     if data == "img_regen":
@@ -1447,6 +1443,16 @@ async def _handle_callback_inner(update, context, query, session, data, user_id)
                 f"✅ *Chuẩn bị Phân Tích Tổng Hợp A→Z*\n\n{opening}",
                 parse_mode=ParseMode.MARKDOWN,
             )
+        return
+
+    elif data == "continue_pipeline":
+        # Defensive: ngày trước button này show giữa intermediate stages,
+        # giờ pipeline auto-run hết → button không nên reach. Fallback về menu.
+        await query.edit_message_reply_markup(reply_markup=None)
+        await query.message.reply_text(
+            "Pipeline đã chạy hết các bước rồi sếp. Sếp muốn làm gì tiếp?",
+            reply_markup=MAIN_MENU_KEYBOARD,
+        )
         return
 
     elif data == "continue_advisor":

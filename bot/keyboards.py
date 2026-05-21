@@ -282,11 +282,9 @@ MONITOR_INTERVAL_KEYBOARD = InlineKeyboardMarkup([
     [InlineKeyboardButton("📆 1 tuần",     callback_data="monitor_iv_168")],
 ])
 
-# After new-ads notification — user chọn phân tích diff hay bỏ qua
-MONITOR_NEW_ADS_KEYBOARD = InlineKeyboardMarkup([
-    [InlineKeyboardButton("🔍 Phân tích ads mới",     callback_data="monitor_analyze_diff")],
-    [InlineKeyboardButton("⏭️ Bỏ qua lần này",         callback_data="monitor_skip_diff")],
-])
+# Note: New-ads notification keyboard được build động trong worker
+# (workers/monitor_competitors.py:55-60) với callback_data="monitor_diff_{page_id}"
+# vì cần inject page_id. Không define keyboard tĩnh ở đây.
 
 
 # ─────────────────────────────────────────────────────────────────
