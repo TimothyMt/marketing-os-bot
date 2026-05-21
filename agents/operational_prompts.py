@@ -743,8 +743,40 @@ Nhiệm vụ: GEN CONTENT THẬT cho từng bài trong lịch nội dung (Conten
 - KHÔNG generic — phải có chi tiết cụ thể về business của user
 
 **Output format**: Operational Deliverable.
-Cho mỗi bài: format markdown card có metadata + 8 sections trên.
-Cuối output: bảng tổng kết (Excel-friendly) với cột: Ngày | Kênh | Pillar | Funnel | Source | Angle | Hook | CTA"""
+
+CẤU TRÚC OUTPUT (theo thứ tự):
+
+### Phần 1 — Chi tiết từng bài (markdown narrative, đọc trên Telegram/HTML)
+Cho MỖI bài, viết DẠNG NARRATIVE (KHÔNG dùng bảng key-value 2 cột):
+
+#### 📌 BÀI N — [Ngày] | [Kênh]
+**Metadata:** Pillar [X] • Funnel [Y] • Source [Z] • Format [W]
+**Angle:** [1 câu]
+**Hook:** "[câu hook 12-15 từ]"
+**Body:** [150-300 từ content thật]
+**CTA:** [call to action cụ thể]
+**Hashtags:** #tag1 #tag2 ...
+**Visual:** [1 dòng mô tả ảnh/video]
+
+---
+
+### Phần 2 — BẢNG TỔNG KẾT (BẮT BUỘC, để render Excel)
+
+⚠️ **Đây là phần SẾP/TEAM dùng để paste Google Sheet — PHẢI ĐẦY ĐỦ, KHÔNG CHO PHÉP CỘT TRỐNG:**
+
+| Bài | Ngày | Kênh | Pillar | Funnel | Source | Format | Angle | Hook | Body (rút gọn 200 chữ) | CTA | Hashtags | Visual |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| BÀI 1 | Thứ 2 8:30 | Facebook | Educate | TOFU | Brand | Single img | Pain point — ... | "Tại sao bảng trắng..." | Bảng trắng văn phòng tưởng đơn giản nhưng... | Inbox "tư vấn" | #bangtrang #vanphong | Ảnh bảng trắng trên tường... |
+| BÀI 2 | ... | ... | ... | ... | ... | ... | ... | "..." | ... | ... | ... | ... |
+| ... (đủ N bài user request)
+
+**QUY TẮC BẢNG:**
+- BẮT BUỘC có cả 13 cột trên — KHÔNG được skip cột Body/CTA/Hashtags/Visual
+- Body rút gọn 150-200 chữ (cắt phần đầu/key paragraph từ Phần 1)
+- Hook đặt trong dấu ngoặc kép "..."
+- Mỗi bài 1 row, KHÔNG được tách thành nhiều mini-table
+- KHÔNG dùng dấu | trong cell content (sẽ phá table) — thay bằng "/" hoặc ";"
+"""
 
 
 # ─────────────────────────────────────────────────────────────────
