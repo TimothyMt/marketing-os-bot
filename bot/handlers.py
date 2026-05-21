@@ -176,8 +176,9 @@ async def send_long_message(message: Message, text: str, **kwargs):
 # ─── Commands ────────────────────────────────────────────────────
 
 async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Show main menu. GIỮ NGUYÊN session (profile, results, feedback).
-    Dùng /reset nếu muốn xoá hết bắt đầu lại.
+    """Show main menu. GIỮ NGUYÊN session (profile, results, feedback, preferences).
+    First-time user (no name) → hỏi tên TRƯỚC, sau đó ngôn ngữ.
+    Dùng /reset nếu muốn xoá business data.
     """
     user_id = update.effective_user.id
     session = await get_session(user_id)
@@ -197,10 +198,24 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     session.stage = PipelineStage.TASK_SELECT
     await save_session(session)
 
-    # Sprint 1.III: First-time user → hỏi en_level trước
-    if not session.preferences.get("en_level"):
+    # FIRST-TIME — hỏi tên trước
+    if not session.preferences.get("user_name"):
+        session.pending_intake["_awaiting_user_name"] = "1"
+        await save_session(session)
         await update.message.reply_text(
-            LANG_SETUP_MESSAGE,
+            "👋 *Em là Max — AI CMO của sếp.*\n\n"
+            "Trước khi vào việc, sếp gõ tên để em biết gọi sếp thế nào ạ?\n\n"
+            "_Vd: \"Nhiên\" / \"Anh Minh\" / \"Founder Lily\"_",
+            parse_mode=ParseMode.MARKDOWN,
+        )
+        return
+
+    # FIRST-TIME (đã có tên) — hỏi ngôn ngữ
+    if not session.preferences.get("en_level"):
+        name = session.preferences.get("user_name", "")
+        msg = LANG_SETUP_MESSAGE.replace("Em chào sếp!", f"Em chào sếp {name}!" if name else "Em chào sếp!")
+        await update.message.reply_text(
+            msg,
             parse_mode=ParseMode.MARKDOWN,
             reply_markup=LANG_LEVEL_KEYBOARD,
         )
@@ -218,6 +233,7 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if status_lines:
         welcome = "\n".join(status_lines) + "\n\n─────────────────────────\n\n" + welcome
 
+    welcome = _personalize(welcome, session)
     await _safe_reply(
         update.message,
         welcome,
@@ -227,32 +243,38 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def cmd_settings(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """/settings — đổi en_level + user_name."""
+    """/settings — config cho Max: Tên / Token / Ngôn ngữ."""
     user_id = update.effective_user.id
     session = await get_session(user_id)
     current = session.preferences.get("en_level", "moderate")
     name = session.preferences.get("user_name", "")
     label_map = {"none": "🔴 Không rành", "moderate": "🟡 Hiểu cơ bản", "fluent": "🟢 Thông thạo"}
 
-    name_line = f"Tên sếp em đang gọi: *{name}*\n" if name else "Em chưa biết tên sếp.\n"
+    # Token info (placeholder — actual tracking sẽ add sau)
+    token_balance = session.preferences.get("token_balance", "1,000,000")  # default 1M tokens free
+    token_used    = session.preferences.get("token_used",    "0")
+
+    name_line = f"👤 *Tên em đang gọi:* {name}" if name else "👤 *Tên:* chưa đặt"
     kb = InlineKeyboardMarkup([
-        [InlineKeyboardButton("✏️ Đổi tên",          callback_data="settings_change_name")],
-        [InlineKeyboardButton("🔤 Đổi mức tiếng Anh", callback_data="settings_change_lang")],
+        [InlineKeyboardButton("✏️ Đổi tên",            callback_data="settings_change_name")],
+        [InlineKeyboardButton("🔤 Đổi mức tiếng Anh",   callback_data="settings_change_lang")],
+        [InlineKeyboardButton("💎 Xem chi tiết token",  callback_data="settings_tokens")],
     ])
     await update.message.reply_text(
-        f"⚙️ *Cài đặt cá nhân*\n\n"
-        f"{name_line}"
-        f"Mức tiếng Anh: *{label_map.get(current, '🟡')}*",
+        f"⚙️ *Cài đặt Max của sếp*\n\n"
+        f"{name_line}\n"
+        f"🔤 *Ngôn ngữ:* {label_map.get(current, '🟡')}\n"
+        f"💎 *Token còn lại:* {token_balance} _(đã dùng: {token_used})_\n",
         parse_mode=ParseMode.MARKDOWN,
         reply_markup=kb,
     )
 
 
 async def cmd_reset(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Hard reset — xoá profile, results, feedback. GIỮ preferences (en_level)."""
+    """Reset business data. GIỮ tên + ngôn ngữ (preferences) gắn với User ID."""
     user_id = update.effective_user.id
 
-    # Preserve preferences
+    # Preserve preferences (name, en_level, future token balance)
     old_session = await get_session(user_id)
     preserved_prefs = dict(old_session.preferences) if old_session.preferences else {}
 
@@ -262,9 +284,11 @@ async def cmd_reset(update: Update, context: ContextTypes.DEFAULT_TYPE):
     session.stage = PipelineStage.TASK_SELECT
     await save_session(session)
 
+    name = preserved_prefs.get("user_name", "")
+    name_part = f" sếp {name}" if name else ""
     await update.message.reply_text(
-        "✅ *Đã xoá toàn bộ data* (profile, kết quả, feedback).\n\n"
-        "_Bắt đầu phân tích mới ạ._",
+        f"✅ *Đã xoá business data{name_part}!*\n\n"
+        f"_Profile, kết quả, feedback đã clean. Tên + ngôn ngữ của sếp được giữ nguyên._",
         parse_mode=ParseMode.MARKDOWN,
         reply_markup=MAIN_MENU_KEYBOARD,
     )
@@ -296,14 +320,28 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             session.preferences["user_name"] = cleaned
             session.pending_intake.pop("_awaiting_user_name", None)
             await save_session(session)
-            await update.message.reply_text(
-                f"✨ *Em chào sếp {cleaned}!*\n\n"
-                f"Em sẽ gọi sếp đúng tên này ở các lần làm việc sau. "
-                f"Đổi tên bất kỳ lúc nào qua /settings.\n\n"
-                f"Giờ vào việc thôi sếp {cleaned}! 👇",
-                parse_mode=ParseMode.MARKDOWN,
-                reply_markup=MAIN_MENU_KEYBOARD,
-            )
+
+            # Nếu chưa có en_level → hỏi tiếp ngôn ngữ
+            if not session.preferences.get("en_level"):
+                await update.message.reply_text(
+                    f"✨ *Em chào sếp {cleaned}!*\n\n"
+                    f"Em hỏi nhanh thêm 1 ý nữa ạ:\n\n"
+                    f"*Khả năng tiếng Anh của sếp thế nào* để em biết cách trình bày output cho phù hợp?\n\n"
+                    f"🔴 *Không rành* — Em dùng thuần Việt toàn bộ\n"
+                    f"🟡 *Hiểu cơ bản* — Em dùng thuật ngữ EN kèm giải thích\n"
+                    f"🟢 *Thông thạo* — Em dùng EN tự nhiên",
+                    parse_mode=ParseMode.MARKDOWN,
+                    reply_markup=LANG_LEVEL_KEYBOARD,
+                )
+            else:
+                # Đã có lang rồi → vào menu thẳng
+                await update.message.reply_text(
+                    f"✨ *Em chào sếp {cleaned}!*\n\n"
+                    f"Em đã ghi nhớ tên — đổi bất kỳ lúc nào qua /settings.\n\n"
+                    f"Giờ vào việc thôi sếp {cleaned}! 👇",
+                    parse_mode=ParseMode.MARKDOWN,
+                    reply_markup=MAIN_MENU_KEYBOARD,
+                )
         else:
             await update.message.reply_text(
                 f"⚠️ {error_msg}\n\n"
@@ -799,6 +837,22 @@ async def _handle_callback_inner(update, context, query, session, data, user_id)
         )
         return
 
+    if data == "settings_tokens":
+        await query.edit_message_reply_markup(reply_markup=None)
+        token_balance = session.preferences.get("token_balance", "1,000,000")
+        token_used    = session.preferences.get("token_used",    "0")
+        name = _get_user_name(session)
+        addr = f"sếp {name}" if name else "sếp"
+        await query.message.reply_text(
+            f"💎 *Token của {addr}*\n\n"
+            f"📊 *Còn lại:* {token_balance}\n"
+            f"📉 *Đã dùng:* {token_used}\n\n"
+            f"_Mỗi skill chạy 1 lần tốn ~10-50K token. Token reset hàng tháng (cho gói free)._\n\n"
+            f"_Tính năng tracking chính xác đang phát triển — số liệu hiện là estimate._",
+            parse_mode=ParseMode.MARKDOWN,
+        )
+        return
+
     if data.startswith("lang_"):
         level = data.replace("lang_", "")  # "none" / "moderate" / "fluent"
         if level not in ("none", "moderate", "fluent"):
@@ -820,21 +874,11 @@ async def _handle_callback_inner(update, context, query, session, data, user_id)
         except Exception:
             pass
 
-        # NEW: Nếu chưa có user_name → hỏi tên
-        if not session.preferences.get("user_name"):
-            session.pending_intake["_awaiting_user_name"] = "1"
-            await save_session(session)
-            await query.message.reply_text(
-                "👋 *Em gọi sếp thế nào ạ?*\n\n"
-                "_Sếp gõ tên hoặc nickname để em ghi nhớ — em sẽ gọi sếp đúng tên ở các lần sau._\n\n"
-                "_Vd: \"Nhiên\" / \"Anh Minh\" / \"Founder Lily\"_",
-                parse_mode=ParseMode.MARKDOWN,
-            )
-            return
-
-        # Đã có name → vào menu thẳng
+        # Đã có name (first-time flow đã hỏi trước) → welcome menu
+        name = session.preferences.get("user_name", "")
+        greeting = f"Em chào sếp {name}! Vào việc thôi 👇" if name else "Vào việc thôi sếp 👇"
         await query.message.reply_text(
-            _personalize(WELCOME_MESSAGE, session),
+            f"{greeting}\n\n" + _personalize(WELCOME_MESSAGE, session),
             parse_mode=ParseMode.MARKDOWN,
             reply_markup=MAIN_MENU_KEYBOARD,
         )
