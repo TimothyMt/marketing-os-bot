@@ -21,40 +21,61 @@ def _get_client() -> anthropic.AsyncAnthropic:
     return _client
 
 
-CRITIC_SYSTEM = """Bạn là Senior Marketing Analyst review output của AI advisor cho founder Việt Nam.
+CRITIC_SYSTEM = """Bạn là silent editor — fix các lỗi factual trong output của AI advisor cho founder VN.
 
-Nhiệm vụ: Đọc output dưới đây, PHÁT HIỆN và SỬA các vấn đề:
+**⚠️ CRITICAL — ĐỌC KỸ:**
+- Bạn KHÔNG phải là reviewer viết report.
+- Bạn KHÔNG được output các header kiểu "REVIEW HOÀN THÀNH", "Kết quả kiểm tra", "✅ OK", "❌ Issue".
+- Bạn KHÔNG được tóm tắt những gì đã check.
+- Bạn KHÔNG được nói "Output này không có vấn đề" hay tương tự.
+
+**NHIỆM VỤ DUY NHẤT:**
+Trả về NGUYÊN VĂN output user gửi, CHỈ sửa các lỗi sau (in-place edit):
 
 **1. Số liệu bịa / không hợp lý**
-- Phát hiện số cụ thể (TAM, %, số khách, doanh thu, CAC, ROAS...) mà:
-  + Không có nguồn rõ
-  + Quá tròn (50000, 1 triệu) — dấu hiệu Claude bịa
-  + Không hợp lý cho VN (vd: TAM ngành F&B "100 tỷ USD")
-- → Sửa thành "ước tính dựa trên benchmark ngành" hoặc xóa nếu off-mark
+- Số quá tròn (50000, 1 triệu) → đổi thành range hợp lý (~45-55K, 0.8-1.2M)
+- Số không hợp lý cho VN (TAM F&B "100 tỷ USD") → đổi sang số đúng
+- Thêm "(ước tính)" sau số nếu không có nguồn
 
 **2. Mâu thuẫn nội bộ**
-- Phát hiện 2 con số khác nhau cho cùng 1 thứ trong cùng output
-- → Chọn version hợp lý nhất, sửa cho nhất quán
+- 2 số khác nhau cho cùng 1 thứ → giữ 1 version hợp lý, sửa version còn lại
 
-**3. Cite nguồn nghi ngờ**
-- Nếu cite "Theo Statista 2024..." mà không có link cụ thể
-- → Giữ tên nguồn (sẽ được post-process thêm hyperlink)
-- Nếu cite nguồn không tồn tại (vd: "Báo cáo XYZ Vietnam 2025" mà tổ chức không có report đó)
-- → Xóa cite, giữ insight nhưng đổi thành "industry estimate"
+**3. Cite nguồn không tồn tại**
+- "Báo cáo XYZ Vietnam 2025" mà tổ chức không có report đó → xóa cite, đổi "industry estimate"
+- Nguồn thật (Statista, GSO, Nielsen) → giữ nguyên
 
-**4. Brand/người cụ thể**
-- Phát hiện claim cụ thể về 1 brand (vd: "Cocoon có 50,000 customers", "M.O.I founded 2018")
-- → Sửa thành phát biểu chung ("các brand local lớn") hoặc xóa con số cụ thể nếu nghi bịa
+**4. Brand claim cụ thể nghi bịa**
+- "Cocoon có 50,000 customers" → "các brand local lớn" hoặc xóa con số
 
-**QUY TẮC NGHIÊM:**
-- KHÔNG rewrite toàn bộ output — chỉ sửa các vấn đề trên
-- GIỮ NGUYÊN cấu trúc 4 sections: ## 💡 Insight, ## 🎯 Tóm tắt, ## 📊 Benchmarks, ## 📄 Phân tích chi tiết
-- GIỮ NGUYÊN tone tiếng Việt + style viết
-- KHÔNG thêm disclaimer thừa kiểu "lưu ý đây là ước tính" — chỉ sửa nội dung
-- KHÔNG thêm comment giải thích — output trực tiếp version đã sửa
-- GIỮ NGUYÊN tables, bullet lists, headings
+**OUTPUT FORMAT:**
+- Trả về CHÍNH XÁC output gốc, chỉ thay text ở những chỗ cần sửa.
+- Nếu KHÔNG có lỗi gì → trả về NGUYÊN VĂN output gốc, KHÔNG thay đổi 1 chữ nào.
+- KHÔNG thêm preamble ("Đây là output sau review:", "Tôi đã sửa các lỗi sau:")
+- KHÔNG thêm postamble ("Output trên đã được review", "Kết luận:")
+- KHÔNG thay đổi cấu trúc, headings, bullets, tables.
 
-Output: Toàn bộ text đã review/sửa, ready để gửi user."""
+Output bắt đầu trực tiếp bằng ký tự đầu tiên của output gốc."""
+
+
+# Patterns chỉ ra Critic đã write meta-review thay vì sửa output
+META_REVIEW_PATTERNS = [
+    r"REVIEW HOÀN THÀNH",
+    r"Kết quả kiểm tra",
+    r"không chứa các vấn đề chính",
+    r"Output này\s+\*?\*?(không|đã)",
+    r"^[✅❌]\s*(OK|Issue|Phát hiện)",
+    r"đã được review",
+    r"theo \d tiêu chí",
+]
+_META_REVIEW_RE = re.compile("|".join(META_REVIEW_PATTERNS), re.IGNORECASE | re.MULTILINE)
+
+
+def _looks_like_meta_review(text: str) -> bool:
+    """Detect nếu Critic output là meta-review chứ không phải reviewed output."""
+    if not text:
+        return False
+    head = text[:500]
+    return bool(_META_REVIEW_RE.search(head))
 
 
 # Mapping nguồn data VN phổ biến → URL chính thức
@@ -116,6 +137,19 @@ async def run_critic(agent_output: str, agent_name: str = "agent") -> str:
         if not reviewed or not reviewed.strip():
             logger.warning("Critic returned empty for %s, falling back to original", agent_name)
             return agent_output
+
+        # Safety: nếu Haiku misbehave và viết meta review → dùng original
+        if _looks_like_meta_review(reviewed):
+            logger.warning("Critic [%s] returned meta-review, falling back to original output", agent_name)
+            return _add_hyperlinks(agent_output)
+
+        # Sanity check: reviewed output không nên ngắn hơn đáng kể so với original
+        if len(reviewed) < len(agent_output) * 0.4:
+            logger.warning(
+                "Critic [%s] output too short (%d vs original %d), falling back",
+                agent_name, len(reviewed), len(agent_output),
+            )
+            return _add_hyperlinks(agent_output)
 
         # Post-process: add hyperlinks for known sources
         reviewed = _add_hyperlinks(reviewed)
