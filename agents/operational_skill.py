@@ -133,13 +133,19 @@ class OperationalSkill(AgentSkill):
         intake.setdefault("primary_goal",     profile.primary_goal or "tăng doanh thu")
         intake.setdefault("main_challenge",   profile.main_challenge or "chưa xác định")
 
+        # Use SafeDict — return "(không có thông tin)" for any missing placeholder
+        # instead of raising KeyError. Handles both strategy_aware form (subset of fields)
+        # and template missing fields gracefully.
+        class _SafeIntake(dict):
+            def __missing__(self, key):
+                return "(không có thông tin)"
+
         try:
-            msg = self._config.user_msg_template.format(**intake)
-        except KeyError as e:
-            msg = self._config.user_msg_template.replace(
-                "{" + str(e).strip("'") + "}",
-                f"[missing: {e}]"
-            ).format(**{k: v for k, v in intake.items()})
+            msg = self._config.user_msg_template.format_map(_SafeIntake(intake))
+        except Exception as e:
+            # Last-resort fallback — strip all placeholders
+            import re as _re
+            msg = _re.sub(r"\{[^{}]+\}", "(không có thông tin)", self._config.user_msg_template)
 
         # Append FB live data nếu có (competitor spy / performance audit)
         if fb_data:
