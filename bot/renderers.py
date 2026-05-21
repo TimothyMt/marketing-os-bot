@@ -229,7 +229,9 @@ def render_excel_file(
     header_align = Alignment(horizontal="center", vertical="center")
 
     for idx, (table_title, headers, rows) in enumerate(tables[:10]):  # max 10 sheets
-        sheet_name = (table_title or f"Sheet {idx+1}")[:30]
+        # Excel sheet name: max 31 chars, cấm các ký tự : \ / ? * [ ]
+        raw_name = table_title or f"Sheet {idx+1}"
+        sheet_name = re.sub(r"[:\\/?*\[\]]", " ", raw_name)[:30].strip() or f"Sheet {idx+1}"
         ws = wb.create_sheet(title=sheet_name)
 
         # Title row
