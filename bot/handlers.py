@@ -283,27 +283,32 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # NEW: First-time name capture
     if session.pending_intake.get("_awaiting_user_name"):
-        name = text.strip()[:50]  # Cap 50 chars
-        # Strip common prefixes
-        for prefix in ("em là ", "tớ là ", "tôi là ", "mình là ", "anh ", "chị "):
-            if name.lower().startswith(prefix):
-                name = name[len(prefix):].strip()
+        raw = text.strip()
+        # Strip common prefixes trước khi validate
+        cleaned = raw
+        for prefix in ("em là ", "tớ là ", "tôi là ", "mình là ", "anh ", "chị ", "tên ", "gọi "):
+            if cleaned.lower().startswith(prefix):
+                cleaned = cleaned[len(prefix):].strip()
                 break
-        if name:
-            session.preferences["user_name"] = name
+
+        valid, error_msg = _validate_user_name(cleaned)
+        if valid:
+            session.preferences["user_name"] = cleaned
             session.pending_intake.pop("_awaiting_user_name", None)
             await save_session(session)
             await update.message.reply_text(
-                f"✨ *Em chào sếp {name}!*\n\n"
+                f"✨ *Em chào sếp {cleaned}!*\n\n"
                 f"Em sẽ gọi sếp đúng tên này ở các lần làm việc sau. "
                 f"Đổi tên bất kỳ lúc nào qua /settings.\n\n"
-                f"Giờ vào việc thôi sếp {name}! 👇",
+                f"Giờ vào việc thôi sếp {cleaned}! 👇",
                 parse_mode=ParseMode.MARKDOWN,
                 reply_markup=MAIN_MENU_KEYBOARD,
             )
         else:
             await update.message.reply_text(
-                "Em chưa nhận được tên rõ. Sếp gõ lại 1 tên ngắn nhé (vd: Nhiên / Lily / Anh Minh)."
+                f"⚠️ {error_msg}\n\n"
+                f"_Sếp gõ lại 1 tên hợp lệ nhé. Vd: 'Nhiên' / 'Anh Minh' / 'Founder Lily'._",
+                parse_mode=ParseMode.MARKDOWN,
             )
         return
 
@@ -2138,6 +2143,25 @@ async def _run_pipeline_sequentially(message: Message, session):
 
 
 # ─── Name personalization helpers ───────────────────────────────
+
+def _validate_user_name(name: str) -> tuple[bool, str]:
+    """Validate user_name: dưới 20 ký tự, có chữ cái. Returns (is_valid, error_msg)."""
+    import re as _re
+
+    if not name or not name.strip():
+        return False, "Em chưa nhận được tên."
+
+    name = name.strip()
+
+    if len(name) > 20:
+        return False, "Tên dài quá (>20 ký tự). Sếp đặt nickname ngắn gọn nhé."
+
+    # Phải có ít nhất 1 chữ cái
+    if not _re.search(r"[a-zA-ZÀ-ỹ]", name):
+        return False, "Tên cần có ít nhất 1 chữ cái."
+
+    return True, ""
+
 
 def _get_user_name(session) -> str:
     """Lấy user_name từ preferences, fallback empty string."""
