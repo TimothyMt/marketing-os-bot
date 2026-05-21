@@ -109,17 +109,20 @@ _(Sếp đổi lại bất kỳ lúc nào bằng /settings)_"""
 
 HELP_MESSAGE = """*Marketing OS — Hướng dẫn sử dụng*
 
-/start — Bắt đầu phân tích business mới
-/reset — Xóa phiên hiện tại, bắt đầu lại
-/help  — Hiển thị hướng dẫn này
+/start    — Mở menu chính (GIỮ data, không reset)
+/reset    — Xoá toàn bộ data, bắt đầu phân tích mới
+/settings — Đổi mức độ tiếng Anh trong output
+/help     — Hiển thị hướng dẫn này
 
 *Cách sử dụng*:
-1. Chọn task bạn muốn Max thực hiện
-2. Trả lời câu hỏi để Max nắm bức tranh business
-3. Xác nhận thông tin → Max chạy phân tích
-4. Nhận kết quả chuyên sâu
+1. Chọn task sếp muốn em thực hiện
+2. Trả lời các câu hỏi / paste form
+3. Nhận card tóm tắt + file đầy đủ
+4. Đánh giá output → em note lại để cải thiện
 
-*Thời gian*: 30-60 giây cho task đơn lẻ, 3-5 phút cho phân tích toàn diện."""
+*Mẹo*: Chạy *Trọn Bộ A→Z* trước → các task sau (Brief Campaign, Content Calendar, Landing Page) sẽ tự động dùng Strategy đó làm base.
+
+*Thời gian*: 30-60s task đơn, 3-5p A→Z toàn diện."""
 
 
 def _strip_code_fences(text: str) -> str:
@@ -173,15 +176,23 @@ async def send_long_message(message: Message, text: str, **kwargs):
 # ─── Commands ────────────────────────────────────────────────────
 
 async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Show main menu. GIỮ NGUYÊN session (profile, results, feedback).
+    Dùng /reset nếu muốn xoá hết bắt đầu lại.
+    """
     user_id = update.effective_user.id
-
-    # PRESERVE preferences từ session cũ (vd: en_level đã set trước)
-    old_session = await get_session(user_id)
-    preserved_prefs = dict(old_session.preferences) if old_session.preferences else {}
-
-    await reset_session(user_id)
     session = await get_session(user_id)
-    session.preferences = preserved_prefs
+
+    # Clear any in-flight markers (awaiting feedback/rating/edit) — user vừa /start là muốn về menu
+    transient_keys = [
+        "_awaiting_feedback_for", "_awaiting_rating_for", "_awaiting_followup_for",
+        "_awaiting_image_edit", "_awaiting_image_reference",
+        "_pending_regen_skill", "_pending_feedback",
+        "_monitor_pending_page_id", "_monitor_pending_page_name",
+        "_last_image_b64", "_last_image_size", "_img_prompt", "_img_n",
+    ]
+    for k in transient_keys:
+        session.pending_intake.pop(k, None)
+
     session.stage = PipelineStage.TASK_SELECT
     await save_session(session)
 
@@ -194,9 +205,21 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
-    # Returning user → vào menu chính ngay
-    await update.message.reply_text(
-        WELCOME_MESSAGE,
+    # Returning user → vào menu chính, hiển thị status nếu có data
+    welcome = WELCOME_MESSAGE
+    status_lines = []
+    if session.profile.business_name:
+        status_lines.append(f"🏢 Business: *{session.profile.business_name}*")
+    if session.has_result("synthesis") or session.has_result("strategy"):
+        status_lines.append("✅ Đã có Marketing Strategy")
+    elif session.has_result("market_research") or session.has_result("competitor"):
+        status_lines.append("⚙️ Đã chạy 1 vài bước phân tích")
+    if status_lines:
+        welcome = "\n".join(status_lines) + "\n\n─────────────────────────\n\n" + welcome
+
+    await _safe_reply(
+        update.message,
+        welcome,
         parse_mode=ParseMode.MARKDOWN,
         reply_markup=MAIN_MENU_KEYBOARD,
     )
@@ -216,11 +239,24 @@ async def cmd_settings(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def cmd_reset(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Hard reset — xoá profile, results, feedback. GIỮ preferences (en_level)."""
     user_id = update.effective_user.id
+
+    # Preserve preferences
+    old_session = await get_session(user_id)
+    preserved_prefs = dict(old_session.preferences) if old_session.preferences else {}
+
     await reset_session(user_id)
+    session = await get_session(user_id)
+    session.preferences = preserved_prefs
+    session.stage = PipelineStage.TASK_SELECT
+    await save_session(session)
+
     await update.message.reply_text(
-        "✅ Đã xóa phiên cũ. Bắt đầu lại nhé!",
-        reply_markup=RESTART_KEYBOARD,
+        "✅ *Đã xoá toàn bộ data* (profile, kết quả, feedback).\n\n"
+        "_Bắt đầu phân tích mới ạ._",
+        parse_mode=ParseMode.MARKDOWN,
+        reply_markup=MAIN_MENU_KEYBOARD,
     )
 
 
