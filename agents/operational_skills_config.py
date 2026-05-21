@@ -26,6 +26,7 @@ from agents.operational_prompts import (
     COMPETITOR_SPY_SYSTEM,
     COMPETITOR_COMPARISON_SYSTEM,
     PERFORMANCE_AUDIT_SYSTEM,
+    VIRAL_VIDEO_ANALYZER_SYSTEM,
 )
 from agents.task_registry import OPERATIONAL_TASKS
 from storage.models import Session
@@ -371,6 +372,130 @@ Output 2 VARIANTS A/B với angle khác nhau. Mỗi variant: hook đúng dạng 
 Lưu ý: KHÔNG bao gồm hợp đồng/commercial terms."""
 
 
+class ViralVideoAnalyzerSkill(AgentSkill):
+    """Special analysis skill: reverse-engineer kịch bản video viral.
+
+    Flow:
+      1. Đọc `session.pending_intake["video_source"]` (URL hoặc transcript paste sẵn)
+      2. Nếu là URL → gọi tools.krillin_client.extract_transcript() (KrillinAI binary
+         hoặc Whisper API fallback)
+      3. Nếu là transcript paste → dùng trực tiếp, đánh dấu source="user_paste"
+      4. Inject transcript có timestamps vào user_msg
+      5. Claude phân tích 8 sections (hook / structure / pacing / pattern / triggers / CTA / replicate template)
+
+    KrillinAI repo: https://github.com/krillinai/KlicStudio
+    Setup: env var KRILLIN_BINARY trỏ tới binary; fallback dùng OPENAI_API_KEY (Whisper).
+    """
+    name = "viral_video_analyzer"
+    system_prompt = VIRAL_VIDEO_ANALYZER_SYSTEM
+    max_tokens = 10000  # 8 sections × replicate template — output dài
+    enable_critic = True  # Có data analysis → critic ngăn bịa view count / benchmark
+    output_format = OutputFormat.OPERATIONAL_ANALYSIS
+    intake_pattern = IntakePattern.SINGLE_SHOT_FORM
+    context_strategy = ContextStrategy.PROFILE_PLUS_STRATEGY
+    primary_deliverable = PrimaryDeliverable.HTML
+    accumulate_to_report = False
+
+    def build_context(self, session: Session) -> str:
+        parts = [session.profile.to_context_string()]
+        synthesis = session.get_latest_result("synthesis")
+        if synthesis:
+            parts.append(
+                "## Marketing Strategy nền (dùng để tailor công thức replicate cho business sếp)\n"
+                f"{synthesis[:4000]}"
+            )
+        return "\n\n---\n\n".join(parts)
+
+    def build_user_msg(self, session: Session) -> str:
+        from tools import krillin_client
+
+        intake = session.pending_intake or {}
+        video_source = (intake.get("video_source") or "").strip()
+        platform = intake.get("platform") or "chưa rõ"
+        niche_context = intake.get("niche_context") or "chưa cung cấp"
+        engagement_data = intake.get("engagement_data") or "không rõ"
+        why_picked = intake.get("why_picked") or ""
+        profile = session.profile
+
+        # Extract transcript — URL hoặc paste
+        transcript_block = self._resolve_transcript(video_source)
+
+        why_line = f"\n**Lý do sếp chọn video này:** {why_picked}" if why_picked else ""
+
+        return f"""## Yêu cầu: Phân Tích Video Viral
+
+**Platform:** {platform}
+**Niche video:** {niche_context}
+**Số liệu engagement (nếu có):** {engagement_data}{why_line}
+
+**Context business sếp (để tailor công thức replicate):**
+- Ngành: {profile.industry or 'chưa xác định'}
+- Sản phẩm/dịch vụ: {profile.product_service or 'chưa xác định'}
+- Khách hàng: {profile.target_customer or 'chưa xác định'}
+- Địa bàn: {profile.location or 'Việt Nam'}
+
+---
+
+### TRANSCRIPT VIDEO (đã extract sẵn)
+
+{transcript_block}
+
+---
+
+Phân tích đầy đủ 8 sections theo system prompt. Section 8 (Replicate Formula) phải dùng được ngay cho business của sếp — không generic."""
+
+    def _resolve_transcript(self, video_source: str) -> str:
+        """Resolve video_source → formatted transcript block.
+
+        Nếu là URL → chạy krillin sync (block ngắn chấp nhận được trong intake flow).
+        Nếu là text paste (không match URL regex) → wrap thành block giả.
+        """
+        from tools import krillin_client
+        import asyncio
+
+        if not video_source:
+            return "**(Không có transcript — sếp chưa cung cấp link hay paste lời thoại)**"
+
+        is_url = bool(krillin_client.URL_REGEX.match(video_source))
+
+        if is_url:
+            if not krillin_client.is_available():
+                return (
+                    f"**⚠️ Không extract được transcript từ URL** ({video_source})\n\n"
+                    f"Engine status:\n{krillin_client.availability_report()}\n\n"
+                    "Workaround: sếp paste trực tiếp transcript vào ô `video_source` thay link, "
+                    "Max vẫn phân tích được kịch bản đầy đủ."
+                )
+            try:
+                # Build_user_msg là sync method → chạy async qua event loop hiện tại
+                loop = asyncio.get_event_loop()
+                if loop.is_running():
+                    # Nếu đang trong loop (pipeline runner) → schedule + wait
+                    import concurrent.futures
+                    with concurrent.futures.ThreadPoolExecutor() as pool:
+                        future = pool.submit(
+                            asyncio.run,
+                            krillin_client.extract_transcript(video_source, language_hint="vi"),
+                        )
+                        extract = future.result(timeout=320)
+                else:
+                    extract = loop.run_until_complete(
+                        krillin_client.extract_transcript(video_source, language_hint="vi")
+                    )
+                return krillin_client.format_transcript_for_prompt(extract)
+            except Exception as e:
+                return (
+                    f"**⚠️ Extract transcript thất bại** ({type(e).__name__}: {str(e)[:200]})\n\n"
+                    "Sếp paste trực tiếp transcript thay link, Max phân tích lại được."
+                )
+
+        # User paste transcript trực tiếp
+        return (
+            f"**Transcript engine:** user_paste (sếp đã paste trực tiếp lời thoại)\n\n"
+            f"```\n{video_source[:8000]}\n```"
+        )
+
+
 # ─────────────────────────────────────────────────────────────────
 # Registry: skill_name → factory function
 # ─────────────────────────────────────────────────────────────────
@@ -388,6 +513,7 @@ OPS_SKILL_FACTORIES: dict[str, callable] = {
     "ads_copy":            AdsCopySkill,
     "ads_generator":       AdsCopySkill,
     "video_scripts":       VideoScriptsSkill,
+    "viral_video_analyzer": ViralVideoAnalyzerSkill,
 }
 
 
