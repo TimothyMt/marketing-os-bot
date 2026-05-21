@@ -436,13 +436,14 @@ async def _handle_intake(update, context, session, text):
         session.intake_history = []
         await save_session(session)
 
-        await update.message.reply_text(
+        await _safe_reply(
+            update.message,
             confirm_msg,
             parse_mode=ParseMode.MARKDOWN,
             reply_markup=CONFIRM_KEYBOARD,
         )
     else:
-        await update.message.reply_text(response, parse_mode=ParseMode.MARKDOWN)
+        await _safe_reply(update.message, response, parse_mode=ParseMode.MARKDOWN)
 
 
 # ─── Follow-up Q&A after analysis complete ───────────────────────
