@@ -1165,7 +1165,15 @@ Cho MỖI bài, viết DẠNG NARRATIVE (KHÔNG dùng bảng key-value 2 cột):
 
 ---
 
-### Phần 2 — BẢNG TỔNG KẾT (BẮT BUỘC, để render Excel)
+### Phần 2 — BẢNG TỔNG KẾT (TUYỆT ĐỐI BẮT BUỘC — KHÔNG ĐƯỢC THIẾU)
+
+🔴 **NẾU SẾP/TEAM KHÔNG NHẬN ĐƯỢC BẢNG NÀY, BOT SẼ LỖI KHÔNG XUẤT EXCEL.**
+
+Bảng này PHẢI:
+- Đứng cuối output, sau toàn bộ Phần 1
+- Có header dòng `| Tuần | Bài | Ngày | Kênh | ... | Status |`
+- Có separator `|---|---|---|...|---|`
+- Có ÍT NHẤT 1 row data cho mỗi bài user request
 
 ⚠️ **Đây là phần SẾP/TEAM dùng để paste Google Sheet — PHẢI ĐẦY ĐỦ, KHÔNG CHO PHÉP CỘT TRỐNG:**
 

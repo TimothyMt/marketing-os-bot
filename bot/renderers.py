@@ -327,16 +327,26 @@ def render_excel_file(
         return None
 
     if output_format == OutputFormat.OPERATIONAL_DELIVERABLE:
-        full_text = parsed.get("deliverable", "") + "\n\n" + parsed.get("summary", "")
+        # Include raw để cover case LLM output table ngoài section "Deliverable"
+        full_text = "\n\n".join(filter(None, [
+            parsed.get("deliverable", ""),
+            parsed.get("summary", ""),
+            parsed.get("raw", ""),
+        ]))
     elif output_format == OutputFormat.OPERATIONAL_ANALYSIS:
         full_text = "\n\n".join(
             parsed.get(k, "") for k in ["summary", "kpi_table", "root_cause", "actions", "forecast"]
         )
+        # Fallback to raw nếu structured parse fail
+        if not full_text.strip():
+            full_text = parsed.get("raw", "")
     else:
         full_text = parsed.get("detail", "") + "\n\n" + parsed.get("raw", "")
 
     tables = _extract_markdown_tables(full_text)
     if not tables:
+        logger.warning("render_excel_file [%s]: no markdown tables found in output (full_text len=%d)",
+                       skill_name, len(full_text))
         return None
 
     wb = Workbook()
