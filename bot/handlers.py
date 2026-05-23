@@ -854,12 +854,19 @@ async def _handle_callback_inner(update, context, query, session, data, user_id)
         try:
             # Dispatch lại theo loại skill
             SINGLE_SHOT_STRATEGIC = {"market", "competitor", "customer", "pricing"}
+            from config import AGENT_TIMEOUT
 
             if skill_name in SINGLE_SHOT_STRATEGIC:
                 from agents.pipeline import run_strategic_single_skill
-                result = await run_strategic_single_skill(skill_name, session)
+                result = await asyncio.wait_for(
+                    run_strategic_single_skill(skill_name, session),
+                    timeout=AGENT_TIMEOUT,
+                )
             elif skill_name in OPERATIONAL_TASKS:
-                result = await run_operational_skill(skill_name, session)
+                result = await asyncio.wait_for(
+                    run_operational_skill(skill_name, session),
+                    timeout=AGENT_TIMEOUT,
+                )
             else:
                 await query.message.reply_text("⚠️ Em không re-run được skill này.")
                 return
@@ -2099,6 +2106,7 @@ async def _handle_ops_intake_reply(update: Update, context: ContextTypes.DEFAULT
     )
 
     try:
+        from config import AGENT_TIMEOUT
         # Pre-fetch live FB data cho các skills cần (competitor_spy, performance_audit)
         if task_name == "competitor_spy":
             await _prefetch_competitor_ads(update.message, session)
@@ -2108,15 +2116,27 @@ async def _handle_ops_intake_reply(update: Update, context: ContextTypes.DEFAULT
         # Dispatch theo task type
         if task_name in SINGLE_SHOT_STRATEGIC:
             from agents.pipeline import run_strategic_single_skill
-            result = await run_strategic_single_skill(task_name, session)
+            result = await asyncio.wait_for(
+                run_strategic_single_skill(task_name, session),
+                timeout=AGENT_TIMEOUT,
+            )
             await save_session(session)
             # Strategic single-skill render via existing pipeline-sequentially logic
             # but for 1 stage only — reuse _send_ops_result for uniform UX
             await _send_ops_result(update.message, session, task_name, result)
         else:
-            result = await run_operational_skill(task_name, session)
+            result = await asyncio.wait_for(
+                run_operational_skill(task_name, session),
+                timeout=AGENT_TIMEOUT,
+            )
             await save_session(session)
             await _send_ops_result(update.message, session, task_name, result)
+    except asyncio.TimeoutError:
+        logger.error("Skill %s timeout sau %ds", task_name, 500)
+        await update.message.reply_text(
+            f"⚠️ Skill {task_name} timeout (API chậm hoặc treo). Sếp thử lại nhé.\n"
+            f"Nếu lặp lại, có thể giảm scope intake để output ngắn hơn."
+        )
     except Exception as e:
         logger.exception("Skill %s failed: %s", task_name, e)
         await update.message.reply_text(

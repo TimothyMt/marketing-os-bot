@@ -46,7 +46,7 @@ from frameworks.kpi_library import get_framework_as_text
 from frameworks.save_framework import generate_save_analysis
 from frameworks.smart_framework import format_smart_prompt
 
-client = anthropic.AsyncAnthropic(api_key=ANTHROPIC_API_KEY)
+client = anthropic.AsyncAnthropic(api_key=ANTHROPIC_API_KEY, timeout=180.0)
 
 
 # DEPRECATED — kept temporarily for backward-compat in legacy _run_agent function.
@@ -314,19 +314,37 @@ async def _run_skill(skill: AgentSkill, session: Session) -> str:
 
     augmented_system = skill.system_prompt + format_instruction + "\n\n---\n\n" + lang_instruction + name_directive
 
-    response = await client.messages.create(
-        model=CLAUDE_SONNET_MODEL,
-        max_tokens=skill.max_tokens,
-        system=[
-            {
-                "type": "text",
-                "text": augmented_system,
-                "cache_control": {"type": "ephemeral"},
-            }
-        ],
-        messages=[
-            {"role": "user", "content": f"{context}\n\n---\n\n{user_msg}"}
-        ],
+    import time as _time
+    _t0 = _time.monotonic()
+    logger.info(
+        "Skill %s: calling Anthropic (max_tokens=%d, ctx_chars=%d)",
+        skill.name, skill.max_tokens, len(context) + len(user_msg),
+    )
+    try:
+        response = await client.messages.create(
+            model=CLAUDE_SONNET_MODEL,
+            max_tokens=skill.max_tokens,
+            system=[
+                {
+                    "type": "text",
+                    "text": augmented_system,
+                    "cache_control": {"type": "ephemeral"},
+                }
+            ],
+            messages=[
+                {"role": "user", "content": f"{context}\n\n---\n\n{user_msg}"}
+            ],
+        )
+    except Exception as e:
+        logger.exception(
+            "Skill %s: Anthropic call FAILED after %.1fs: %s",
+            skill.name, _time.monotonic() - _t0, e,
+        )
+        raise
+    logger.info(
+        "Skill %s: response received in %.1fs (out_tok=%s)",
+        skill.name, _time.monotonic() - _t0,
+        getattr(response.usage, "output_tokens", "?"),
     )
 
     # Token tracking
