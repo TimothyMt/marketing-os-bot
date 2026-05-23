@@ -346,9 +346,22 @@ def render_excel_file(
 
     tables = _extract_markdown_tables(full_text)
     if not tables:
-        logger.warning("render_excel_file [%s]: no markdown tables found (full_text len=%d)",
+        logger.warning("render_excel_file [%s]: no markdown tables found via parser, trying Haiku rebuild (full_text len=%d)",
                        skill_name, len(full_text))
-        return None
+        # Last resort: dùng Haiku rebuild table format
+        try:
+            rebuilt = _haiku_rebuild_table(full_text, skill_name)
+            if rebuilt:
+                tables = _extract_markdown_tables(rebuilt)
+                if tables:
+                    logger.info("render_excel_file [%s]: Haiku rebuild succeeded → %d tables", skill_name, len(tables))
+        except Exception as e:
+            logger.warning("Haiku rebuild failed: %s", e)
+
+        if not tables:
+            logger.error("render_excel_file [%s]: still no tables after Haiku rebuild. First 500 chars: %s",
+                          skill_name, full_text[:500])
+            return None
 
     wb = Workbook()
     wb.remove(wb.active)
@@ -448,13 +461,75 @@ def render_excel_file(
     return buf.getvalue()
 
 
+def _haiku_rebuild_table(text: str, skill_name: str) -> Optional[str]:
+    """Khi parser không tìm thấy pipe table, dùng Haiku để convert
+    output (dạng bullet/list/narrative) thành markdown table chuẩn.
+    Returns: chuỗi chứa markdown table hoặc None.
+    """
+    if not text or len(text) < 100:
+        return None
+
+    try:
+        import anthropic
+        from config import CLAUDE_HAIKU_MODEL, ANTHROPIC_API_KEY
+    except ImportError:
+        return None
+
+    # Skill-specific schema
+    schemas = {
+        "content_generator": (
+            "Bài content output với 15 cột: "
+            "Tuần | Bài | Ngày | Kênh | Pillar | Funnel | Source | Format | "
+            "Angle | Hook | Body | CTA | Hashtags | Visual | Status"
+        ),
+        "content_calendar": (
+            "Lịch nội dung với cột: "
+            "Tuần | Ngày | Kênh | Pillar | Funnel | Nhóm khách | Source | Hook angle | Topic | Format | Owner"
+        ),
+    }
+    schema_desc = schemas.get(skill_name, "Tự deduce cấu trúc từ output")
+
+    system_prompt = f"""Convert output dưới đây thành 1 markdown pipe table.
+
+Schema mong đợi: {schema_desc}
+
+QUY TẮC:
+- Output CHỈ markdown table, không có text khác
+- Format: `| col1 | col2 | ... |`
+- Có separator: `|---|---|...|`
+- KHÔNG dùng dấu | trong cell (thay bằng /)
+- Nếu output gốc có nhiều bài/items → mỗi bài 1 row
+- Cell trống → để "..." không để rỗng"""
+
+    try:
+        client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
+        response = client.messages.create(
+            model=CLAUDE_HAIKU_MODEL,
+            max_tokens=8000,
+            system=system_prompt,
+            messages=[{"role": "user", "content": text[:30000]}],
+        )
+        return response.content[0].text.strip()
+    except Exception as e:
+        logger.warning("Haiku rebuild table failed: %s", e)
+        return None
+
+
 def _extract_markdown_tables(text: str) -> list[tuple[str, list[str], list[list[str]]]]:
     """Extract markdown tables from text. Returns list of (title, headers, rows).
-    Title is the nearest preceding heading (###/####)."""
+    Title is the nearest preceding heading (###/####).
+    Lenient: handles unicode pipes (｜), code blocks, indented tables."""
+    if not text:
+        return []
+
+    # Normalize unicode pipes + remove code fences
+    text = text.replace("｜", "|").replace("∣", "|")
+    text = re.sub(r"```[a-zA-Z]*\n?", "", text)  # strip ```python etc.
+    text = text.replace("```", "")
+
     tables = []
     lines = text.split("\n")
 
-    # State: 'looking_for_table' | 'in_header' | 'in_body'
     current_title = ""
     i = 0
     while i < len(lines):
@@ -465,16 +540,26 @@ def _extract_markdown_tables(text: str) -> list[tuple[str, list[str], list[list[
         if h_match:
             current_title = h_match.group(1).strip()
 
-        # Detect table header row: | col | col |
-        if re.match(r"^\|.+\|$", line) and i + 1 < len(lines):
+        # Detect table header row: starts with | and has at least 1 more |
+        # More lenient: allow leading/trailing whitespace, missing trailing |
+        if line.startswith("|") and line.count("|") >= 2 and i + 1 < len(lines):
             sep_line = lines[i + 1].strip()
-            # Separator row: |---|---|
-            if re.match(r"^\|[\s:|-]+\|$", sep_line):
-                headers = [c.strip() for c in line.strip("|").split("|")]
+            # Separator row: lenient — chỉ cần có | và --- pattern
+            if sep_line.startswith("|") and "---" in sep_line and re.match(r"^\|[\s:|\-]+\|?$", sep_line):
+                # Ensure trailing | (in case missing)
+                header_line = line if line.endswith("|") else line + "|"
+                headers = [c.strip() for c in header_line.strip("|").split("|")]
                 rows = []
                 j = i + 2
-                while j < len(lines) and re.match(r"^\|.+\|$", lines[j].strip()):
-                    row_cells = [c.strip() for c in lines[j].strip().strip("|").split("|")]
+                while j < len(lines):
+                    row_line = lines[j].strip()
+                    # Lenient row match: starts with | and has at least 1 more |
+                    if not (row_line.startswith("|") and row_line.count("|") >= 2):
+                        break
+                    # Ensure trailing |
+                    if not row_line.endswith("|"):
+                        row_line += "|"
+                    row_cells = [c.strip() for c in row_line.strip("|").split("|")]
                     # Pad to match header length
                     while len(row_cells) < len(headers):
                         row_cells.append("")
