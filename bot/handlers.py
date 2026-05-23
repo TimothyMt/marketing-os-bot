@@ -3,6 +3,7 @@ Telegram bot message and callback handlers.
 All storage calls are async (asyncpg-backed).
 """
 import asyncio
+import functools
 import logging
 import re
 from telegram import Update, Message, InlineKeyboardButton, InlineKeyboardMarkup
@@ -134,6 +135,35 @@ def _strip_code_fences(text: str) -> str:
     return text.replace("```", "")
 
 
+# Per-user lock map — chống race khi user spam click với concurrent_updates=True.
+# Lock được tạo lazy, giữ trong dict module-level. Memory ~1KB/user, không cần evict
+# trong scope hiện tại (small user base). Nếu scale lớn → wrap bằng LRU cache.
+_user_locks: dict[int, asyncio.Lock] = {}
+
+
+def _get_user_lock(user_id: int) -> asyncio.Lock:
+    lock = _user_locks.get(user_id)
+    if lock is None:
+        lock = asyncio.Lock()
+        _user_locks[user_id] = lock
+    return lock
+
+
+def with_user_lock(handler):
+    """Decorator: serialize đồng thời 2 update của cùng 1 user. Updates của user khác
+    vẫn chạy song song (vì PTB concurrent_updates=True)."""
+    @functools.wraps(handler)
+    async def wrapped(update: Update, context: ContextTypes.DEFAULT_TYPE):
+        user = update.effective_user
+        if user is None and update.callback_query:
+            user = update.callback_query.from_user
+        if user is None:
+            return await handler(update, context)
+        async with _get_user_lock(user.id):
+            return await handler(update, context)
+    return wrapped
+
+
 async def _safe_reply(message: Message, text: str, **kwargs):
     """Reply with markdown; fallback to plain text if Telegram parser fails.
     Also strips ``` code fences which render ugly in Telegram."""
@@ -176,6 +206,7 @@ async def send_long_message(message: Message, text: str, **kwargs):
 
 # ─── Commands ────────────────────────────────────────────────────
 
+@with_user_lock
 async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Show main menu. GIỮ NGUYÊN session (profile, results, feedback, preferences).
     First-time user (no name) → hỏi tên TRƯỚC, sau đó ngôn ngữ.
@@ -243,6 +274,7 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 
+@with_user_lock
 async def cmd_settings(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """/settings — config cho Max: Tên / Token / Ngôn ngữ."""
     user_id = update.effective_user.id
@@ -272,6 +304,7 @@ async def cmd_settings(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 
+@with_user_lock
 async def cmd_reset(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Reset business data. GIỮ tên + ngôn ngữ (preferences) gắn với User ID."""
     user_id = update.effective_user.id
@@ -296,12 +329,14 @@ async def cmd_reset(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 
+@with_user_lock
 async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(HELP_MESSAGE, parse_mode=ParseMode.MARKDOWN)
 
 
 # ─── Main message handler ─────────────────────────────────────────
 
+@with_user_lock
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     text = update.message.text.strip()
@@ -401,6 +436,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
 
+@with_user_lock
 async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Sprint 5 v2: User upload ảnh mẫu để bot làm theo style."""
     user_id = update.effective_user.id
@@ -642,6 +678,7 @@ async def _handle_followup(update, context, session, text):
 
 # ─── Callback (inline keyboard) ──────────────────────────────────
 
+@with_user_lock
 async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
