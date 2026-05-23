@@ -977,6 +977,33 @@ Bảng: KPI | Hiện tại | Mục tiêu 30d | Mục tiêu 90d | Cách đo
 - Offer không phá margin (không giảm giá liên tục)
 - Script mẫu PHẢI cụ thể, dùng "em/sếp" tone, không generic
 
+---
+
+## 🎚️ ADAPTIVE DEPTH — BẮT BUỘC tuân theo
+
+Trước khi viết output, KIỂM TRA intake user đã cung cấp những field optional nào:
+`current_retention`, `main_concern`, `segments_data`, `top_products`, `churn_pattern`.
+
+**TIER 1 — Strategic Framework** (chỉ có required fields: business_stage + customer_volume; optional rỗng hoặc "(không có thông tin)"):
+- Output framework chuẩn 7 sections như trên với số liệu **assumption-based**
+- MỌI con số đều ghi rõ "(giả định ngành)" hoặc "(benchmark TB)"
+- KHÔNG bịa segment names cụ thể — dùng template "Nhóm Mới / Active / Nguy cơ / Đã bỏ"
+- THÊM section cuối **"📊 Để personalize sâu hơn"**: liệt kê 3-5 data point user nên collect (vd: "Repeat rate thực 90d", "Phân bổ segment thực", "Churn cohort theo SKU") + cách collect đơn giản
+
+**TIER 2 — Personalized Playbook** (có ≥2 optional fields với data thực):
+- Số liệu KPI dùng data user cung cấp (không giả định)
+- Phân tầng 4 nhóm: tính % thực từ `segments_data` hoặc `customer_volume`
+- Action items map vào `main_concern` user nêu
+- Nếu có `top_products` → upsell/cross-sell đề xuất dựa trên SP cụ thể
+- Vẫn giữ section "Để personalize sâu hơn" nhưng ngắn gọn (1-2 gap còn lại)
+
+**TIER 3 — Execution-Ready** (gần đủ: có ≥4 optional fields, bao gồm `segments_data` HOẶC `churn_pattern`):
+- KPI có math thực, không giả định
+- Sequence + timing cụ thể per segment (vd: "Nhóm Mới 200 khách → ngày 3 gửi Zalo X, expect 30% reply = 60 lead")
+- Script + offer per segment dùng tên SP/giá thực từ `top_products`
+- ROI projection: input volume × conversion → revenue dự kiến
+- BỎ section "Để personalize sâu hơn" — thay bằng "📈 Next iteration" (gợi ý experiment A/B tiếp theo)
+
 **Output format**: Operational Deliverable."""
 
 
@@ -1072,6 +1099,33 @@ Bảng: KPI | Target | Cách đo
 - Script PHẢI specific theo ngành — không generic
 - Nhấn TEST 10% TRƯỚC khi scale — đừng để user đốt cả danh sách
 - KHÔNG giảm giá quá 20% bất kể trường hợp
+
+---
+
+## 🎚️ ADAPTIVE DEPTH — BẮT BUỘC tuân theo
+
+Trước khi viết output, KIỂM TRA intake user đã cung cấp những field optional nào:
+`suspected_reasons`, `available_offer`, `last_purchase_data`, `avg_order_value`, `past_winback_tried`.
+
+**TIER 1 — Strategic Framework** (chỉ có required: target_segment + list_size; optional rỗng hoặc "(không có thông tin)"):
+- Output framework chuẩn 6 sections với % và offer **assumption-based**
+- Lý do bỏ: dùng % benchmark TB (40-50% Quên / 15-25% Chưa hài lòng / ...) và ghi rõ "(giả định)"
+- Script dùng placeholder theo ngành, KHÔNG bịa AOV cụ thể
+- Offer Tier dùng range an toàn (giảm 10-15% / free 1 dịch vụ nhẹ)
+- THÊM section cuối **"📊 Để personalize sâu hơn"**: liệt kê data cần collect (vd: "Phân bố last_purchase_date", "AOV theo cohort", "Survey 5-10 khách cũ về lý do bỏ") + cách làm survey 10 phút
+
+**TIER 2 — Personalized Playbook** (có ≥2 optional fields với data thực):
+- % lý do bỏ map theo `suspected_reasons` user nêu (không dùng benchmark)
+- Offer Tier dùng `available_offer` user cho phép — không vượt range
+- Nếu có `past_winback_tried` → phân tích bài học, tránh lặp lỗi cũ (vd: trước SMS reply <5% → lần này thử Zalo cá nhân)
+- Script tùy biến theo segment cụ thể
+
+**TIER 3 — Execution-Ready** (gần đủ: có ≥4 optional fields, bao gồm `last_purchase_data` HOẶC `avg_order_value`):
+- Phân loại 4 nhóm lý do với % thực từ `suspected_reasons`
+- Test 10%: chỉ định CHÍNH XÁC nhóm test từ `last_purchase_data` (vd: "Lấy 5 khách 60-90 ngày AOV cao nhất")
+- ROI math: list_size × win-back rate kỳ vọng × `avg_order_value` = revenue dự kiến
+- Sequence timing tối ưu theo cohort (gần ngày bỏ hơn → L1 sớm hơn)
+- BỎ section "Để personalize sâu hơn" — thay bằng "📈 Sau test 10%" (criteria scale up/down + iteration tiếp theo)
 
 **Output format**: Operational Deliverable."""
 
