@@ -30,8 +30,9 @@ def parse_strategic_output(text: str) -> dict:
 
 
 def parse_operational_deliverable(text: str) -> dict:
-    """Parse OPERATIONAL_DELIVERABLE output into {summary, deliverable}."""
-    result = {"summary": "", "deliverable": ""}
+    """Parse OPERATIONAL_DELIVERABLE output into {summary, deliverable, raw}."""
+    # ALWAYS preserve raw để Excel renderer có thể fallback
+    result = {"summary": "", "deliverable": "", "raw": text}
 
     # Match "## 🎯 Tóm tắt nhanh" section
     summary_match = re.search(
