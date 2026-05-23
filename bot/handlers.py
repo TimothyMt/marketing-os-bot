@@ -1638,6 +1638,60 @@ async def _show_profile_reuse_confirm(message: Message, session, task_name: str)
     )
 
 
+async def _haiku_extract_intake(text: str, task_name: str, session) -> dict:
+    """Dùng Haiku để extract free-form text → structured intake fields.
+    Trả về dict {field_key: value}. Field nào không extract được thì bỏ qua.
+    """
+    import anthropic, json as _json
+    from config import CLAUDE_HAIKU_MODEL, ANTHROPIC_API_KEY
+
+    task = get_task(task_name)
+    if not task:
+        return {}
+
+    fields_desc = "\n".join(
+        f"- {f['key']} ({f['label']}): example = '{f.get('example', '')}'"
+        for f in task.intake_fields
+    )
+
+    system = f"""Extract values từ user message thành JSON.
+
+Task: {task.label}
+Fields cần extract:
+{fields_desc}
+
+Output: JSON object với key = field name, value = string extracted từ user.
+Nếu field không có trong message → bỏ qua, KHÔNG put null hay empty.
+KHÔNG thêm field nào ngoài list trên.
+Output CHỈ JSON object, không markdown, không giải thích."""
+
+    client = anthropic.AsyncAnthropic(api_key=ANTHROPIC_API_KEY)
+    try:
+        response = await client.messages.create(
+            model=CLAUDE_HAIKU_MODEL,
+            max_tokens=400,
+            system=system,
+            messages=[{"role": "user", "content": text}],
+        )
+        # Token tracking
+        try:
+            from tools.token_tracker import track_usage
+            track_usage(session, response, label="intake_extract")
+        except Exception:
+            pass
+
+        raw = response.content[0].text.strip()
+        # Strip markdown code fence if present
+        raw = re.sub(r"^```json\s*|^```\s*|```$", "", raw, flags=re.MULTILINE).strip()
+        data = _json.loads(raw)
+        # Validate: only keep declared field keys
+        valid_keys = {f["key"] for f in task.intake_fields}
+        return {k: str(v) for k, v in data.items() if k in valid_keys and v}
+    except Exception as e:
+        logger.warning("Haiku extract intake failed for %s: %s — text was: %s", task_name, e, text[:100])
+        return {}
+
+
 async def _send_strategy_aware_form(message: Message, session, task_name: str):
     """Khi user đã có Strategy (synthesis) — show form rút gọn.
     Form khác nhau theo skill:
@@ -1924,7 +1978,19 @@ async def _handle_ops_intake_reply(update: Update, context: ContextTypes.DEFAULT
         # Defaults đã được pre-fill ở _send_strategy_aware_form, dùng nguyên
         parsed = {}
     else:
+        # Strategy-aware form: dùng Haiku để extract free-form text nếu structured parse fail
+        is_strategy_aware = session.pending_intake.get("_strategy_aware") == "1"
         parsed = _parse_single_shot_intake(text, task_name)
+        # Nếu strategy-aware và parsed có < 2 field → text là free-form, dùng Haiku extract
+        if is_strategy_aware and len([v for v in parsed.values() if v]) < 2:
+            try:
+                parsed_haiku = await _haiku_extract_intake(text, task_name, session)
+                # Merge: parsed_haiku ưu tiên nếu structured parse rỗng
+                for k, v in parsed_haiku.items():
+                    if v and not parsed.get(k):
+                        parsed[k] = v
+            except Exception as e:
+                logger.warning("Haiku intake extract failed: %s", e)
 
     # Strategic single-shot: also merge parsed values into session.profile
     # (so future skills can reuse via profile reuse logic)

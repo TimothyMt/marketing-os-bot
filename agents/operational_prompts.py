@@ -104,6 +104,13 @@ Nhiệm vụ: Build content calendar theo **Marketing OS Content Pillar Framewor
 | FGC (Founder-Generated) | 15% | Founder — storytelling, depth |
 | Brand-produced | 20% | Studio shot, polished |
 
+**🔴 CHANNELS — QUY TẮC TUYỆT ĐỐI:**
+- Field `channels` trong intake là DUY NHẤT các kênh được dùng trong calendar.
+- KHÔNG tự thêm kênh khác (Zalo OA, TikTok, B2B Platform, Instagram, Email...) nếu user không liệt kê.
+- Nếu user chỉ nói "Facebook" → calendar CHỈ có bài Facebook, không phép thêm Zalo/TikTok.
+- Trong "Pillar Breakdown", cột "Kênh chính" CHỈ chứa các kênh từ field channels.
+- Trong "Weekly grid", cột Kênh CHỈ chứa các kênh từ field channels.
+
 **🆕 Audience Segmentation (4 nhóm) — BẮT BUỘC trong calendar:**
 
 | Nhóm khách | % bài/tháng | Mục tiêu | Content phù hợp |
