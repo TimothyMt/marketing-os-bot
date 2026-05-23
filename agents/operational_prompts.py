@@ -104,30 +104,71 @@ Nhiệm vụ: Build content calendar theo **Marketing OS Content Pillar Framewor
 | FGC (Founder-Generated) | 15% | Founder — storytelling, depth |
 | Brand-produced | 20% | Studio shot, polished |
 
+**🆕 Audience Segmentation (4 nhóm) — BẮT BUỘC trong calendar:**
+
+| Nhóm khách | % bài/tháng | Mục tiêu | Content phù hợp |
+|---|---|---|---|
+| **Mới** (chưa biết brand) | 35-45% | Awareness + Education | TOFU heavy, Educate + Engage pillar, hook tò mò |
+| **Đang active** (đã mua) | 25-35% | Nurture + Upsell | MOFU/BOFU, Trust + Convert, gói giá trị |
+| **Có nguy cơ** (>60 ngày chưa quay) | 10-15% | Re-engage | Trust pillar, story/testimonial, nhắc lịch |
+| **VIP / Loyal** (>5 lần mua) | 10-15% | Advocate + Referral | Engage, exclusive content, community |
+
+→ Mỗi bài trong calendar PHẢI tag rõ nhóm khách phục vụ.
+
+**🆕 Hook Psychological (5 nhóm) — diversify mỗi tuần:**
+Mỗi tuần phải có ÍT NHẤT 3/5 nhóm hook để tránh lặp pattern:
+- **Tò mò**: câu hỏi tiết lộ điều ngược lý thường
+- **Trái ngược**: đảo ngược belief phổ biến
+- **Cảm xúc**: chạm pain sâu
+- **Thẩm quyền**: POV chuyên gia/insider
+- **Đồng cảm**: kể trải nghiệm khán giả
+
 **Output cần có (trong phần Deliverable hoàn chỉnh):**
 
 ### 1. Tổng quan tháng
 - Theme/concept tháng (1 dòng)
-- Tổng số bài, tỷ lệ Pillar mix, ngân sách content
+- Tổng số bài, tỷ lệ Pillar mix, tỷ lệ 4 nhóm khách
 
-### 2. Pillar breakdown
+### 2. 🆕 Story Arc 4 tuần (BẮT BUỘC)
+Lịch nội dung KHÔNG phải list bài rời rạc — phải là 1 NARRATIVE ARC dẫn dắt từ awareness → chốt:
+
+| Tuần | Theme | Funnel focus | Mục tiêu tuần | Audience chính |
+|---|---|---|---|---|
+| **Tuần 1 — Awareness vấn đề** | Nêu pain point + bối cảnh | TOFU heavy | Khán giả NHẬN RA vấn đề | Mới |
+| **Tuần 2 — So sánh giải pháp** | Compare option / cách làm sai | TOFU + MOFU | Khán giả THẤY brand là 1 option | Mới + Active |
+| **Tuần 3 — Social proof + Process** | Testimonial + cách làm việc | MOFU | Khán giả TIN brand | Active + Nguy cơ |
+| **Tuần 4 — Offer chốt tháng** | Deal + urgency + CTA | BOFU heavy | Khán giả ACTION | Active + VIP |
+
+Mỗi tuần cần build context cho tuần sau.
+
+### 3. Pillar breakdown
 - 4 pillars + % + số bài/tháng + 3 angle chính mỗi pillar
 
-### 3. Weekly grid (4 tuần)
+### 4. Weekly grid chi tiết (4 tuần)
 Bảng cho từng tuần:
-| Ngày | Kênh | Pillar | Source | Funnel | Angle/Hook | Format | Owner |
+| Ngày | Kênh | Pillar | Funnel | **Nhóm khách** | Source (UGC/EGC/FGC/Brand) | **Hook angle** (1 trong 5 nhóm) | Topic | Format | Owner |
 
-### 4. Story arc — content liên kết
-- Tuần 1 → 2 → 3 → 4 dẫn dắt câu chuyện nào
-- Dependency: bài T2 build context cho bài T5 thế nào
+→ Mỗi bài có hook angle rõ thuộc nhóm nào trong 5 nhóm psychological.
 
-### 5. Repurpose strategy
+### 5. 🆕 Source Mix Production Guide
+Cho TỪNG source, hướng dẫn cụ thể team production:
+- **UGC** (40%): brief script ngắn, talking points → khách tự quay, brand chỉ guide
+- **EGC** (25%): nhân viên nào quay được? Workspace + sản phẩm nào hiển thị?
+- **FGC** (15%): founder kể chuyện gì? 3-5 chủ đề founder có thể share
+- **Brand** (20%): cần studio shoot không? Budget photographer?
+
+### 6. Repurpose strategy
 - 1 video TikTok dài → reels Instagram + post Facebook + email content
+- Bài viral tuần 1 → repurpose 5 angle cho tuần 2-3 (xem skill `content_repurpose`)
 
-### 6. Vận hành
+### 7. Vận hành
 - Deadline thô / duyệt
 - Tool quản lý (Notion/Trello/Google Sheet)
-- Giờ đăng tối ưu theo platform VN (TikTok 12-13h và 20-22h; Facebook 8-9h và 19-21h; Zalo OA 8-9h và 12-13h)
+- Giờ đăng tối ưu theo platform VN:
+  - TikTok: 12-13h, 20-22h
+  - Facebook: 8-9h, 19-21h
+  - Zalo OA: 8-9h, 12-13h
+  - Instagram: 11-13h, 19-21h
 
 **Lưu ý**: Calibrate Pillar % theo industry (mặc định 35/30/20/15 nhưng có thể adjust):
 - F&B / Local services: tăng Trust (testimonials nhiều)
