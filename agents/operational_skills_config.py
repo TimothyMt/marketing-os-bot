@@ -29,6 +29,8 @@ from agents.operational_prompts import (
     COMMENT_MINING_SYSTEM,
     BRAND_VOICE_SYSTEM,
     CONTENT_REPURPOSE_SYSTEM,
+    RETENTION_STRATEGY_SYSTEM,
+    WINBACK_CAMPAIGN_SYSTEM,
 )
 from agents.task_registry import OPERATIONAL_TASKS
 from storage.models import Session
@@ -250,6 +252,28 @@ def make_content_repurpose_skill() -> OperationalSkill:
     ))
 
 
+def make_retention_strategy_skill() -> OperationalSkill:
+    """NEW (from Full-stack-mkt-v0.2): Hệ thống retention 3 giai đoạn."""
+    return OperationalSkill(_config_for(
+        "retention_strategy",
+        RETENTION_STRATEGY_SYSTEM,
+        max_tokens=10000,
+        context_strategy=ContextStrategy.PROFILE_PLUS_STRATEGY,
+        primary_deliverable=PrimaryDeliverable.EXCEL,
+    ))
+
+
+def make_winback_campaign_skill() -> OperationalSkill:
+    """NEW (from Full-stack-mkt-v0.2): Winback khách cũ — sequence 3 bước."""
+    return OperationalSkill(_config_for(
+        "winback_campaign",
+        WINBACK_CAMPAIGN_SYSTEM,
+        max_tokens=8000,
+        context_strategy=ContextStrategy.PROFILE_ONLY,
+        primary_deliverable=PrimaryDeliverable.MARKDOWN,
+    ))
+
+
 def make_performance_audit_skill() -> OperationalSkill:
     return OperationalSkill(_config_for(
         "performance_audit",
@@ -428,6 +452,8 @@ OPS_SKILL_FACTORIES: dict[str, callable] = {
     "comment_mining":      make_comment_mining_skill,
     "brand_voice":         make_brand_voice_skill,
     "content_repurpose":   make_content_repurpose_skill,
+    "retention_strategy":  make_retention_strategy_skill,
+    "winback_campaign":    make_winback_campaign_skill,
 }
 
 

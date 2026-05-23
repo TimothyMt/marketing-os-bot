@@ -115,9 +115,12 @@ OPERATIONAL_KEYBOARD = InlineKeyboardMarkup([
     [InlineKeyboardButton("✍️ Sản Xuất Nội Dung",    callback_data="task_content_generator")],
     [InlineKeyboardButton("📧 Chăm Sóc Khách Hàng",  callback_data="task_email_zalo_sequence")],
     # NEW skills (test branch)
-    [InlineKeyboardButton("💬 Phân Tích Comment",    callback_data="task_comment_mining")],
-    [InlineKeyboardButton("🎙️ Bộ Quy Tắc Brand Voice", callback_data="task_brand_voice")],
-    [InlineKeyboardButton("♻️ Tái Sử Dụng Content",  callback_data="task_content_repurpose")],
+    [InlineKeyboardButton("💬 Phân Tích Comment",       callback_data="task_comment_mining")],
+    [InlineKeyboardButton("🎙️ Bộ Quy Tắc Brand Voice",  callback_data="task_brand_voice")],
+    [InlineKeyboardButton("♻️ Tái Sử Dụng Content",     callback_data="task_content_repurpose")],
+    # Customer Journey skills (from Full-stack-mkt-v0.2)
+    [InlineKeyboardButton("🔄 Chiến Lược Giữ Chân Khách", callback_data="task_retention_strategy")],
+    [InlineKeyboardButton("🔁 Winback Khách Cũ",          callback_data="task_winback_campaign")],
     # Coming soon — disabled placeholders (click → "Sắp ra mắt")
     [InlineKeyboardButton("🚧 Viết Brief Campaign (coming soon)",  callback_data="coming_soon_campaign_brief")],
     [InlineKeyboardButton("🚧 Sản Xuất Nội Dung Ads (coming soon)", callback_data="coming_soon_ads_generator")],
