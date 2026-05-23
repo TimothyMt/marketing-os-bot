@@ -281,6 +281,44 @@ OPERATIONAL_TASKS: dict[str, TaskConfig] = {
         # KHÔNG có intake_fields — đọc full từ session.results
         intake_fields=[],
     ),
+    "comment_mining": TaskConfig(
+        name="comment_mining",
+        label="Phân Tích Comment",
+        button_emoji="💬",
+        category="operational",
+        description="Khai thác insight từ comments → 7 content idea mới",
+        skill_class_name="CommentMiningSkill",
+        intake_fields=[
+            {"key": "comments_text",  "label": "Paste danh sách comments (1 dòng/comment, càng nhiều càng tốt)", "example": "1. Sản phẩm có gây kích ứng không?\n2. Da khô có dùng được không?\n...", "required": True},
+            {"key": "topic_context",  "label": "Comments này về chủ đề/sản phẩm gì",                              "example": "Skincare cho da nhạy cảm", "required": True},
+            {"key": "platform",       "label": "Comments từ kênh nào",                                            "example": "Facebook Page / TikTok / Shopee / Group", "required": False},
+        ],
+    ),
+    "brand_voice": TaskConfig(
+        name="brand_voice",
+        label="Bộ Quy Tắc Brand Voice",
+        button_emoji="🎙️",
+        category="operational",
+        description="Build bộ quy tắc giọng văn cho team content dùng nhất quán",
+        skill_class_name="BrandVoiceSkill",
+        intake_fields=[
+            {"key": "do_list",         "label": "3-5 điều NÊN làm khi viết (tone, kiểu câu)",   "example": "Xưng em với khách / kể chuyện cá nhân / dùng emoji vừa phải", "required": True},
+            {"key": "dont_list",       "label": "3-5 điều KHÔNG nên làm",                       "example": "Tránh 'tuyệt vời nhất' / không dùng từ tiếng Anh không giải thích / không pressure mua", "required": True},
+            {"key": "sample_content",  "label": "Paste 1-2 đoạn nội dung cũ của brand (để em phân tích style)", "example": "Hôm nay shop xin chia sẻ sản phẩm mới của mình...", "required": True},
+        ],
+    ),
+    "content_repurpose": TaskConfig(
+        name="content_repurpose",
+        label="Tái Sử Dụng Content",
+        button_emoji="♻️",
+        category="operational",
+        description="Biến 1 bài content gốc thành 5 phiên bản khác nhau (newcomer/trust/debate/personal/action)",
+        skill_class_name="ContentRepurposeSkill",
+        intake_fields=[
+            {"key": "original_content", "label": "Paste content gốc cần repurpose",          "example": "Bài blog dài 800 chữ về 5 lợi ích serum Vitamin C...", "required": True},
+            {"key": "repurpose_goal",   "label": "Mục tiêu repurpose chính",                  "example": "Tăng reach mới / tăng engagement / chốt sale cuối tháng", "required": True},
+        ],
+    ),
     "performance_audit": TaskConfig(
         name="performance_audit",
         label="Báo Cáo Ads",

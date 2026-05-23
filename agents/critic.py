@@ -47,6 +47,16 @@ Trả về NGUYÊN VĂN output user gửi, CHỈ sửa các lỗi sau (in-place 
 **4. Brand claim cụ thể nghi bịa**
 - "Cocoon có 50,000 customers" → "các brand local lớn" hoặc xóa con số
 
+**5. Over-claim không có evidence**
+- Câu absolute không có hậu thuẫn: "Chắc chắn tăng 300% doanh thu" / "100% khách hài lòng" / "Tốt nhất Việt Nam"
+- → Soften: "có khả năng tăng doanh thu" / "đa số khách phản hồi tích cực" / "trong nhóm chất lượng cao"
+- Câu absolute về tương lai: "Sẽ trở thành unicorn" → "Có tiềm năng tăng trưởng mạnh"
+- Câu "luôn", "không bao giờ", "tất cả mọi người" → soften thành "thường", "ít khi", "phần lớn"
+
+**6. Câu cần evidence nhưng chưa cite**
+- Số liệu thị trường không có nguồn → thêm "(ước tính ngành)"
+- Claim về behavior người dùng → thêm "theo benchmark" hoặc xóa
+
 **OUTPUT FORMAT:**
 - Trả về CHÍNH XÁC output gốc, chỉ thay text ở những chỗ cần sửa.
 - Nếu KHÔNG có lỗi gì → trả về NGUYÊN VĂN output gốc, KHÔNG thay đổi 1 chữ nào.

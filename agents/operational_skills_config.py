@@ -26,6 +26,9 @@ from agents.operational_prompts import (
     COMPETITOR_SPY_SYSTEM,
     COMPETITOR_COMPARISON_SYSTEM,
     PERFORMANCE_AUDIT_SYSTEM,
+    COMMENT_MINING_SYSTEM,
+    BRAND_VOICE_SYSTEM,
+    CONTENT_REPURPOSE_SYSTEM,
 )
 from agents.task_registry import OPERATIONAL_TASKS
 from storage.models import Session
@@ -214,6 +217,39 @@ def make_competitor_comparison_skill() -> OperationalSkill:
     ))
 
 
+def make_comment_mining_skill() -> OperationalSkill:
+    """NEW (test branch): Mine insight từ comments → 7 content ideas."""
+    return OperationalSkill(_config_for(
+        "comment_mining",
+        COMMENT_MINING_SYSTEM,
+        max_tokens=8000,
+        context_strategy=ContextStrategy.PROFILE_ONLY,
+        primary_deliverable=PrimaryDeliverable.MARKDOWN,
+    ))
+
+
+def make_brand_voice_skill() -> OperationalSkill:
+    """NEW (test branch): Build bộ quy tắc giọng văn brand."""
+    return OperationalSkill(_config_for(
+        "brand_voice",
+        BRAND_VOICE_SYSTEM,
+        max_tokens=8000,
+        context_strategy=ContextStrategy.PROFILE_ONLY,
+        primary_deliverable=PrimaryDeliverable.MARKDOWN,
+    ))
+
+
+def make_content_repurpose_skill() -> OperationalSkill:
+    """NEW (test branch): 1 bài content → 5 phiên bản khác audience."""
+    return OperationalSkill(_config_for(
+        "content_repurpose",
+        CONTENT_REPURPOSE_SYSTEM,
+        max_tokens=10000,
+        context_strategy=ContextStrategy.PROFILE_PLUS_STRATEGY,
+        primary_deliverable=PrimaryDeliverable.MARKDOWN,
+    ))
+
+
 def make_performance_audit_skill() -> OperationalSkill:
     return OperationalSkill(_config_for(
         "performance_audit",
@@ -388,6 +424,10 @@ OPS_SKILL_FACTORIES: dict[str, callable] = {
     "ads_copy":            AdsCopySkill,
     "ads_generator":       AdsCopySkill,
     "video_scripts":       VideoScriptsSkill,
+    # NEW skills (test branch)
+    "comment_mining":      make_comment_mining_skill,
+    "brand_voice":         make_brand_voice_skill,
+    "content_repurpose":   make_content_repurpose_skill,
 }
 
 

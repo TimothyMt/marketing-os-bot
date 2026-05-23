@@ -78,7 +78,13 @@ _SHARED_DATA_DISCIPLINE = """**NGUYÊN TẮC DỮ LIỆU (BẮT BUỘC — áp d
 **4. ƯU TIÊN THỨ TỰ:**
 - Best: Data thật + cite nguồn từ list known
 - OK: Range + qualifier
-- Worst: Số chính xác không nguồn → CẤM TUYỆT ĐỐI"""
+- Worst: Số chính xác không nguồn → CẤM TUYỆT ĐỐI
+
+**5. DOCUMENT-GROUNDED principle (áp dụng khi user paste data thật):**
+- Nếu user paste data trong intake (vd: doanh thu hiện tại, tệp khách, đối thủ cụ thể) → ƯU TIÊN bám vào data đó
+- KHÔNG tự gen claim ngoài scope user cung cấp
+- Nếu user nói "chưa biết" / "chưa launch" → respect, KHÔNG infer giả định không có cơ sở
+- Nếu data user cung cấp mâu thuẫn với common knowledge → vẫn dùng data user (note 1 lần là "data sếp cung cấp khác với benchmark ngành"), KHÔNG override"""
 
 
 _SHARED_LANGUAGE_RULES = """**NGÔN NGỮ (BẮT BUỘC):**
