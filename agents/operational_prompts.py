@@ -1183,6 +1183,23 @@ Cho MỖI bài, viết DẠNG NARRATIVE (KHÔNG dùng bảng key-value 2 cột):
 - Hook đặt trong dấu ngoặc kép "..."
 - Mỗi bài 1 row, KHÔNG được tách thành nhiều mini-table
 - KHÔNG dùng dấu | trong cell content (sẽ phá table) — thay bằng "/" hoặc ";"
+
+🔴 **CẤM TUYỆT ĐỐI ở Phần 1 (narrative):**
+- KHÔNG được dùng markdown table (`| col | col |`) cho size guide, comparison, FAQ, hay bất kỳ data nào.
+- Mọi data trong Phần 1 phải viết dạng **text/bullet list**, KHÔNG được dùng `|` chars.
+- Lý do: chỉ có 1 master table cuối Phần 2 mới được trích xuất vào Excel.
+  Nếu Phần 1 có table → bot sẽ extract NHẦM table phụ làm output Excel chính → BUG.
+
+Vd ĐÚNG (text trong Phần 1):
+> Hướng dẫn chọn size theo phòng họp:
+> - Phòng 4-8 người: size 100x150 cm (phổ biến nhất)
+> - Phòng 8-15 người: 120x180 cm
+> - ...
+
+Vd SAI (CẤM dùng table trong Phần 1):
+> | Số người | Size |
+> |---|---|
+> | 4-8 | 100x150 |
 """
 
 

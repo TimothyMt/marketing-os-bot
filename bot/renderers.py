@@ -360,21 +360,32 @@ def render_excel_file(
     else:
         sheets_to_render = tables[:8]  # cap 8 sheets
 
-    # SPECIAL — Content Generator: split master table by 'Tuần' column
-    if skill_name == "content_generator" and sheets_to_render:
-        new_sheets = []
-        for s_title, s_headers, s_rows in sheets_to_render:
+    # SPECIAL — Content Generator: chỉ giữ MASTER table (có cột Tuần + Bài),
+    # bỏ qua các mini-table phụ trong content (size guides, comparison tables, etc.)
+    if skill_name == "content_generator":
+        master_table = None
+        for t_title, t_headers, t_rows in tables:
+            cleaned_headers_lower = [_clean_cell(h).lower().strip() for h in t_headers]
+            has_tuan = any(h in ("tuần", "tuan", "week") for h in cleaned_headers_lower)
+            has_bai = any(h in ("bài", "bai", "post", "#") for h in cleaned_headers_lower)
+            if has_tuan and has_bai:
+                master_table = (t_title, t_headers, t_rows)
+                break
+
+        if master_table:
+            s_title, s_headers, s_rows = master_table
+            sheets_to_render = []
+            # Overview sheet
+            sheets_to_render.append((f"📊 Tổng hợp ({len(s_rows)} bài)", s_headers, s_rows))
+            # Split by week
             week_groups = _split_table_by_week(s_headers, s_rows)
             if week_groups:
-                # Keep master sheet as overview
-                new_sheets.append((f"📊 Tổng hợp ({len(s_rows)} bài)", s_headers, s_rows))
-                # Then 1 sheet per week (sorted)
                 for week_label in sorted(week_groups.keys(), key=lambda x: (len(x), x)):
                     week_rows = week_groups[week_label]
-                    new_sheets.append((f"{week_label} ({len(week_rows)} bài)", s_headers, week_rows))
-            else:
-                new_sheets.append((s_title, s_headers, s_rows))
-        sheets_to_render = new_sheets
+                    sheets_to_render.append((f"{week_label} ({len(week_rows)} bài)", s_headers, week_rows))
+        else:
+            # Không có master table → LLM output thiếu. Vẫn render những gì có để debug
+            logger.warning("content_generator: master table (Tuần+Bài columns) not found in output. Falling back to default render.")
 
     used_names = set()
     for idx, (table_title, headers, rows) in enumerate(sheets_to_render):
