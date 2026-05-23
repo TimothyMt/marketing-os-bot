@@ -2200,24 +2200,28 @@ async def _send_ops_result(message: Message, session, task_name: str, result: st
     business_slug = re.sub(r"[^a-zA-Z0-9_-]", "_", session.profile.business_name or task_name)[:30]
     business_name = session.profile.business_name or "Business"
 
-    # Send HTML always (universal viewable)
-    try:
-        html_str = build_single_skill_report(
-            task_name, parsed, skill.output_format,
-            business_name=business_name,
-            industry=session.profile.industry or "",
-            stage=session.profile.stage or "",
-        )
-        buf = io.BytesIO(html_str.encode("utf-8"))
-        buf.name = f"{task_name}_{business_slug}.html"
-        await message.reply_document(
-            document=buf,
-            filename=buf.name,
-            caption=f"📄 *{task.label}* — bản HTML đầy đủ",
-            parse_mode=ParseMode.MARKDOWN,
-        )
-    except Exception as e:
-        logger.warning("HTML render failed for %s: %s", task_name, e)
+    # Skip HTML cho content_generator — chỉ cần Excel master (split by week)
+    SKIP_HTML_SKILLS = {"content_generator"}
+
+    if task_name not in SKIP_HTML_SKILLS:
+        # Send HTML always (universal viewable)
+        try:
+            html_str = build_single_skill_report(
+                task_name, parsed, skill.output_format,
+                business_name=business_name,
+                industry=session.profile.industry or "",
+                stage=session.profile.stage or "",
+            )
+            buf = io.BytesIO(html_str.encode("utf-8"))
+            buf.name = f"{task_name}_{business_slug}.html"
+            await message.reply_document(
+                document=buf,
+                filename=buf.name,
+                caption=f"📄 *{task.label}* — bản HTML đầy đủ",
+                parse_mode=ParseMode.MARKDOWN,
+            )
+        except Exception as e:
+            logger.warning("HTML render failed for %s: %s", task_name, e)
 
     # Send primary deliverable per skill config
     if skill.primary_deliverable == PrimaryDeliverable.MARKDOWN:

@@ -273,6 +273,37 @@ def _pivot_keyvalue_tables(tables: list[tuple]) -> Optional[tuple]:
     return ("📊 Tổng hợp", master_headers, master_rows)
 
 
+def _split_table_by_week(headers: list, rows: list[list]) -> Optional[dict]:
+    """Nếu table có cột 'Tuần' → group rows theo tuần.
+    Returns {week_label: rows} hoặc None nếu không có cột Tuần.
+    Dùng cho content_generator output để tạo sheet riêng cho từng tuần.
+    """
+    if not headers or not rows:
+        return None
+    # Tìm index cột 'Tuần' (case-insensitive)
+    week_idx = None
+    for i, h in enumerate(headers):
+        h_clean = (h or "").strip().lower().lstrip("*").rstrip("*").strip()
+        if h_clean in ("tuần", "tuan", "week", "tuần ", "wk"):
+            week_idx = i
+            break
+    if week_idx is None:
+        return None
+
+    groups: dict[str, list] = {}
+    for row in rows:
+        if len(row) <= week_idx:
+            continue
+        week_label = _clean_cell(row[week_idx]).strip() or "Khác"
+        # Normalize "Tuần 1" / "Tuan 1" / "Week 1"
+        week_label = re.sub(r"(?i)^(tu[aâà]n|week|wk)\s*", "Tuần ", week_label).strip()
+        groups.setdefault(week_label, []).append(row)
+
+    if len(groups) < 2:
+        return None  # Chỉ có 1 tuần, không cần split
+    return groups
+
+
 def render_excel_file(
     skill_name: str,
     skill_label: str,
@@ -280,11 +311,13 @@ def render_excel_file(
     output_format: OutputFormat,
     business_name: str = "",
 ) -> Optional[bytes]:
-    """Render skill output as .xlsx — auto pivot mini key-value tables thành 1 master overview.
+    """Render skill output as .xlsx.
+    Special handling cho content_generator: split rows by 'Tuần' column.
+    Default: auto-pivot mini key-value tables thành 1 master overview.
 
     Layout:
-    - Sheet 1 "📊 Tổng hợp" (nếu detect >2 mini-tables): rows = bài, cols = fields
-    - Sheets 2-N: các table khác (skip KV tables đã merge vào overview)
+    - content_generator: Sheet "Tổng hợp" + sheet riêng cho mỗi Tuần
+    - Default: Sheet "Tổng hợp" + non-KV tables
     """
     try:
         from openpyxl import Workbook
@@ -326,6 +359,22 @@ def render_excel_file(
                 sheets_to_render.append(t)
     else:
         sheets_to_render = tables[:8]  # cap 8 sheets
+
+    # SPECIAL — Content Generator: split master table by 'Tuần' column
+    if skill_name == "content_generator" and sheets_to_render:
+        new_sheets = []
+        for s_title, s_headers, s_rows in sheets_to_render:
+            week_groups = _split_table_by_week(s_headers, s_rows)
+            if week_groups:
+                # Keep master sheet as overview
+                new_sheets.append((f"📊 Tổng hợp ({len(s_rows)} bài)", s_headers, s_rows))
+                # Then 1 sheet per week (sorted)
+                for week_label in sorted(week_groups.keys(), key=lambda x: (len(x), x)):
+                    week_rows = week_groups[week_label]
+                    new_sheets.append((f"{week_label} ({len(week_rows)} bài)", s_headers, week_rows))
+            else:
+                new_sheets.append((s_title, s_headers, s_rows))
+        sheets_to_render = new_sheets
 
     used_names = set()
     for idx, (table_title, headers, rows) in enumerate(sheets_to_render):
