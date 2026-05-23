@@ -1639,15 +1639,53 @@ async def _show_profile_reuse_confirm(message: Message, session, task_name: str)
 
 
 async def _send_strategy_aware_form(message: Message, session, task_name: str):
-    """Khi user đã có Strategy (synthesis) — show form rút gọn tham chiếu roadmap.
-    Áp dụng cho: campaign_brief, content_calendar, landing_page.
+    """Khi user đã có Strategy (synthesis) — show form rút gọn.
+    Form khác nhau theo skill:
+    - campaign_brief / landing_page: cần chọn campaign cụ thể (3 câu)
+    - content_calendar: KHÔNG cần chọn campaign — chỉ hỏi duration/channel (2 câu)
     """
     task = get_task(task_name)
     if not task:
         await _send_single_shot_form(message, session, task_name)
         return
 
-    # Extract roadmap campaigns từ synthesis nếu parse được
+    # ── Content Calendar — form siêu gọn, KHÔNG hỏi campaign ──
+    if task_name == "content_calendar":
+        profile = session.profile
+        default_channels = profile.current_channels or "Facebook + TikTok + Zalo OA"
+        lines = [
+            f"✅ *{task.button_emoji} {task.label}*",
+            "",
+            "_Em đã có Marketing Strategy + ICP của sếp. Em sẽ build lịch tháng theo Story Arc 4 tuần + 4 nhóm khách._",
+            "",
+            "─────────────────────────",
+            "*Sếp trả lời 2 ý nhanh (hoặc gõ 'mặc định' để em chạy luôn):*",
+            "",
+            "**1️⃣ Lên lịch cho tháng/tuần nào?**",
+            "  _Vd: 'Tháng 1/2026' / 'Tuần này' / 'Tháng tới'_",
+            "  _Mặc định: tháng tới_",
+            "",
+            "**2️⃣ Kênh nào sếp đang chạy?**",
+            f"  _Em đoán: {default_channels}_",
+            "  _Sếp confirm hoặc đổi (vd: 'chỉ TikTok + Zalo')_",
+            "",
+            "─────────────────────────",
+            "💬 *Gõ 'mặc định' để chạy ngay với data có sẵn, hoặc trả lời theo format trên.*",
+        ]
+
+        session.pending_intake[OPS_INTAKE_AWAITING] = task_name
+        session.pending_intake["_strategy_aware"] = "1"
+        # Pre-fill defaults
+        session.pending_intake.setdefault("duration", "Tháng tới (30 ngày)")
+        session.pending_intake.setdefault("channels", default_channels)
+        session.selected_task = task_name
+        session.stage = PipelineStage.INTAKE
+        await save_session(session)
+
+        await message.reply_text("\n".join(lines), parse_mode=ParseMode.MARKDOWN)
+        return
+
+    # ── Brief Campaign / Landing Page — cần chọn campaign cụ thể ──
     synthesis = session.get_latest_result("synthesis") or session.get_latest_result("strategy") or ""
     campaigns_hint = _extract_campaigns_from_strategy(synthesis)
 
@@ -1877,7 +1915,16 @@ async def _handle_ops_intake_reply(update: Update, context: ContextTypes.DEFAULT
     if not task_name:
         return
 
-    parsed = _parse_single_shot_intake(text, task_name)
+    # Shortcut: nếu user gõ "mặc định" / "default" / "chạy luôn" / "ok"
+    # → bỏ qua parse, dùng defaults đã pre-fill trong _strategy_aware form
+    text_lower = text.strip().lower()
+    SKIP_KEYWORDS = ("mặc định", "mac dinh", "default", "chạy luôn", "chay luon",
+                     "ok chạy", "ok chay", "ok luôn", "ok luon", "chạy đi", "chay di")
+    if any(kw == text_lower or text_lower.startswith(kw) for kw in SKIP_KEYWORDS):
+        # Defaults đã được pre-fill ở _send_strategy_aware_form, dùng nguyên
+        parsed = {}
+    else:
+        parsed = _parse_single_shot_intake(text, task_name)
 
     # Strategic single-shot: also merge parsed values into session.profile
     # (so future skills can reuse via profile reuse logic)
