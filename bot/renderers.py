@@ -346,7 +346,7 @@ def render_excel_file(
 
     tables = _extract_markdown_tables(full_text)
     if not tables:
-        logger.warning("render_excel_file [%s]: no markdown tables found in output (full_text len=%d)",
+        logger.warning("render_excel_file [%s]: no markdown tables found (full_text len=%d)",
                        skill_name, len(full_text))
         return None
 

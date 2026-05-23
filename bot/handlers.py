@@ -2245,6 +2245,11 @@ async def _send_ops_result(message: Message, session, task_name: str, result: st
                 caption=f"📊 *{task.label}* — bản Excel (paste vào Google Sheet)",
                 parse_mode=ParseMode.MARKDOWN,
             )
+        else:
+            logger.error("Excel render failed for %s — no output sent to user!", task_name)
+            await message.reply_text(
+                "⚠️ Em không gen được Excel. Sếp chạy lại task này nhé (output AI có thể không đúng format)."
+            )
 
     # Sprint 4: Special follow-up sau competitor → hỏi user có muốn so sánh không
     if task_name == "competitor":

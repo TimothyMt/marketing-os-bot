@@ -1167,13 +1167,30 @@ Cho MỖI bài, viết DẠNG NARRATIVE (KHÔNG dùng bảng key-value 2 cột):
 
 ### Phần 2 — BẢNG TỔNG KẾT (TUYỆT ĐỐI BẮT BUỘC — KHÔNG ĐƯỢC THIẾU)
 
-🔴 **NẾU SẾP/TEAM KHÔNG NHẬN ĐƯỢC BẢNG NÀY, BOT SẼ LỖI KHÔNG XUẤT EXCEL.**
+🔴 **NGHIÊM CẤM SKIP PHẦN NÀY.** Nếu không có bảng này, bot CHẮC CHẮN lỗi không xuất được Excel cho user. Đây là DELIVERABLE QUAN TRỌNG NHẤT.
 
 Bảng này PHẢI:
-- Đứng cuối output, sau toàn bộ Phần 1
-- Có header dòng `| Tuần | Bài | Ngày | Kênh | ... | Status |`
-- Có separator `|---|---|---|...|---|`
+- Đứng cuối output (sau toàn bộ Phần 1 narrative)
+- Có header line bắt đầu bằng `| Tuần |` (vertical bar `|` ở đầu mỗi dòng)
+- Có separator line `|---|---|---|...|---|` ngay sau header
 - Có ÍT NHẤT 1 row data cho mỗi bài user request
+- Mỗi row dạng `| value | value | ... |` với pipe `|` ngăn cách
+
+VÍ DỤ ĐÚNG (copy y nguyên format này):
+
+```
+| Tuần | Bài | Ngày | Kênh | Pillar | Funnel | Source | Format | Angle | Hook | Body | CTA | Hashtags | Visual | Status |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| Tuần 1 | BÀI 1 | Thứ 2 8:30 | Facebook | Educate | TOFU | Brand | Image | Pain point | "Hook?" | Body 150 chữ | Inbox | #tag | Photo desc | Draft |
+| Tuần 1 | BÀI 2 | Thứ 3 9:00 | Facebook | Trust | MOFU | UGC | Video | Story | "Hook?" | Body | Comment | #tag | Video desc | Draft |
+```
+
+KHÔNG ĐƯỢC:
+- Bỏ qua phần Bảng Tổng Kết
+- Thay table bằng bullet list ("- Tuần 1: ...")
+- Xóa pipe `|` ngăn cách cell
+- Xóa separator line `|---|---|...|`
+- Output bảng không đủ 15 cột
 
 ⚠️ **Đây là phần SẾP/TEAM dùng để paste Google Sheet — PHẢI ĐẦY ĐỦ, KHÔNG CHO PHÉP CỘT TRỐNG:**
 
