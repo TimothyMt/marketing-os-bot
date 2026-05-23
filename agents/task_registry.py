@@ -347,6 +347,87 @@ OPERATIONAL_TASKS: dict[str, TaskConfig] = {
             {"key": "available_offer",  "label": "Offer có thể đưa ra (range)",           "example": "Có thể giảm tối đa 15-20% / có thể tặng free 1 buổi mask", "required": False},
         ],
     ),
+    # ─────────────────────────────────────────────────────────────
+    # CONTENT SUITE v2 — 6 skills chuyên content production
+    # (inspired by Hồng Phương narrative + CMO/CTO architecture)
+    # ─────────────────────────────────────────────────────────────
+    "post_write": TaskConfig(
+        name="post_write",
+        label="Viết 1 Bài Content",
+        button_emoji="✍️",
+        category="operational",
+        description="Single Post Generator — input 1 row Calendar → output Hook 3 variants + Body + CTA + Visual brief",
+        skill_class_name="PostWriteSkill",
+        intake_fields=[
+            {"key": "date_channel", "label": "Ngày + Kênh đăng",          "example": "Thứ 2 8:30 sáng — Facebook Page", "required": True},
+            {"key": "topic",        "label": "Chủ đề bài viết",            "example": "Hướng dẫn chọn bảng trắng phòng họp B2B", "required": True},
+            {"key": "pillar_funnel","label": "Pillar + Funnel",            "example": "Educate / TOFU", "required": True},
+            {"key": "audience",     "label": "Đối tượng cụ thể",           "example": "Office manager 28-40 tuổi SME 50-200 người", "required": False},
+        ],
+    ),
+    "post_adapt": TaskConfig(
+        name="post_adapt",
+        label="Adapt sang Channel Khác",
+        button_emoji="🔄",
+        category="operational",
+        description="Channel Adapter — 1 bài gốc → FB / TikTok / Zalo / Instagram (4 format khác nhau)",
+        skill_class_name="PostAdaptSkill",
+        intake_fields=[
+            {"key": "source_post",     "label": "Paste bài gốc (Facebook/Blog/Email)", "example": "Bài blog 800 chữ về 5 lợi ích serum Vitamin C...", "required": True},
+            {"key": "target_channels", "label": "Channels muốn adapt sang",            "example": "TikTok + Zalo OA + Instagram Carousel", "required": True},
+        ],
+    ),
+    "post_voice_check": TaskConfig(
+        name="post_voice_check",
+        label="Check Brand Voice",
+        button_emoji="✅",
+        category="operational",
+        description="Voice Lock — check draft theo Brand Voice Rules + suggest fix",
+        skill_class_name="PostVoiceCheckSkill",
+        intake_fields=[
+            {"key": "draft_post",        "label": "Paste draft post cần check",         "example": "Hôm nay shop xin giới thiệu sản phẩm mới...", "required": True},
+            {"key": "brand_voice_rules", "label": "10 brand voice rules (paste)",       "example": "1. Xưng em với khách\n2. Tránh 'tuyệt vời nhất'\n...", "required": True},
+        ],
+    ),
+    "post_hooks": TaskConfig(
+        name="post_hooks",
+        label="Hook Bank — 15 hooks",
+        button_emoji="🪝",
+        category="operational",
+        description="Hook Generator — 15 hooks chia 5 nhóm psychological + recommend top 5",
+        skill_class_name="PostHooksSkill",
+        intake_fields=[
+            {"key": "topic",         "label": "Chủ đề / Sản phẩm",           "example": "Skincare cho da nhạy cảm", "required": True},
+            {"key": "audience",      "label": "Audience target",              "example": "Phụ nữ 25-35, da nhạy cảm, từng dùng nhiều brand", "required": True},
+            {"key": "funnel_stage",  "label": "Funnel stage",                  "example": "TOFU / MOFU / BOFU", "required": True},
+        ],
+    ),
+    "post_visual": TaskConfig(
+        name="post_visual",
+        label="Visual Brief cho Designer",
+        button_emoji="🎨",
+        category="operational",
+        description="Visual Brief Generator — convert post text → brief chi tiết cho designer/videographer",
+        skill_class_name="PostVisualSkill",
+        intake_fields=[
+            {"key": "post_text",     "label": "Paste post text cần làm visual",  "example": "Hook: Tại sao 80% phụ nữ dùng serum sai cách?\nBody: ...", "required": True},
+            {"key": "format_type",   "label": "Format",                           "example": "Image / Carousel 5 slides / Reel 30s", "required": True},
+            {"key": "channel",       "label": "Channel đăng",                     "example": "Instagram / TikTok / Facebook", "required": True},
+        ],
+    ),
+    "post_batch": TaskConfig(
+        name="post_batch",
+        label="Batch — Tuần Content",
+        button_emoji="📚",
+        category="operational",
+        description="Batch Producer — gen 7-14 bài content cùng lúc cho 1 tuần (rút gọn so Single Post)",
+        skill_class_name="PostBatchSkill",
+        intake_fields=[
+            {"key": "week_label",   "label": "Tuần nào",                        "example": "Tuần 1 — 5-11/01/2026", "required": True},
+            {"key": "post_count",   "label": "Số bài muốn gen",                  "example": "7 bài (1 bài/ngày)", "required": True},
+            {"key": "theme",        "label": "Theme/concept tuần",               "example": "Awareness — Pain point chọn skincare", "required": False},
+        ],
+    ),
     "performance_audit": TaskConfig(
         name="performance_audit",
         label="Báo Cáo Ads",

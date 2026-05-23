@@ -118,7 +118,8 @@ STRATEGIC_KEYBOARD = InlineKeyboardMarkup([
 OPERATIONAL_KEYBOARD = InlineKeyboardMarkup([
     # Production cluster (đã ra mắt)
     [InlineKeyboardButton("📅 Lịch Nội Dung",        callback_data="task_content_calendar")],
-    [InlineKeyboardButton("✍️ Sản Xuất Nội Dung",    callback_data="task_content_generator")],
+    [InlineKeyboardButton("✨ Content Suite v2 (NEW)", callback_data="menu_content_suite")],
+    [InlineKeyboardButton("✍️ Sản Xuất Nội Dung (cũ)", callback_data="task_content_generator")],
     [InlineKeyboardButton("📧 Chăm Sóc Khách Hàng",  callback_data="task_email_zalo_sequence")],
     # NEW skills (test branch)
     [InlineKeyboardButton("💬 Phân Tích Comment",       callback_data="task_comment_mining")],
@@ -134,6 +135,21 @@ OPERATIONAL_KEYBOARD = InlineKeyboardMarkup([
     [InlineKeyboardButton("🚧 Thiết Kế Website (coming soon)",     callback_data="coming_soon_landing_page")],
     [InlineKeyboardButton("🚧 Kịch Bản Sales (coming soon)",       callback_data="coming_soon_sales_inbox_script")],
     [InlineKeyboardButton("← Quay lại",                callback_data="menu_main")],
+])
+
+
+# ─────────────────────────────────────────────────────────────────
+# CONTENT SUITE v2 — sub-menu (6 skills chuyên content production)
+# ─────────────────────────────────────────────────────────────────
+
+CONTENT_SUITE_KEYBOARD = InlineKeyboardMarkup([
+    [InlineKeyboardButton("✍️ Viết 1 Bài Content",        callback_data="task_post_write")],
+    [InlineKeyboardButton("📚 Batch — Tuần Content",      callback_data="task_post_batch")],
+    [InlineKeyboardButton("🔄 Adapt sang Channel Khác",   callback_data="task_post_adapt")],
+    [InlineKeyboardButton("🪝 Hook Bank — 15 hooks",      callback_data="task_post_hooks")],
+    [InlineKeyboardButton("🎨 Visual Brief cho Designer", callback_data="task_post_visual")],
+    [InlineKeyboardButton("✅ Check Brand Voice",         callback_data="task_post_voice_check")],
+    [InlineKeyboardButton("← Quay lại Sản Xuất",         callback_data="menu_operational")],
 ])
 
 

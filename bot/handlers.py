@@ -42,6 +42,7 @@ from bot.keyboards import (
     NEEDS_STRATEGY_KEYBOARD,
     MONITOR_PROMPT_KEYBOARD,
     MONITOR_INTERVAL_KEYBOARD,
+    CONTENT_SUITE_KEYBOARD,
 )
 
 logger = logging.getLogger(__name__)
@@ -965,6 +966,16 @@ async def _handle_callback_inner(update, context, query, session, data, user_id)
             "⚙️ *Sản xuất* — deliverable dùng hàng tuần\n\nChọn task:",
             parse_mode=ParseMode.MARKDOWN,
             reply_markup=OPERATIONAL_KEYBOARD,
+        )
+        return
+
+    if data == "menu_content_suite":
+        await query.edit_message_text(
+            "✨ *Content Suite v2 — 6 skills chuyên content production*\n\n"
+            "_Output narrative chất lượng cao, modular, channel-aware._\n\n"
+            "Chọn skill:",
+            parse_mode=ParseMode.MARKDOWN,
+            reply_markup=CONTENT_SUITE_KEYBOARD,
         )
         return
 
@@ -2223,6 +2234,9 @@ async def _send_ops_result(message: Message, session, task_name: str, result: st
         except Exception as e:
             logger.warning("HTML render failed for %s: %s", task_name, e)
 
+    # Content Suite v2: skills luôn output MD primary + Excel secondary (Haiku convert)
+    CONTENT_SUITE_V2 = {"post_write", "post_adapt", "post_voice_check", "post_hooks", "post_visual", "post_batch"}
+
     # Send primary deliverable per skill config
     if skill.primary_deliverable == PrimaryDeliverable.MARKDOWN:
         md_bytes = render_markdown_file(task_name, task.label, parsed, skill.output_format, business_name)
@@ -2234,21 +2248,61 @@ async def _send_ops_result(message: Message, session, task_name: str, result: st
             caption=f"📝 *{task.label}* — bản Markdown (gửi designer/dev/creator)",
             parse_mode=ParseMode.MARKDOWN,
         )
+
+        # Content Suite v2: TRY gen Excel secondary qua Haiku auto-convert
+        if task_name in CONTENT_SUITE_V2:
+            try:
+                xlsx_bytes = render_excel_file(task_name, task.label, parsed, skill.output_format, business_name)
+                if xlsx_bytes:
+                    buf2 = io.BytesIO(xlsx_bytes)
+                    buf2.name = f"{task_name}_{business_slug}.xlsx"
+                    await message.reply_document(
+                        document=buf2,
+                        filename=buf2.name,
+                        caption=f"📊 *{task.label}* — bản Excel (overview/track status)",
+                        parse_mode=ParseMode.MARKDOWN,
+                    )
+                else:
+                    logger.info("Excel secondary skipped for %s (Haiku convert returned no table)", task_name)
+            except Exception as e:
+                logger.warning("Excel secondary gen failed for %s (non-blocking): %s", task_name, e)
     elif skill.primary_deliverable == PrimaryDeliverable.EXCEL:
-        xlsx_bytes = render_excel_file(task_name, task.label, parsed, skill.output_format, business_name)
-        if xlsx_bytes:
-            buf = io.BytesIO(xlsx_bytes)
-            buf.name = f"{task_name}_{business_slug}.xlsx"
-            await message.reply_document(
-                document=buf,
-                filename=buf.name,
-                caption=f"📊 *{task.label}* — bản Excel (paste vào Google Sheet)",
+        # Wrap toàn bộ Excel pipeline trong try/except để user luôn thấy lỗi
+        try:
+            logger.info("Rendering Excel for skill=%s (parsed keys: %s, raw len: %d)",
+                        task_name, list(parsed.keys()),
+                        len(parsed.get("raw", "")) if isinstance(parsed.get("raw"), str) else 0)
+            xlsx_bytes = render_excel_file(task_name, task.label, parsed, skill.output_format, business_name)
+        except Exception as e:
+            logger.exception("render_excel_file CRASHED for %s: %s", task_name, e)
+            xlsx_bytes = None
+            await message.reply_text(
+                f"⚠️ Lỗi khi gen Excel: `{str(e)[:200]}`\n_Admin đã được notify qua logs._",
                 parse_mode=ParseMode.MARKDOWN,
             )
-        else:
-            logger.error("Excel render failed for %s — no output sent to user!", task_name)
+
+        if xlsx_bytes:
+            try:
+                buf = io.BytesIO(xlsx_bytes)
+                buf.name = f"{task_name}_{business_slug}.xlsx"
+                await message.reply_document(
+                    document=buf,
+                    filename=buf.name,
+                    caption=f"📊 *{task.label}* — bản Excel (paste vào Google Sheet)",
+                    parse_mode=ParseMode.MARKDOWN,
+                )
+                logger.info("Excel sent successfully for %s (%d bytes)", task_name, len(xlsx_bytes))
+            except Exception as e:
+                logger.exception("reply_document FAILED for %s: %s", task_name, e)
+                await message.reply_text(
+                    f"⚠️ Lỗi khi gửi file Excel: `{str(e)[:200]}`",
+                    parse_mode=ParseMode.MARKDOWN,
+                )
+        elif xlsx_bytes is None and "Lỗi khi gen" not in (parsed.get("raw", "")[:50] or ""):
+            # Chỉ show "không gen được" nếu chưa show error ở trên
+            logger.warning("Excel render returned None for %s", task_name)
             await message.reply_text(
-                "⚠️ Em không gen được Excel. Sếp chạy lại task này nhé (output AI có thể không đúng format)."
+                "⚠️ Em không gen được Excel — output AI không có pipe table chuẩn. Sếp chạy lại nhé.",
             )
 
     # Sprint 4: Special follow-up sau competitor → hỏi user có muốn so sánh không

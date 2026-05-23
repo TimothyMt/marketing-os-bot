@@ -32,6 +32,14 @@ from agents.operational_prompts import (
     RETENTION_STRATEGY_SYSTEM,
     WINBACK_CAMPAIGN_SYSTEM,
 )
+from agents.content_suite_prompts import (
+    POST_WRITE_SYSTEM,
+    POST_ADAPT_SYSTEM,
+    POST_VOICE_CHECK_SYSTEM,
+    POST_HOOKS_SYSTEM,
+    POST_VISUAL_SYSTEM,
+    POST_BATCH_SYSTEM,
+)
 from agents.task_registry import OPERATIONAL_TASKS
 from storage.models import Session
 
@@ -263,6 +271,76 @@ def make_retention_strategy_skill() -> OperationalSkill:
     ))
 
 
+# ─────────────────────────────────────────────────────────────────
+# Content Suite v2 — 6 factories
+# ─────────────────────────────────────────────────────────────────
+
+def make_post_write_skill() -> OperationalSkill:
+    """v2: Single Post Generator — narrative output, NO pipe table."""
+    return OperationalSkill(_config_for(
+        "post_write",
+        POST_WRITE_SYSTEM,
+        max_tokens=5000,
+        context_strategy=ContextStrategy.PROFILE_PLUS_CAMPAIGN,
+        primary_deliverable=PrimaryDeliverable.MARKDOWN,
+    ))
+
+
+def make_post_adapt_skill() -> OperationalSkill:
+    """v2: Channel Adapter — 1 post → FB/TikTok/Zalo/IG."""
+    return OperationalSkill(_config_for(
+        "post_adapt",
+        POST_ADAPT_SYSTEM,
+        max_tokens=6000,
+        context_strategy=ContextStrategy.PROFILE_ONLY,
+        primary_deliverable=PrimaryDeliverable.MARKDOWN,
+    ))
+
+
+def make_post_voice_check_skill() -> OperationalSkill:
+    """v2: Voice Lock — check draft theo brand voice rules."""
+    return OperationalSkill(_config_for(
+        "post_voice_check",
+        POST_VOICE_CHECK_SYSTEM,
+        max_tokens=4000,
+        context_strategy=ContextStrategy.PROFILE_ONLY,
+        primary_deliverable=PrimaryDeliverable.MARKDOWN,
+    ))
+
+
+def make_post_hooks_skill() -> OperationalSkill:
+    """v2: Hook Bank — 15 hooks chia 5 nhóm."""
+    return OperationalSkill(_config_for(
+        "post_hooks",
+        POST_HOOKS_SYSTEM,
+        max_tokens=3000,
+        context_strategy=ContextStrategy.PROFILE_ONLY,
+        primary_deliverable=PrimaryDeliverable.MARKDOWN,
+    ))
+
+
+def make_post_visual_skill() -> OperationalSkill:
+    """v2: Visual Brief — convert post text → designer brief."""
+    return OperationalSkill(_config_for(
+        "post_visual",
+        POST_VISUAL_SYSTEM,
+        max_tokens=3000,
+        context_strategy=ContextStrategy.PROFILE_ONLY,
+        primary_deliverable=PrimaryDeliverable.MARKDOWN,
+    ))
+
+
+def make_post_batch_skill() -> OperationalSkill:
+    """v2: Batch Producer — N bài cùng lúc."""
+    return OperationalSkill(_config_for(
+        "post_batch",
+        POST_BATCH_SYSTEM,
+        max_tokens=15000,  # batch lớn cần nhiều tokens
+        context_strategy=ContextStrategy.PROFILE_PLUS_CAMPAIGN,
+        primary_deliverable=PrimaryDeliverable.MARKDOWN,
+    ))
+
+
 def make_winback_campaign_skill() -> OperationalSkill:
     """NEW (from Full-stack-mkt-v0.2): Winback khách cũ — sequence 3 bước."""
     return OperationalSkill(_config_for(
@@ -454,6 +532,13 @@ OPS_SKILL_FACTORIES: dict[str, callable] = {
     "content_repurpose":   make_content_repurpose_skill,
     "retention_strategy":  make_retention_strategy_skill,
     "winback_campaign":    make_winback_campaign_skill,
+    # Content Suite v2 (branch: content-gen-suite)
+    "post_write":          make_post_write_skill,
+    "post_adapt":          make_post_adapt_skill,
+    "post_voice_check":    make_post_voice_check_skill,
+    "post_hooks":          make_post_hooks_skill,
+    "post_visual":         make_post_visual_skill,
+    "post_batch":          make_post_batch_skill,
 }
 
 
