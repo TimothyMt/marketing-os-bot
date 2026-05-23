@@ -125,7 +125,6 @@ OPERATIONAL_KEYBOARD = InlineKeyboardMarkup([
     [InlineKeyboardButton("📧 Chăm Sóc Khách Hàng",  callback_data="task_email_zalo_sequence")],
     # NEW skills (test branch)
     [InlineKeyboardButton("💬 Phân Tích Comment",       callback_data="task_comment_mining")],
-    [InlineKeyboardButton("🎙️ Bộ Quy Tắc Brand Voice",  callback_data="task_brand_voice")],
     [InlineKeyboardButton("♻️ Tái Sử Dụng Content",     callback_data="task_content_repurpose")],
     # Coming soon — disabled placeholders (click → "Sắp ra mắt")
     [InlineKeyboardButton("🚧 Viết Brief Campaign (coming soon)",  callback_data="coming_soon_campaign_brief")],
@@ -142,6 +141,7 @@ OPERATIONAL_KEYBOARD = InlineKeyboardMarkup([
 # ─────────────────────────────────────────────────────────────────
 
 CONTENT_SUITE_KEYBOARD = InlineKeyboardMarkup([
+    [InlineKeyboardButton("🎙️ Bộ Quy Tắc Brand Voice",    callback_data="task_brand_voice")],
     [InlineKeyboardButton("✍️ Viết 1 Bài Content",        callback_data="task_post_write")],
     [InlineKeyboardButton("📚 Batch — Tuần Content",      callback_data="task_post_batch")],
     [InlineKeyboardButton("🔄 Adapt sang Channel Khác",   callback_data="task_post_adapt")],
