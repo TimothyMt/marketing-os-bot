@@ -33,6 +33,7 @@ from bot.keyboards import (
     REGEN_PROMPT_KEYBOARD,
     FEEDBACK_PROMPT_KEYBOARD,
     COMPARE_PROMPT_KEYBOARD,
+    CALENDAR_TO_CONTENT_GEN_KEYBOARD,
     ADS_FORMAT_KEYBOARD,
     IMAGE_REFERENCE_KEYBOARD,
     IMAGE_GEN_PROMPT_KEYBOARD,
@@ -686,6 +687,30 @@ async def _handle_callback_inner(update, context, query, session, data, user_id)
         await save_session(session)
         await query.message.reply_text(
             "OK ạ. Sếp đánh giá output Phân Tích Đối Thủ vừa rồi thế nào?",
+            reply_markup=RATING_KEYBOARD,
+        )
+        return
+
+    # ── Calendar → Content Gen chain ─────────────────────────────
+    if data == "run_content_gen_after_cal":
+        await query.edit_message_reply_markup(reply_markup=None)
+        session.selected_task = "content_generator"
+        session.pending_intake = {}  # reset cho fresh intake
+        await save_session(session)
+        await query.message.reply_text(
+            "✍️ *Tiếp tục Sản Xuất Nội Dung từ Calendar...*",
+            parse_mode=ParseMode.MARKDOWN,
+        )
+        await _send_single_shot_form(query.message, session, "content_generator")
+        return
+
+    if data == "skip_content_gen_after_cal":
+        await query.edit_message_reply_markup(reply_markup=None)
+        # Tiếp tục flow rating cho calendar
+        session.pending_intake["_awaiting_rating_for"] = "content_calendar"
+        await save_session(session)
+        await query.message.reply_text(
+            "OK ạ! Sếp đánh giá Lịch Nội Dung em vừa làm thế nào ạ?",
             reply_markup=RATING_KEYBOARD,
         )
         return
@@ -2258,6 +2283,17 @@ async def _send_ops_result(message: Message, session, task_name: str, result: st
             f"_Em sẽ check định kỳ và báo sếp ngay khi đối thủ tung ads mới._",
             parse_mode=ParseMode.MARKDOWN,
             reply_markup=MONITOR_PROMPT_KEYBOARD,
+        )
+        return
+
+    # NEW: Sau Lịch Nội Dung → hỏi sản xuất content luôn không
+    if task_name == "content_calendar":
+        await message.reply_text(
+            "✅ *Lịch Nội Dung xong rồi sếp!*\n\n"
+            "Sếp muốn em *sản xuất nội dung chi tiết* từ lịch này luôn không ạ?\n"
+            "_(Mỗi bài: Hook + Body 200-300 chữ + CTA + Hashtags + Visual hint)_",
+            parse_mode=ParseMode.MARKDOWN,
+            reply_markup=CALENDAR_TO_CONTENT_GEN_KEYBOARD,
         )
         return
 

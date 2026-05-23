@@ -51,6 +51,12 @@ COMPARE_PROMPT_KEYBOARD = InlineKeyboardMarkup([
     [InlineKeyboardButton("⏭️ Để sau",                                callback_data="skip_compare")],
 ])
 
+# Sau khi Lịch Nội Dung xong — hỏi user có muốn sản xuất content luôn không
+CALENDAR_TO_CONTENT_GEN_KEYBOARD = InlineKeyboardMarkup([
+    [InlineKeyboardButton("✍️ Sản xuất content luôn",      callback_data="run_content_gen_after_cal")],
+    [InlineKeyboardButton("⏭️ Để sau — đánh giá lịch trước", callback_data="skip_content_gen_after_cal")],
+])
+
 # Sprint 5: Ads Generator — sau tier chooser, hỏi format (Video hay Ảnh)
 ADS_FORMAT_KEYBOARD = InlineKeyboardMarkup([
     [InlineKeyboardButton("🎥 Video",     callback_data="ads_format_video")],
