@@ -110,24 +110,16 @@ STRATEGIC_KEYBOARD = InlineKeyboardMarkup([
 # ─────────────────────────────────────────────────────────────────
 
 OPERATIONAL_KEYBOARD = InlineKeyboardMarkup([
-    # Planning cluster
-    [
-        InlineKeyboardButton("📋 Viết Brief Campaign",  callback_data="task_campaign_brief"),
-        InlineKeyboardButton("📅 Lịch Nội Dung",        callback_data="task_content_calendar"),
-    ],
-    # Production cluster
-    [
-        InlineKeyboardButton("✍️ Sản Xuất Nội Dung",    callback_data="task_content_generator"),
-        InlineKeyboardButton("📢 Sản Xuất Nội Dung Ads", callback_data="task_ads_generator"),
-    ],
-    [
-        InlineKeyboardButton("🎬 Viết Kịch Bản Video", callback_data="task_video_scripts"),
-        InlineKeyboardButton("🌐 Thiết Kế Website",    callback_data="task_landing_page"),
-    ],
-    [
-        InlineKeyboardButton("💬 Kịch Bản Sales",      callback_data="task_sales_inbox_script"),
-        InlineKeyboardButton("📧 Chăm Sóc Khách Hàng", callback_data="task_email_zalo_sequence"),
-    ],
+    # Production cluster (đã ra mắt)
+    [InlineKeyboardButton("📅 Lịch Nội Dung",        callback_data="task_content_calendar")],
+    [InlineKeyboardButton("✍️ Sản Xuất Nội Dung",    callback_data="task_content_generator")],
+    [InlineKeyboardButton("📧 Chăm Sóc Khách Hàng",  callback_data="task_email_zalo_sequence")],
+    # Coming soon — disabled placeholders (click → "Sắp ra mắt")
+    [InlineKeyboardButton("🚧 Viết Brief Campaign (coming soon)",  callback_data="coming_soon_campaign_brief")],
+    [InlineKeyboardButton("🚧 Sản Xuất Nội Dung Ads (coming soon)", callback_data="coming_soon_ads_generator")],
+    [InlineKeyboardButton("🚧 Viết Kịch Bản Video (coming soon)",  callback_data="coming_soon_video_scripts")],
+    [InlineKeyboardButton("🚧 Thiết Kế Website (coming soon)",     callback_data="coming_soon_landing_page")],
+    [InlineKeyboardButton("🚧 Kịch Bản Sales (coming soon)",       callback_data="coming_soon_sales_inbox_script")],
     [InlineKeyboardButton("← Quay lại",                callback_data="menu_main")],
 ])
 

@@ -1247,6 +1247,27 @@ async def _handle_callback_inner(update, context, query, session, data, user_id)
         await _send_single_shot_form(query.message, session, "video_scripts")
         return
 
+    # ── Coming Soon placeholder ───────────────────────────────────
+    if data.startswith("coming_soon_"):
+        skill_key = data.replace("coming_soon_", "")
+        labels = {
+            "campaign_brief":      "📋 Viết Brief Campaign",
+            "ads_generator":       "📢 Sản Xuất Nội Dung Ads",
+            "video_scripts":       "🎬 Viết Kịch Bản Video",
+            "landing_page":        "🌐 Thiết Kế Website",
+            "sales_inbox_script":  "💬 Kịch Bản Sales",
+        }
+        label = labels.get(skill_key, skill_key)
+        await query.answer(f"Skill này sắp ra mắt", show_alert=False)
+        await query.message.reply_text(
+            f"🚧 *{label}* — sắp ra mắt!\n\n"
+            f"_Skill này đang được hoàn thiện. Em sẽ thông báo sếp ngay khi ready._\n\n"
+            f"Trong lúc chờ, sếp có thể chạy các skill khác từ menu nhé:",
+            parse_mode=ParseMode.MARKDOWN,
+            reply_markup=MAIN_MENU_KEYBOARD,
+        )
+        return
+
     # ── Task selection ────────────────────────────────────────────
     if data.startswith("task_"):
         task_type = data[5:]
@@ -2338,11 +2359,12 @@ Language: {en_note}
 - KHÔNG dùng marker này nếu user chỉ hỏi advisor bình thường
 
 🎯 **INTENT ROUTING — khi user chỉ định rõ 1 skill cụ thể:**
-- Nếu user nói rõ tên 1 task (vd: "chạy phân tích đối thủ", "viết brief campaign Tết") → kết thúc bằng marker `[RUN_TASK:<task_name>]`
+- Nếu user nói rõ tên 1 task (vd: "chạy phân tích đối thủ", "lên lịch nội dung") → kết thúc bằng marker `[RUN_TASK:<task_name>]`
 - Vd: "OK em chạy ngay ạ.\n[RUN_TASK:competitor]"
-- task_name available: market / competitor / customer / pricing / strategy / full /
-  campaign_brief / content_calendar / content_generator / ads_generator / video_scripts /
-  landing_page / sales_inbox_script / email_zalo_sequence / competitor_spy / performance_audit
+- task_name AVAILABLE: market / competitor / customer / pricing / strategy / full /
+  content_calendar / content_generator / email_zalo_sequence / competitor_spy / performance_audit
+- task_name COMING SOON (KHÔNG được dùng RUN_TASK, chỉ thông báo "sắp ra mắt"):
+  campaign_brief / ads_generator / video_scripts / landing_page / sales_inbox_script
 
 NHIỆM VỤ: User nhắn câu hỏi/yêu cầu free-form ngoài flow skill chuẩn.
 Trả lời như 1 marketing advisor có context business của sếp.
@@ -2358,10 +2380,12 @@ QUY TẮC:
 Skills có sẵn (gợi ý nếu phù hợp):
 🎯 Chiến lược: Tìm Hiểu Thị Trường, Phân Tích Đối Thủ, Insight Khách Hàng,
    Chiến Lược Giá, Lập Kế Hoạch Tổng, Phân Tích Tổng Hợp A→Z
-⚙️ Sản xuất: Viết Brief Campaign, Lịch Nội Dung, Sản Xuất Nội Dung,
-   Sản Xuất Ads, Kịch Bản Video, Thiết Kế Website, Kịch Bản Sales,
-   Chăm Sóc Khách Hàng
-📊 Theo dõi: Theo Dõi Đối Thủ, Báo Cáo Ads"""
+⚙️ Sản xuất: Lịch Nội Dung, Sản Xuất Nội Dung, Chăm Sóc Khách Hàng
+📊 Theo dõi: Theo Dõi Đối Thủ, Báo Cáo Ads
+
+🚧 Sắp ra mắt (chưa dùng được, nếu user hỏi → thông báo coming soon):
+   Viết Brief Campaign, Sản Xuất Nội Dung Ads, Viết Kịch Bản Video,
+   Thiết Kế Website, Kịch Bản Sales"""
 
     client = anthropic.AsyncAnthropic(api_key=ANTHROPIC_API_KEY)
     try:
