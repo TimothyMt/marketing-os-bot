@@ -107,6 +107,8 @@ STRATEGIC_KEYBOARD = InlineKeyboardMarkup([
     ],
     [InlineKeyboardButton("🎯 Lập Kế Hoạch Tổng", callback_data="task_strategy")],
     [InlineKeyboardButton("🔍 Phân Tích Tổng Hợp A→Z (5 bước)", callback_data="task_full")],
+    [InlineKeyboardButton("🔄 Chiến Lược Giữ Chân Khách", callback_data="task_retention_strategy")],
+    [InlineKeyboardButton("🔁 Winback Khách Cũ",          callback_data="task_winback_campaign")],
     [InlineKeyboardButton("← Quay lại",                callback_data="menu_main")],
 ])
 
@@ -125,9 +127,6 @@ OPERATIONAL_KEYBOARD = InlineKeyboardMarkup([
     [InlineKeyboardButton("💬 Phân Tích Comment",       callback_data="task_comment_mining")],
     [InlineKeyboardButton("🎙️ Bộ Quy Tắc Brand Voice",  callback_data="task_brand_voice")],
     [InlineKeyboardButton("♻️ Tái Sử Dụng Content",     callback_data="task_content_repurpose")],
-    # Customer Journey skills (from Full-stack-mkt-v0.2)
-    [InlineKeyboardButton("🔄 Chiến Lược Giữ Chân Khách", callback_data="task_retention_strategy")],
-    [InlineKeyboardButton("🔁 Winback Khách Cũ",          callback_data="task_winback_campaign")],
     # Coming soon — disabled placeholders (click → "Sắp ra mắt")
     [InlineKeyboardButton("🚧 Viết Brief Campaign (coming soon)",  callback_data="coming_soon_campaign_brief")],
     [InlineKeyboardButton("🚧 Sản Xuất Nội Dung Ads (coming soon)", callback_data="coming_soon_ads_generator")],
