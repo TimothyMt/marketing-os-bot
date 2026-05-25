@@ -270,7 +270,7 @@ def get_strategic_pipeline_tiers() -> list[TierConfig]:
 
     return [
         TierConfig(
-            name="T1_Foundation",
+            name="T1 Foundation",
             agents=[
                 market_research_agent,
                 competitor_agent,
@@ -282,7 +282,7 @@ def get_strategic_pipeline_tiers() -> list[TierConfig]:
             max_concurrent=3,         # 3 agents same tier, đủ TPM Tier 3+
         ),
         TierConfig(
-            name="T2_Strategy",
+            name="T2 Strategy",
             agents=[
                 usp_definition_agent,
                 psychology_pricing_agent,
@@ -293,7 +293,7 @@ def get_strategic_pipeline_tiers() -> list[TierConfig]:
             max_concurrent=2,
         ),
         TierConfig(
-            name="T3_CustomerJourney",
+            name="T3 CustomerJourney",
             # SEQUENTIAL chain — Winback needs Retention output
             # Wrap thành 1 chain function thay vì 2 agents parallel
             agents=[retention_then_winback_chain],
@@ -303,7 +303,7 @@ def get_strategic_pipeline_tiers() -> list[TierConfig]:
             max_concurrent=1,
         ),
         TierConfig(
-            name="T4_Synthesis",
+            name="T4 Synthesis",
             agents=[synthesizer_agent],
             must_have={"synthesizer_agent"},  # ABORT nếu fail (user không có deliverable)
             nice_to_have=set(),

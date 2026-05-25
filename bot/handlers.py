@@ -2453,7 +2453,16 @@ async def _run_pipeline_sequentially(message: Message, session):
     parsed_stages: list[tuple[str, dict]] = []  # for HTML report
 
     async def progress_cb(msg: str):
-        await message.reply_text(msg, parse_mode=ParseMode.MARKDOWN)
+        # Resilient: fallback to plain text if Markdown parse fails
+        # (vd tier name có underscore không nằm trong */_ entity)
+        try:
+            await message.reply_text(msg, parse_mode=ParseMode.MARKDOWN)
+        except Exception as e:
+            logger.warning("Progress message Markdown failed (%s) — falling back to plain", e)
+            try:
+                await message.reply_text(msg, parse_mode=None)
+            except Exception as e2:
+                logger.warning("Progress message plain fallback also failed: %s", e2)
 
     # Sprint 8.5 — dispatch: task=full + flag on → Multi-Agent Orchestrator,
     # các task khác → existing single-skill path (backward compat)
