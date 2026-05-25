@@ -78,7 +78,10 @@ TASK_PIPELINE_STEPS = {
 }
 
 TASK_STAGE_COUNT = {
-    "full": 5,
+    # Sprint 2+3: full pipeline mở rộng 5 → 8 stages
+    # market + competitor + customer + psychology+pricing + usp_definition (conditional)
+    # + retention_strategy + winback_campaign + synthesis
+    "full": 8,
     "market": 1,
     "competitor": 1,
     "customer": 1,
