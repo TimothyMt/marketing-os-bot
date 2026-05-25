@@ -47,7 +47,14 @@ from frameworks.kpi_library import get_framework_as_text
 from frameworks.save_framework import generate_save_analysis
 from frameworks.smart_framework import format_smart_prompt
 
-client = anthropic.AsyncAnthropic(api_key=ANTHROPIC_API_KEY, timeout=180.0)
+client = anthropic.AsyncAnthropic(
+    api_key=ANTHROPIC_API_KEY,
+    timeout=180.0,
+    # Hotfix: giảm max_retries 2 → 1 để tránh retry storm cộng dồn vượt AGENT_TIMEOUT.
+    # Default 2 retries × 180s = 540s + initial 180s = 720s worst case.
+    # Với 1 retry: 360s worst case — fits within AGENT_TIMEOUT=900s.
+    max_retries=1,
+)
 
 
 # DEPRECATED — kept temporarily for backward-compat in legacy _run_agent function.

@@ -2475,20 +2475,45 @@ async def _run_pipeline_sequentially(message: Message, session):
         await asyncio.sleep(0.5)
 
     # After all stages complete: build + send HTML report
-    if stage_count > 0:
+    # Hotfix: filter out stages bị timeout/error (result chứa "⚠️")
+    # để HTML builder không cố parse skip message làm crash toàn report.
+    valid_stages = [
+        (k, p) for (k, p) in parsed_stages
+        if p and not (p.get("summary", "") + p.get("deliverable", "")).startswith("⚠️")
+        and not (p.get("raw", "") or "").startswith("⚠️")
+    ]
+    skipped_count = len(parsed_stages) - len(valid_stages)
+    if skipped_count > 0:
+        logger.warning(
+            "HTML report: filtered %d skipped/error stages out of %d total",
+            skipped_count, len(parsed_stages),
+        )
+
+    if valid_stages:
         try:
             html_str = build_report(
                 business_name=session.profile.business_name or "Business",
                 industry=session.profile.industry or "",
                 stage=session.profile.stage or "",
-                parsed_stages=parsed_stages,
+                parsed_stages=valid_stages,
             )
             await _send_html_report(message, html_str, session)
+            if skipped_count > 0:
+                await message.reply_text(
+                    f"ℹ️ Report HTML đã gửi, nhưng có {skipped_count} bước bị timeout/lỗi — "
+                    "không xuất hiện trong report. Sếp có thể chạy lại các bước đó riêng lẻ."
+                )
         except Exception as e:
             logger.exception("Failed to generate HTML report: %s", e)
             await message.reply_text(
                 "⚠️ Không generate được file HTML — phần tóm tắt ở trên đã đủ. Sếp có thể hỏi thêm tự do."
             )
+    elif stage_count > 0:
+        # All stages failed/skipped → no valid content for HTML
+        await message.reply_text(
+            "⚠️ Tất cả bước phân tích đều timeout/lỗi — không có gì để render HTML. "
+            "Sếp thử chạy lại từng bước riêng lẻ (từ menu Chiến Lược) để xem bước nào fail."
+        )
 
     if stage_count > 0 and stage_count == total_stages:
         # Chained followup — Brief Campaign hoặc skill khác đang chờ Strategy

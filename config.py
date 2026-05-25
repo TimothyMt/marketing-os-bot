@@ -28,7 +28,9 @@ CLAUDE_SONNET_MODEL = "claude-sonnet-4-6"
 CLAUDE_HAIKU_MODEL  = "claude-haiku-4-5"
 CLAUDE_MODEL        = CLAUDE_SONNET_MODEL  # backward-compat alias
 
-AGENT_TIMEOUT  = 500  # ~8 phút — buffer rộng cho cả trường hợp Claude API chậm
+# Pipeline timeouts (Sprint hotfix: synthesis với 8-stage pipeline cần buffer lớn hơn)
+# Synthesis context ~70K input + 10K output có thể tốn 180-300s + retry → 540s+ wall time
+AGENT_TIMEOUT  = 900  # 15 phút — buffer cho stage nặng (synthesis sau Sprint 2-3 mở rộng pipeline)
 MAX_HISTORY_TURNS = 20
 
 INDUSTRIES = [
