@@ -400,6 +400,46 @@ async def run_social_listening(session: Session) -> str:
     return result
 
 
+async def run_retention_strategy_stage(session: Session) -> str:
+    """Sprint 3: Retention Strategy as Full Pipeline stage 5.
+
+    Reuses operational `retention_strategy` skill nhưng inject FULL_PIPELINE context
+    (market + competitor + customer + pricing + usp đã chạy).
+
+    Skill này có "adaptive depth" — khi no intake fields → Tier 1 (assumption-based
+    với collection guide). Trong pipeline mode đây là behavior đúng.
+    """
+    from agents.operational_skills_config import get_operational_skill
+    from agents.skills import ContextStrategy as _CS
+
+    skill = get_operational_skill("retention_strategy")
+    # Override context strategy to FULL_PIPELINE for this run (don't break standalone)
+    skill.context_strategy = _CS.FULL_PIPELINE
+    if hasattr(skill, "_config"):
+        skill._config.context_strategy = _CS.FULL_PIPELINE
+    result = await _run_skill(skill, session)
+    session.add_result("retention_strategy", result)
+    return result
+
+
+async def run_winback_vision_stage(session: Session) -> str:
+    """Sprint 3: Winback Vision as Full Pipeline stage 6.
+
+    Reuses operational `winback_campaign` skill — output strategic-grade
+    cho Synthesis consume.
+    """
+    from agents.operational_skills_config import get_operational_skill
+    from agents.skills import ContextStrategy as _CS
+
+    skill = get_operational_skill("winback_campaign")
+    skill.context_strategy = _CS.FULL_PIPELINE
+    if hasattr(skill, "_config"):
+        skill._config.context_strategy = _CS.FULL_PIPELINE
+    result = await _run_skill(skill, session)
+    session.add_result("winback_campaign", result)
+    return result
+
+
 async def run_usp_definition(session: Session) -> str:
     """Sprint 2: Conditional USP skill — chỉ chạy khi cần.
 
@@ -488,6 +528,9 @@ PIPELINE_SEQUENCE = [
     (PipelineStage.PSYCHOLOGY_PRICING, run_psychology_and_pricing, "psychology_pricing"),
     # Sprint 2 — USP Definition (conditional, skip if usp_confidence='clear')
     (PipelineStage.USP_DEFINITION, run_usp_definition, "usp_definition"),
+    # Sprint 3 — Retention + Winback strategic integration (A2 decision)
+    (PipelineStage.RETENTION_STRATEGY, run_retention_strategy_stage, "retention_strategy"),
+    (PipelineStage.WINBACK_VISION, run_winback_vision_stage, "winback_campaign"),
     # Social Listening tạm tắt — chờ web search VN coverage tốt hơn
     # (PipelineStage.SOCIAL_LISTENING, run_social_listening, "social_listening"),
     (PipelineStage.SYNTHESIS, run_strategy_synthesis, "synthesis"),
