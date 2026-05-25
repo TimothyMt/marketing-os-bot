@@ -228,6 +228,151 @@ async def _safe_run(
 
 
 # ─────────────────────────────────────────────────────────────────
+# STRATEGIC_PIPELINE_TIERS — 4-tier definition (S8.4)
+# ─────────────────────────────────────────────────────────────────
+
+def get_strategic_pipeline_tiers() -> list[TierConfig]:
+    """Build 4-tier strategic pipeline definition.
+
+    Lazy import agent_wrappers để tránh circular import (wrappers → orchestrator
+    không có, nhưng wrappers → pipeline → ... loop có thể xảy ra).
+
+    Tier design:
+    - T1 Foundation: Market + Competitor + Customer (independent, parallel)
+    - T2 Strategy: USP + Psychology+Pricing (parallel, depend on T1)
+    - T3 Journey: Retention → Winback (sequential, Winback needs Retention)
+    - T4 Final: Synthesis (long context aggregation)
+
+    must_have rules (CRITICAL — abort pipeline if fail):
+    - T1: customer_insight_agent (downstream cần Customer ICP)
+    - T4: synthesizer_agent (đầu ra cuối cùng cho user)
+
+    nice_to_have (degraded mode — pipeline continues):
+    - T1 market/competitor: nếu fail, Synthesis có ghi "data thiếu"
+    - T2 cả 2: optional polish, không block downstream
+    - T3 cả 2: nếu fail, Synthesis có mention "retention/winback chưa định nghĩa"
+    """
+    from agents.agent_wrappers import (
+        market_research_agent,
+        competitor_agent,
+        customer_insight_agent,
+        usp_definition_agent,
+        psychology_pricing_agent,
+        retention_strategy_agent,
+        winback_vision_agent,
+        synthesizer_agent,
+        retention_then_winback_chain,
+    )
+
+    return [
+        TierConfig(
+            name="T1_Foundation",
+            agents=[
+                market_research_agent,
+                competitor_agent,
+                customer_insight_agent,
+            ],
+            must_have={"customer_insight_agent"},
+            nice_to_have={"market_research_agent", "competitor_agent"},
+            timeout_per_agent=180,   # 3 phút mỗi agent
+            max_concurrent=3,         # 3 agents same tier, đủ TPM Tier 3+
+        ),
+        TierConfig(
+            name="T2_Strategy",
+            agents=[
+                usp_definition_agent,
+                psychology_pricing_agent,
+            ],
+            must_have=set(),  # Cả 2 đều nice-to-have (Synthesis có thể fallback)
+            nice_to_have={"usp_definition_agent", "psychology_pricing_agent"},
+            timeout_per_agent=180,
+            max_concurrent=2,
+        ),
+        TierConfig(
+            name="T3_CustomerJourney",
+            # SEQUENTIAL chain — Winback needs Retention output
+            # Wrap thành 1 chain function thay vì 2 agents parallel
+            agents=[retention_then_winback_chain],
+            must_have=set(),
+            nice_to_have={"retention_then_winback_chain"},
+            timeout_per_agent=360,   # 6 phút — 2 calls sequential
+            max_concurrent=1,
+        ),
+        TierConfig(
+            name="T4_Synthesis",
+            agents=[synthesizer_agent],
+            must_have={"synthesizer_agent"},  # ABORT nếu fail (user không có deliverable)
+            nice_to_have=set(),
+            timeout_per_agent=300,   # 5 phút — Gemini Pro 1M ctx có buffer
+            max_concurrent=1,
+        ),
+    ]
+
+
+# ─────────────────────────────────────────────────────────────────
+# Multi-Agent Pipeline Runner — top-level entry
+# ─────────────────────────────────────────────────────────────────
+
+async def run_multi_agent_pipeline(
+    session: Any,
+    progress_callback: Optional[Callable[[str], Awaitable[None]]] = None,
+) -> dict[str, AgentResult]:
+    """Top-level orchestrator — chạy 4-tier strategic pipeline.
+
+    Tier-by-tier execution:
+    - Tier N wait Tier N-1 hoàn thành
+    - Agents trong cùng tier chạy parallel
+    - Critical fail → abort + raise PipelineAbortError
+    - Nice-to-have fail → log + continue
+
+    Yields: tuple(stage_key, output) per agent — tương thích với pipeline.py
+    interface để handler.py không phải sửa logic stream.
+
+    Returns: dict {agent_name: AgentResult} sau khi all tiers complete.
+    """
+    all_results: dict[str, AgentResult] = {}
+    tiers = get_strategic_pipeline_tiers()
+
+    overall_start = time.monotonic()
+    logger.info(f"Multi-agent pipeline START — {len(tiers)} tiers")
+
+    for idx, tier in enumerate(tiers, start=1):
+        if progress_callback:
+            await progress_callback(
+                f"━━━━━━━━━━━━━━━━━━━━\n"
+                f"📍 Tier {idx}/{len(tiers)}: {tier.name}\n"
+                f"━━━━━━━━━━━━━━━━━━━━"
+            )
+
+        try:
+            tier_results = await run_tier(tier, session, progress_callback)
+            all_results.update(tier_results)
+        except PipelineAbortError as e:
+            logger.error(f"Pipeline ABORT at tier {tier.name}: {e}")
+            if progress_callback:
+                await progress_callback(
+                    f"❌ Pipeline dừng tại {tier.name}: {e}\n"
+                    f"Các tier đã chạy: {[r.agent_name for r in all_results.values() if r.success]}"
+                )
+            raise
+
+    overall_duration = time.monotonic() - overall_start
+    successful = sum(1 for r in all_results.values() if r.success)
+    logger.info(
+        f"Multi-agent pipeline DONE — {successful}/{len(all_results)} agents "
+        f"in {overall_duration:.1f}s ({overall_duration/60:.1f} phút)"
+    )
+
+    if progress_callback:
+        await progress_callback(
+            f"🎉 Pipeline hoàn thành: {successful}/{len(all_results)} agents "
+            f"thành công trong {overall_duration/60:.1f} phút"
+        )
+
+    return all_results
+
+
+# ─────────────────────────────────────────────────────────────────
 # Smoke test — chạy `python -m agents.orchestrator` để verify
 # ─────────────────────────────────────────────────────────────────
 

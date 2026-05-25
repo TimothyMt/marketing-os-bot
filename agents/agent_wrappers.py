@@ -169,6 +169,26 @@ async def winback_vision_agent(session: Session) -> str:
     return result
 
 
+@_with_provider("anthropic_sonnet")
+async def retention_then_winback_chain(session: Session) -> str:
+    """🔄→🔁 Minh + Phương — Sequential chain.
+
+    Tier 3 SEQUENTIAL chain — Winback đọc Retention output từ session.results.
+    Wrap thành 1 function vì orchestrator T3 chỉ cần 1 "agent" trong sequential mode.
+
+    Output: concatenated text của cả 2 stage cho Synthesis đọc.
+    """
+    retention_result = await retention_strategy_agent(session)
+    winback_result = await winback_vision_agent(session)
+
+    combined = (
+        f"## Retention Strategy (Tier 3.1)\n\n{retention_result}\n\n"
+        f"---\n\n"
+        f"## Winback Vision (Tier 3.2)\n\n{winback_result}"
+    )
+    return combined
+
+
 # ─────────────────────────────────────────────────────────────────
 # TIER 4 — Final aggregation (long context)
 # ─────────────────────────────────────────────────────────────────
@@ -195,14 +215,15 @@ async def synthesizer_agent(session: Session) -> str:
 # ─────────────────────────────────────────────────────────────────
 
 ALL_AGENTS = {
-    "market_research_agent":    market_research_agent,
-    "competitor_agent":         competitor_agent,
-    "customer_insight_agent":   customer_insight_agent,
-    "usp_definition_agent":     usp_definition_agent,
-    "psychology_pricing_agent": psychology_pricing_agent,
-    "retention_strategy_agent": retention_strategy_agent,
-    "winback_vision_agent":     winback_vision_agent,
-    "synthesizer_agent":        synthesizer_agent,
+    "market_research_agent":         market_research_agent,
+    "competitor_agent":              competitor_agent,
+    "customer_insight_agent":        customer_insight_agent,
+    "usp_definition_agent":          usp_definition_agent,
+    "psychology_pricing_agent":      psychology_pricing_agent,
+    "retention_strategy_agent":      retention_strategy_agent,
+    "winback_vision_agent":          winback_vision_agent,
+    "retention_then_winback_chain":  retention_then_winback_chain,
+    "synthesizer_agent":             synthesizer_agent,
 }
 
 
