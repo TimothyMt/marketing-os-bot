@@ -69,10 +69,66 @@ class MockBehavior:
         await asyncio.sleep(self.latency_sec)
         return MOCK_OUTPUTS.get(skill_name, f"mock output for {skill_name}")
 
+    async def mock_router_call(self, task_type, system, user, max_tokens=4000, **kwargs):
+        """Mock router calls — bypass real Gemini/Anthropic/OpenAI APIs.
+
+        synthesizer_agent (S8.7-prod) routes qua llm_router.call() instead of
+        _run_skill directly. Tests cần mock cả 2.
+        """
+        # Use task_type.value as identifier
+        task_id = task_type.value if hasattr(task_type, "value") else str(task_type)
+
+        if "synthesis" in task_id and "synthesis" in self.fail_skills:
+            raise ValueError(f"MOCK: forced fail for {task_id}")
+
+        if "synthesis" in task_id and "synthesis" in self.timeout_skills:
+            await asyncio.sleep(300)
+            return {"output": "should not reach", "provider": "mock", "tokens_in": 0, "tokens_out": 0}
+
+        await asyncio.sleep(self.latency_sec)
+        return {
+            "output": MOCK_OUTPUTS.get("synthesis", "mock synthesis output"),
+            "provider": "mock_gemini_pro",
+            "tokens_in": 200,
+            "tokens_out": 800,
+            "latency_sec": self.latency_sec,
+        }
+
 
 async def _noop_cb(msg: str) -> None:
     """Async no-op progress callback for tests that don't care about progress."""
     pass
+
+
+async def _passthrough_polish(raw_text: str, session) -> str:
+    """Mock Haiku polish — return input unchanged (cho tests).
+
+    synthesizer_agent gọi _haiku_polish_vn sau khi Gemini Pro trả output.
+    Trong test, skip polish step để không hit Anthropic API.
+    """
+    return raw_text
+
+
+def _full_patches(behavior):
+    """Context manager combining 3 patches:
+    - agents.pipeline._run_skill: cho 6 agents còn lại (Anthropic path)
+    - tools.llm_router.call: cho synthesizer_agent (Gemini path)
+    - agents.agent_wrappers._haiku_polish_vn: skip polish step
+    """
+    import contextlib
+    return contextlib.ExitStack().__class__()  # placeholder, see actual impl below
+
+
+import contextlib
+
+
+def _full_patches(behavior):
+    """Helper: combine 3 patches into single contextmanager."""
+    stack = contextlib.ExitStack()
+    stack.enter_context(patch("agents.pipeline._run_skill", behavior.mock_run_skill))
+    stack.enter_context(patch("tools.llm_router.call", behavior.mock_router_call))
+    stack.enter_context(patch("agents.agent_wrappers._haiku_polish_vn", _passthrough_polish))
+    return stack
 
 
 def _make_session() -> Session:
@@ -106,7 +162,7 @@ async def test_1_happy_path():
     async def capture(msg):
         progress_log.append(msg)
 
-    with patch("agents.pipeline._run_skill", behavior.mock_run_skill):
+    with _full_patches(behavior):
         start = time.monotonic()
         results = await run_multi_agent_pipeline(session, capture)
         elapsed = time.monotonic() - start
@@ -151,7 +207,7 @@ async def test_2_nice_to_have_fail():
     behavior.fail_skills = {"market_research"}
     session = _make_session()
 
-    with patch("agents.pipeline._run_skill", behavior.mock_run_skill):
+    with _full_patches(behavior):
         results = await run_multi_agent_pipeline(session, _noop_cb)
 
     assert not results["market_research_agent"].success
@@ -176,7 +232,7 @@ async def test_3_critical_fail():
     behavior.fail_skills = {"customer_insight"}
     session = _make_session()
 
-    with patch("agents.pipeline._run_skill", behavior.mock_run_skill):
+    with _full_patches(behavior):
         try:
             await run_multi_agent_pipeline(session, _noop_cb)
             assert False, "Expected PipelineAbortError"
@@ -196,7 +252,7 @@ async def test_4_synthesis_fail():
     behavior.fail_skills = {"synthesis"}
     session = _make_session()
 
-    with patch("agents.pipeline._run_skill", behavior.mock_run_skill):
+    with _full_patches(behavior):
         try:
             await run_multi_agent_pipeline(session, _noop_cb)
             assert False, "Expected PipelineAbortError at T4"
@@ -221,7 +277,7 @@ async def test_5_timeout_isolation():
     session = _make_session()
 
     # Patch competitor timeout to be short for fast test
-    with patch("agents.pipeline._run_skill", behavior.mock_run_skill):
+    with _full_patches(behavior):
         # Override the tier timeout temporarily for fast test
         original_get_tiers = get_strategic_pipeline_tiers
         def fast_tiers():
@@ -251,7 +307,7 @@ async def test_6_latency_benchmark():
     behavior.latency_sec = 0.5  # Each agent takes 0.5s
     session = _make_session()
 
-    with patch("agents.pipeline._run_skill", behavior.mock_run_skill):
+    with _full_patches(behavior):
         start = time.monotonic()
         results = await run_multi_agent_pipeline(session, _noop_cb)
         elapsed = time.monotonic() - start
