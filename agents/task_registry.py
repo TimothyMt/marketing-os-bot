@@ -57,9 +57,21 @@ STRATEGIC_TASKS: dict[str, TaskConfig] = {
         label="Trọn Bộ",
         button_emoji="🔍",
         category="full",
-        description="Chạy 5 bước phân tích chiến lược tuần tự (A → Z)",
+        description="Chạy phân tích chiến lược tuần tự (A → Z) — Market + Competitor + Customer + Pricing + USP + Retention + Winback + Synthesis",
         skill_class_name="",  # Composite
-        pipeline_stages=["market_research", "competitor", "customer_insight", "psychology_pricing", "synthesis"],
+        # Sprint 2 + 3 — pipeline mở rộng từ 5 → 8 stage
+        # USP_DEFINITION conditional (skip nếu usp_confidence='clear')
+        # RETENTION_STRATEGY + WINBACK_CAMPAIGN — luôn chạy (A2 decision)
+        pipeline_stages=[
+            "market_research",
+            "competitor",
+            "customer_insight",
+            "psychology_pricing",
+            "usp_definition",         # Sprint 2
+            "retention_strategy",     # Sprint 3
+            "winback_campaign",       # Sprint 3
+            "synthesis",
+        ],
         intake_required_fields=[
             "industry", "product_service", "target_customer",
             "monthly_revenue", "primary_goal", "main_challenge",

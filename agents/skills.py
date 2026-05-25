@@ -18,6 +18,7 @@ from agents.prompts import (
     PRICING_STRATEGY_SYSTEM,
     SOCIAL_LISTENING_SYSTEM,
     STRATEGY_SYNTHESIZER_SYSTEM,
+    USP_DEFINITION_SYSTEM,
 )
 from frameworks.kpi_library import get_framework_as_text
 from frameworks.save_framework import generate_save_analysis
@@ -221,6 +222,74 @@ Team size: {session.profile.team_size or 'nhỏ'}
 Tạo system thực tế, phù hợp với team nhỏ, tập trung vào platform VN."""
 
 
+class UspDefinitionSkill(AgentSkill):
+    """Sprint 2: Định nghĩa USP cho business — REFINE draft hoặc FIND from scratch.
+
+    Chạy stage 4.5 trong Full Pipeline, GIỮA Psychology+Pricing và Synthesis.
+    Skill này conditional — pipeline runner kiểm `profile.usp_confidence`:
+      - 'clear'   → SKIP (đã có USP rõ ràng từ intake)
+      - 'draft'   → run REFINE mode
+      - 'missing' → run FIND mode
+      - None      → SKIP (legacy users, không có data USP từ intake)
+    """
+    name = "usp_definition"
+    system_prompt = USP_DEFINITION_SYSTEM
+    max_tokens = 4000  # Output ngắn gọn — 1 USP + variants + reasoning
+    enable_critic = True   # USP cần check không bịa số liệu market
+    output_format = OutputFormat.STRATEGIC_4_SECTION  # Vẫn theo format strategic
+    context_strategy = ContextStrategy.FULL_PIPELINE  # Cần market + competitor + customer + pricing
+    accumulate_to_report = True  # Include trong HTML report
+
+    def build_context(self, session: Session) -> str:
+        return session.build_pipeline_context()
+
+    def build_user_msg(self, session: Session) -> str:
+        confidence = (session.profile.usp_confidence or "").lower()
+        draft = session.profile.usp or ""
+
+        if confidence == "draft":
+            mode_instruction = f"""**Mode: REFINE**
+
+User đã có draft USP nhưng chưa rõ ràng. Draft hiện tại:
+"{draft}"
+
+Nhiệm vụ:
+1. KHÔNG đổi nội dung gốc — chỉ làm sắc nét format
+2. Identify điểm yếu của draft (mơ hồ ở đâu, thiếu differentiator gì)
+3. Output USP refined theo format chuẩn
+4. Đưa 2 variant alternative (angle khác draft)
+"""
+        elif confidence == "missing":
+            mode_instruction = """**Mode: FIND**
+
+User chưa có USP. Tìm 1 USP từ context Market + Competitor + Customer + Pricing đã có.
+
+Nhiệm vụ:
+1. Đọc kỹ market gap (từ Competitor stage) — tìm angle chưa ai sở hữu
+2. Đọc Customer Insight — match với pain/desire cốt lõi
+3. Apply 1 trong 3 framework (Niche Domination / Antagonist / Combination)
+4. Output USP chính + reasoning + 3 variants
+"""
+        else:
+            # confidence None or unknown — fallback to FIND mode
+            mode_instruction = """**Mode: FIND** (fallback — confidence không xác định)
+
+Coi như user chưa có USP, tìm từ context."""
+
+        return f"""Define USP cho business này dựa trên 4 stage trước.
+
+{mode_instruction}
+
+**Business profile:**
+- Ngành: {session.profile.industry or 'chưa xác định'}
+- Sản phẩm/dịch vụ: {session.profile.product_service or 'chưa xác định'}
+- Khách hàng: {session.profile.target_customer or 'chưa xác định'}
+- Địa bàn: {session.profile.location or 'Việt Nam'}
+- Stage: {session.profile.stage or 'chưa rõ'}
+
+Tham chiếu kết quả Market + Competitor + Customer + Psychology+Pricing đã có trong context."""
+
+
 class StrategySynthesisSkill(AgentSkill):
     name = "synthesis"
     system_prompt = STRATEGY_SYNTHESIZER_SYSTEM
@@ -264,6 +333,7 @@ SKILL_REGISTRY: dict[str, type[AgentSkill]] = {
     "competitor":         CompetitorSkill,
     "customer_insight":   CustomerInsightSkill,
     "psychology_pricing": PsychologyPricingSkill,
+    "usp_definition":     UspDefinitionSkill,   # Sprint 2 — NEW
     "social_listening":   SocialListeningSkill,
     "synthesis":          StrategySynthesisSkill,
 }

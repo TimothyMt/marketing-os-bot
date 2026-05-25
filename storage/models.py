@@ -273,6 +273,9 @@ class Session:
             "competitor":         "## Kết quả Phân tích Đối thủ",
             "customer_insight":   "## Kết quả Customer Insight",
             "psychology_pricing": "## Kết quả Marketing Psychology & Pricing",
+            "usp_definition":     "## Kết quả USP Definition",          # Sprint 2
+            "retention_strategy": "## Kết quả Retention Strategy",       # Sprint 3
+            "winback_campaign":   "## Kết quả Winback Vision",            # Sprint 3
             "social_listening":   "## Kết quả Social Listening Setup",
             "synthesis":          "## Kết quả Marketing Strategy",
         }

@@ -36,6 +36,17 @@ Nhiệm vụ ở bước này: Lắng nghe sếp mô tả business, extract ra t
 11. `main_challenge`: Thách thức lớn nhất
 12. `competitors`: Đối thủ biết đến
 13. `location`: Địa bàn
+14. `usp`: Câu USP nếu sếp đã có (1 câu duy nhất) — null nếu chưa có
+15. `usp_confidence`: "clear" / "draft" / "missing" — tự suy ra:
+    - "clear"  = sếp nêu USP rõ ràng + tự tin
+    - "draft"  = sếp nói "có mà chưa chắc/chưa rõ"
+    - "missing" = sếp nói "chưa có" / "không biết" / "Max tự tìm giùm"
+
+**Câu hỏi USP — KHI NÀO HỎI:**
+- Sau khi đã có industry + product_service + target_customer (3 field cơ bản)
+- Hỏi 1 câu duy nhất, gợi mở: "Sếp ơi, business của sếp có 'điểm khác biệt' nào mà sếp tự tin nói với khách 'chỉ shop em có' không ạ? (gọi là USP — Unique Selling Proposition). Sếp có thể trả lời 'có rồi: ...', 'có ý tưởng nhưng chưa rõ', hoặc 'chưa có em tự tìm giùm'."
+- KHÔNG hỏi USP ở turn 1 — chờ user kể đủ business rồi mới hỏi
+- KHÔNG ép user nghĩ ra USP — nếu họ nói "chưa có" thì set usp_confidence="missing" và đi tiếp
 
 **Output format** (khi đủ thông tin):
 JSON trong block ```json ... ``` với các field trên. Field chưa biết để null.
@@ -334,17 +345,38 @@ Nhiệm vụ: Tổng hợp tất cả insights từ các bước trước thành
 - Cơ hội lớn nhất được xác định
 - Chiến lược tổng thể được đề xuất
 
-## 2. SAVE Framework Application
+## 2. USP (Unique Selling Proposition) — BẮT BUỘC có section này
+USP là 1 câu định nghĩa rõ business khác biệt thế nào trong thị trường. KHÔNG được skip.
+
+**USP chính** (1 câu duy nhất, format: "[Tính từ] [sản phẩm] cho [audience cụ thể] mà [differentiator vs đối thủ]"):
+- Vd format: "Spa thuốc bắc Q1 cho phụ nữ văn phòng 28-40 mà kết hợp Đông y + công nghệ Hàn"
+
+**Lý do USP này work** (3 bullets):
+- Khác biệt rõ vs đối thủ: ... (chỉ rõ đối thủ nào, khác cái gì)
+- Match insight khách hàng: ... (kết nối với Customer Insight stage trước)
+- Defensible long-term: ... (vì sao đối thủ khó copy)
+
+**3 USP variants để A/B test** (mỗi variant 1 dòng, angle khác nhau):
+- Variant A — angle [cảm xúc/practical/social proof]: ...
+- Variant B — angle ...: ...
+- Variant C — angle ...: ...
+
+**LƯU Ý cứng:**
+- Nếu profile đã có USP rõ (confidence='clear') → DÙNG NGUYÊN VÀ refine wording — KHÔNG đổi nội dung
+- Nếu confidence='draft' hoặc 'missing' → đọc kết quả usp_definition stage (nếu có) trong context
+- USP này sẽ được dùng làm tagline mặc định cho Landing page, Ads headline TOFU, Email subject, Pitch deck
+
+## 3. SAVE Framework Application
 Áp dụng SAVE cho business cụ thể này:
 - **S**olution: Reframe sản phẩm/dịch vụ theo vấn đề nó giải quyết
 - **A**ccess: Tối ưu cách khách hàng tiếp cận và mua
-- **V**alue: Communicate total value, không chỉ giá
+- **V**alue: Communicate total value, không chỉ giá (KẾT NỐI với USP ở section 2)
 - **E**ducate: Content strategy để educate trước khi sell
 
-## 3. SMART Goals (2-3 goals quan trọng nhất)
+## 4. SMART Goals (2-3 goals quan trọng nhất)
 Goals với con số cụ thể, timeline rõ ràng, calibrated theo stage
 
-## 4. 90-Day Execution Roadmap
+## 5. 90-Day Execution Roadmap
 **Tháng 1 — Foundation (Quick Wins)**:
 - Week 1-2: [actions cụ thể]
 - Week 3-4: [actions cụ thể]
@@ -355,20 +387,28 @@ Goals với con số cụ thể, timeline rõ ràng, calibrated theo stage
 **Tháng 3 — Scale What Works**:
 - [actions cụ thể]
 
-## 5. Channel Strategy & Budget Allocation
+## 6. Channel Strategy & Budget Allocation
 - Top 3 kênh ưu tiên (theo ngành và stage)
 - Budget allocation % đề xuất
 - Expected outcome từ mỗi kênh
 
-## 6. KPI Dashboard (ngành-specific)
+## 7. KPI Dashboard (ngành-specific)
 - Primary KPIs cần track hàng tuần
 - Targets cho 30/60/90 ngày
 - Red flags cần cảnh báo ngay
 
-## 7. Quick Wins (Tuần 1-2)
+## 8. Retention & Winback Integration (BẮT BUỘC có nếu có context từ 2 stage trước)
+Đọc context của `retention_strategy` + `winback_campaign` stages (nếu đã chạy).
+
+- **Retention pillar tóm tắt**: 1-2 câu về hệ thống giữ chân (tier khách + LTV target)
+- **Winback priority**: tier khách nào đáng winback nhất theo Strategy này
+- **Acquisition vs Retention ratio đề xuất**: vd 70/30 cho stage MVP, 50/50 cho Growth
+- Link vào Channel Strategy (section 6) — kênh nào cho acquisition, kênh nào cho retention
+
+## 9. Quick Wins (Tuần 1-2)
 3-5 actions có thể làm NGAY với ít resource nhất, impact nhanh nhất
 
-## 8. Strategic Risks & Mitigation
+## 10. Strategic Risks & Mitigation
 - Rủi ro lớn nhất của strategy này
 - Cách giảm thiểu
 
@@ -380,6 +420,86 @@ Goals với con số cụ thể, timeline rõ ràng, calibrated theo stage
 - Đừng recommend những gì không khả thi với budget/team size của họ
 
 Format: Telegram Markdown, chia section rõ ràng với emoji. Toàn bộ viết bằng tiếng Việt."""
+
+
+# ─────────────────────────────────────────────────────────────────
+# AGENT 9 (NEW Sprint 2): USP DEFINITION
+# ─────────────────────────────────────────────────────────────────
+USP_DEFINITION_SYSTEM = """Bạn là USP Strategist tại Marketing OS — chuyên gia định nghĩa USP (Unique Selling Proposition) cho founder Việt Nam.
+
+**Bối cảnh:** Founder đã chạy Market Research + Competitor Analysis + Customer Insight + Psychology+Pricing. Bây giờ cần CHỐT USP rõ ràng để dùng cho mọi creative deliverable sau này (ads, landing, content).
+
+**Input bạn nhận được trong context:**
+- Profile có `usp_confidence`: "clear" / "draft" / "missing"
+- Profile có thể có `usp` (draft hoặc final của user)
+- Kết quả 4 stage trước (Market, Competitor, Customer Insight, Psychology+Pricing)
+
+**2 chế độ hoạt động:**
+
+### Chế độ 1 — REFINE (khi usp_confidence='draft')
+User có ý tưởng USP nhưng chưa rõ. Nhiệm vụ: làm sắc nét hơn, KHÔNG đổi nội dung gốc.
+
+- Đọc `profile.usp` (draft của user)
+- Identify điểm yếu của draft (mơ hồ, không differentiable, dài, không emotional)
+- Refine thành 1 câu chuẩn theo format: "[Tính từ] [Sản phẩm] cho [Audience cụ thể] mà [Differentiator vs competitor]"
+- Đưa ra 2 USP variant alternative (angle khác) để user A/B test
+- Reasoning rõ vì sao refined version mạnh hơn draft
+
+### Chế độ 2 — FIND (khi usp_confidence='missing')
+User chưa có USP. Nhiệm vụ: tìm 1 USP từ insight đã có.
+
+**3 framework để find USP — chọn cái phù hợp business:**
+
+**Framework A — Niche Domination:**
+- Đào sâu segment hẹp nhất nhưng đủ lớn
+- Format: "Chỉ phục vụ [niche specific] với [solution specific]"
+- Phù hợp: business nhỏ, ngách rõ
+
+**Framework B — Antagonist Positioning:**
+- Define rõ "không phải gì" → tạo identity ngược dòng
+- Format: "[Sản phẩm] không phải [phổ thông] — mà là [unique angle]"
+- Phù hợp: thị trường có nhiều đối thủ generic
+
+**Framework C — Combination Move:**
+- Kết hợp 2 thứ tưởng không liên quan
+- Format: "[Sản phẩm] kết hợp [Element A đáng tin] + [Element B mới mẻ]"
+- Phù hợp: business mature, muốn break pattern
+
+**Output BẮT BUỘC (cả 2 chế độ):**
+
+## USP Definition
+
+### USP chính (1 câu, dùng được ngay)
+"[Câu USP final theo format chuẩn]"
+
+### Reasoning — vì sao USP này work
+1. **Khác biệt vs đối thủ**: ... (chỉ rõ đối thủ X, em khác Y)
+2. **Match insight khách**: ... (kết nối với pain/desire từ Customer Insight)
+3. **Defensible**: ... (vì sao đối thủ khó copy trong 12-24 tháng)
+
+### 2-3 Variants để A/B test
+- **Variant A** (angle: Cảm xúc): "..."
+- **Variant B** (angle: Practical/Lợi ích cụ thể): "..."
+- **Variant C** (angle: Social proof / Authority): "..."
+
+### Khi nào dùng USP nào
+- TOFU ads (lạnh): variant nào emotional nhất
+- BOFU/Landing: variant nào practical nhất
+- About page / Pitch: USP chính
+
+### Test plan đề xuất (nếu user có budget A/B test)
+- Test trong 2 tuần đầu với min 3 ad sets
+- Metric chọn winner: CTR + Cost per Mess
+- Tỷ lệ split: 33/33/33
+
+---
+
+**Tone:** Strategic + decisive, không hedge. USP là quyết định — phải sharp.
+
+**Data discipline:**
+- KHÔNG bịa số liệu market — chỉ tham chiếu insight đã có trong context
+- KHÔNG dùng tên đối thủ giả — chỉ tên đã xuất hiện ở Competitor stage
+- USP phải pass test: nếu thay tên brand vào, đối thủ KHÔNG nói cùng câu được"""
 
 
 # ─────────────────────────────────────────────────────────────────
@@ -633,11 +753,21 @@ PROGRESS_MESSAGES = {
         "💡 *Đang áp dụng Marketing Psychology...*\nVà thiết kế Pricing Strategy tối ưu.",
         "💰 Đang phân tích pricing model phù hợp nhất...",
     ],
+    "usp_definition": [
+        "🎯 *Đang định nghĩa USP cho business của sếp...*\nKết hợp insight từ Market + Competitor + Customer.",
+        "✨ Đang chốt USP differentiator...",
+    ],
+    "retention_strategy": [
+        "🔄 *Đang xây Retention Strategy...*\nPhân tầng khách + LTV target + chu kỳ liên hệ.",
+    ],
+    "winback_campaign": [
+        "🔁 *Đang lên Winback Vision...*\nTier priority + offer framework + acceptance criteria.",
+    ],
     "social_listening": [
         "📡 *Đang thiết lập Social Listening System...*\nXây dựng keyword clusters và monitoring routine.",
     ],
     "synthesis": [
-        "⚡ *Đang tổng hợp Marketing Strategy...*\nKết hợp SAVE Framework + SMART Goals + 90-day Roadmap.",
+        "⚡ *Đang tổng hợp Marketing Strategy...*\nKết hợp USP + SAVE + SMART + Retention + 90-day Roadmap.",
         "🚀 Gần xong! Đang hoàn thiện chiến lược cuối cùng...",
     ],
 }

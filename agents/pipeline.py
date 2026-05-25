@@ -37,6 +37,7 @@ from agents.skills import (
     CompetitorSkill,
     CustomerInsightSkill,
     PsychologyPricingSkill,
+    UspDefinitionSkill,
     SocialListeningSkill,
     StrategySynthesisSkill,
 )
@@ -228,6 +229,12 @@ def _extract_profile_from_response(text: str) -> tuple[Optional[BusinessProfile]
 
     try:
         data = json.loads(match.group(1))
+        # Sprint 2 — normalize usp_confidence (accept variations)
+        raw_confidence = (data.get("usp_confidence") or "").strip().lower()
+        if raw_confidence in ("clear", "draft", "missing"):
+            usp_confidence = raw_confidence
+        else:
+            usp_confidence = None
         profile = BusinessProfile(
             industry=data.get("industry"),
             stage=data.get("stage"),
@@ -242,6 +249,8 @@ def _extract_profile_from_response(text: str) -> tuple[Optional[BusinessProfile]
             main_challenge=data.get("main_challenge"),
             competitors=data.get("competitors"),
             location=data.get("location"),
+            usp=data.get("usp"),                       # Sprint 2
+            usp_confidence=usp_confidence,             # Sprint 2
         )
         return profile, profile.is_ready_for_analysis()
     except (json.JSONDecodeError, TypeError):
@@ -391,6 +400,29 @@ async def run_social_listening(session: Session) -> str:
     return result
 
 
+async def run_usp_definition(session: Session) -> str:
+    """Sprint 2: Conditional USP skill — chỉ chạy khi cần.
+
+    Skip nếu usp_confidence == 'clear' (user đã có USP rõ ràng từ intake).
+    Run REFINE mode nếu == 'draft'.
+    Run FIND mode nếu == 'missing' hoặc None (legacy).
+    """
+    confidence = (session.profile.usp_confidence or "").lower()
+    if confidence == "clear":
+        # Skip — user đã có USP rõ. Lưu placeholder + dùng profile.usp trong Synthesis.
+        skipped_msg = (
+            "## USP — Skipped (đã có từ intake)\n\n"
+            f"USP user đã định nghĩa: \"{session.profile.usp or 'N/A'}\"\n\n"
+            "Synthesis sẽ dùng USP này trực tiếp, không cần Max tìm/refine."
+        )
+        session.add_result("usp_definition", skipped_msg)
+        return skipped_msg
+
+    result = await _run_skill(UspDefinitionSkill(), session)
+    session.add_result("usp_definition", result)
+    return result
+
+
 async def run_strategy_synthesis(session: Session) -> str:
     result = await _run_skill(StrategySynthesisSkill(), session)
     session.add_result("synthesis", result)
@@ -454,6 +486,8 @@ PIPELINE_SEQUENCE = [
     (PipelineStage.COMPETITOR, run_competitor_analysis, "competitor"),
     (PipelineStage.CUSTOMER_INSIGHT, run_customer_insight, "customer_insight"),
     (PipelineStage.PSYCHOLOGY_PRICING, run_psychology_and_pricing, "psychology_pricing"),
+    # Sprint 2 — USP Definition (conditional, skip if usp_confidence='clear')
+    (PipelineStage.USP_DEFINITION, run_usp_definition, "usp_definition"),
     # Social Listening tạm tắt — chờ web search VN coverage tốt hơn
     # (PipelineStage.SOCIAL_LISTENING, run_social_listening, "social_listening"),
     (PipelineStage.SYNTHESIS, run_strategy_synthesis, "synthesis"),
