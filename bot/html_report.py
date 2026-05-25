@@ -19,6 +19,9 @@ STAGE_META = {
     "customer_insight":   {"title": "Customer Insight & ICP",      "icon": "👥", "color": "customer"},
     "psychology_pricing": {"title": "Marketing Psychology & Pricing", "icon": "💡", "color": "pricing"},
     "social_listening":   {"title": "Social Listening System",     "icon": "📡", "color": "market"},
+    "usp_definition":     {"title": "USP Definition",                "icon": "🎯", "color": "strategy"},
+    "retention_strategy": {"title": "Retention Strategy",            "icon": "🔄", "color": "customer"},
+    "winback_campaign":   {"title": "Winback Vision",                "icon": "🔁", "color": "customer"},
     "synthesis":          {"title": "Marketing Strategy",          "icon": "🚀", "color": "strategy"},
     # Strategic single-shot task aliases (Phase 3 — task names used in handler dispatch)
     "market":             {"title": "Nghiên cứu Thị trường",       "icon": "📊", "color": "market"},

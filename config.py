@@ -33,6 +33,12 @@ CLAUDE_MODEL        = CLAUDE_SONNET_MODEL  # backward-compat alias
 AGENT_TIMEOUT  = 900  # 15 phút — buffer cho stage nặng (synthesis sau Sprint 2-3 mở rộng pipeline)
 MAX_HISTORY_TURNS = 20
 
+# Sprint 8 — Multi-Agent Orchestrator feature flag.
+# True (default): task=full chạy qua Multi-Agent Orchestrator (parallel tier execution)
+# False: fallback xuống run_targeted_pipeline cũ (sequential)
+# Set qua env var để rollback nhanh: USE_MULTI_AGENT=false
+USE_MULTI_AGENT_PIPELINE = os.getenv("USE_MULTI_AGENT", "true").lower() in ("true", "1", "yes")
+
 INDUSTRIES = [
     "fnb", "tech_saas", "ecommerce", "education",
     "health_beauty", "retail", "b2b_service", "real_estate",

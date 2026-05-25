@@ -12,7 +12,7 @@ from telegram.constants import ParseMode, ChatAction
 
 from storage import get_session, save_session, reset_session
 from storage.models import PipelineStage
-from agents.pipeline import run_intake, run_targeted_pipeline, run_operational_skill
+from agents.pipeline import run_intake, run_targeted_pipeline, run_operational_skill, run_multi_agent_targeted
 from agents.prompts import INTAKE_CONFIRM_TEMPLATE, PROGRESS_MESSAGES, TASK_OPENING_QUESTIONS
 from agents.task_registry import TASK_REGISTRY, OPERATIONAL_TASKS, STRATEGIC_TASKS, get_task, needs_intake
 from frameworks.kpi_library import KPI_LIBRARY
@@ -2455,7 +2455,18 @@ async def _run_pipeline_sequentially(message: Message, session):
     async def progress_cb(msg: str):
         await message.reply_text(msg, parse_mode=ParseMode.MARKDOWN)
 
-    async for stage_key, result in run_targeted_pipeline(session, progress_callback=progress_cb):
+    # Sprint 8.5 — dispatch: task=full + flag on → Multi-Agent Orchestrator,
+    # các task khác → existing single-skill path (backward compat)
+    from config import USE_MULTI_AGENT_PIPELINE
+    if task == "full" and USE_MULTI_AGENT_PIPELINE:
+        pipeline_runner = run_multi_agent_targeted
+        logger.info("Using Multi-Agent Orchestrator (Sprint 8) for task=full")
+    else:
+        pipeline_runner = run_targeted_pipeline
+        if task == "full":
+            logger.info("Multi-Agent disabled (USE_MULTI_AGENT=false) — using legacy path")
+
+    async for stage_key, result in pipeline_runner(session, progress_callback=progress_cb):
         stage_count += 1
         is_last = stage_count == total_stages
 

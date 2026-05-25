@@ -620,3 +620,85 @@ async def run_targeted_pipeline(
             yield stage_key, f"⚠️ Lỗi ở bước {stage_key}: {str(e)[:200]}"
 
     session.stage = PipelineStage.COMPLETE
+
+
+# ─────────────────────────────────────────────────────────────────
+# Sprint 8.5 — Multi-Agent Pipeline Adapter
+# ─────────────────────────────────────────────────────────────────
+
+# Mapping agent_name → stage_keys cho HTML report rendering
+# Chain agents (T3) produces nhiều stage results trong session.results
+_AGENT_TO_STAGE_KEYS: dict[str, list[str]] = {
+    "market_research_agent":         ["market_research"],
+    "competitor_agent":              ["competitor"],
+    "customer_insight_agent":        ["customer_insight"],
+    "usp_definition_agent":          ["usp_definition"],
+    "psychology_pricing_agent":      ["psychology_pricing"],
+    "retention_then_winback_chain":  ["retention_strategy", "winback_campaign"],
+    "synthesizer_agent":             ["synthesis"],
+}
+
+
+async def run_multi_agent_targeted(
+    session: Session,
+    progress_callback=None,
+) -> AsyncGenerator[tuple[str, str], None]:
+    """Multi-Agent Pipeline adapter — matches handler's streaming interface.
+
+    Wraps run_multi_agent_pipeline (returns dict) thành async generator
+    yielding (stage_key, output) per stage. Streams sau MỖI TIER complete,
+    không phải mỗi agent (vì agents trong tier chạy parallel, order không
+    deterministic).
+
+    Used khi USE_MULTI_AGENT_PIPELINE=True và task=full.
+    Single skill tasks (market/competitor/.../strategy) vẫn dùng
+    run_targeted_pipeline (existing path).
+    """
+    from agents.orchestrator import (
+        get_strategic_pipeline_tiers,
+        run_tier,
+        PipelineAbortError,
+    )
+
+    tiers = get_strategic_pipeline_tiers()
+    session.stage = PipelineStage.MARKET_RESEARCH  # Mark pipeline started
+
+    for tier_idx, tier in enumerate(tiers, start=1):
+        if progress_callback:
+            await progress_callback(
+                f"📍 *Tier {tier_idx}/{len(tiers)}: {tier.name}*"
+            )
+
+        try:
+            tier_results = await run_tier(tier, session, progress_callback)
+        except PipelineAbortError as e:
+            logger.error(f"Multi-agent pipeline aborted at {tier.name}: {e}")
+            # Yield error stage để handler hiển thị
+            yield "pipeline_abort", f"⚠️ Pipeline dừng tại {tier.name}: {e}"
+            session.stage = PipelineStage.COMPLETE
+            return
+
+        # Yield results theo declared agent order (preserve UI consistency)
+        for agent in tier.agents:
+            agent_name = agent.__name__
+            result = tier_results.get(agent_name)
+            if not result:
+                continue
+
+            stage_keys = _AGENT_TO_STAGE_KEYS.get(agent_name, [agent_name])
+            for stage_key in stage_keys:
+                if not result.success:
+                    yield stage_key, f"⚠️ Bước {stage_key} fail: {result.error or 'unknown'}"
+                    continue
+
+                # Chain agents save individual results vào session.results
+                if len(stage_keys) > 1:
+                    output = session.get_latest_result(stage_key) or ""
+                    if not output:
+                        # Fallback — chain output có thể chứa cả 2 substages
+                        output = result.output
+                else:
+                    output = result.output
+                yield stage_key, output
+
+    session.stage = PipelineStage.COMPLETE
