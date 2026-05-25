@@ -196,46 +196,102 @@ async def _call_anthropic_haiku(
     }
 
 
+# Lazy import google-genai — chỉ load khi cần
+_gemini_client = None
+
+
+def _get_gemini_client():
+    """Lazy initialize Gemini client (singleton)."""
+    global _gemini_client
+    if _gemini_client is not None:
+        return _gemini_client
+    api_key = os.getenv("GEMINI_API_KEY", "")
+    if not api_key:
+        raise ProviderUnavailable("GEMINI_API_KEY env var không có")
+    try:
+        from google import genai
+        _gemini_client = genai.Client(api_key=api_key)
+        return _gemini_client
+    except ImportError as e:
+        raise ProviderUnavailable(
+            f"google-genai chưa cài. Run: pip install google-genai. Error: {e}"
+        )
+
+
 async def _call_gemini_pro(
     system: str, user: str, max_tokens: int = 10000, **kwargs
 ) -> dict:
-    """Call Gemini 2.5 Pro. STUB — wire khi có GEMINI_API_KEY (S8.7).
+    """Call Gemini 2.5 Pro — long context champion (1M window).
 
-    Sau khi wire:
-    ```python
-    from google import genai
-    client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
-    response = await client.aio.models.generate_content(
-        model="gemini-2.5-pro",
-        contents=[{"role": "user", "parts": [{"text": user}]}],
-        config=types.GenerateContentConfig(
-            system_instruction=system,
-            max_output_tokens=max_tokens,
-            temperature=0.7,
-            thinking_config=types.ThinkingConfig(thinking_budget=8000),
+    Wired ở Sprint 8.7 (post-CEO API key provided).
+
+    Config:
+    - temperature=0.7: balance creative + consistent
+    - thinking_budget=8000: enable Gemini thinking mode cho deep reasoning
+    - max_output_tokens: configurable per call (default 10K cho synthesis)
+    """
+    client = _get_gemini_client()
+    from google.genai import types
+
+    config = types.GenerateContentConfig(
+        system_instruction=system,
+        max_output_tokens=max_tokens,
+        temperature=0.7,
+        top_p=0.95,
+        thinking_config=types.ThinkingConfig(
+            thinking_budget=8000,  # Deep reasoning budget — Pro auto thinks
         ),
     )
-    return {"output": response.text, ...}
-    ```
-    """
-    if not os.getenv("GEMINI_API_KEY"):
-        raise ProviderUnavailable(
-            "Gemini 2.5 Pro chưa setup — thiếu GEMINI_API_KEY env var"
-        )
-    # TODO S8.7: actual implementation when API key available
-    raise NotImplementedError(
-        "Gemini Pro integration deferred to S8.7. "
-        "Use Anthropic Sonnet fallback for now."
+
+    # Gemini async client
+    response = await client.aio.models.generate_content(
+        model="gemini-2.5-pro",
+        contents=user,
+        config=config,
     )
+
+    # Extract token usage
+    usage = getattr(response, "usage_metadata", None)
+    tokens_in = getattr(usage, "prompt_token_count", 0) if usage else 0
+    tokens_out = getattr(usage, "candidates_token_count", 0) if usage else 0
+
+    return {
+        "output": response.text,
+        "tokens_in": tokens_in,
+        "tokens_out": tokens_out,
+        "provider": Provider.GEMINI_PRO.value,
+    }
 
 
 async def _call_gemini_flash(
     system: str, user: str, max_tokens: int = 10000, **kwargs
 ) -> dict:
-    """Call Gemini 2.5 Flash — cheap fallback for Pro. STUB."""
-    if not os.getenv("GEMINI_API_KEY"):
-        raise ProviderUnavailable("Gemini Flash chưa setup")
-    raise NotImplementedError("Gemini Flash deferred to S8.7")
+    """Call Gemini 2.5 Flash — cheap fallback cho Pro (10x rẻ hơn)."""
+    client = _get_gemini_client()
+    from google.genai import types
+
+    config = types.GenerateContentConfig(
+        system_instruction=system,
+        max_output_tokens=max_tokens,
+        temperature=0.7,
+    )
+
+    response = await client.aio.models.generate_content(
+        model="gemini-2.5-flash",
+        contents=user,
+        config=config,
+    )
+
+    usage = getattr(response, "usage_metadata", None)
+    tokens_in = getattr(usage, "prompt_token_count", 0) if usage else 0
+    tokens_out = getattr(usage, "candidates_token_count", 0) if usage else 0
+
+    return {
+        "output": response.text,
+        "tokens_in": tokens_in,
+        "tokens_out": tokens_out,
+        "provider": Provider.GEMINI_FLASH.value,
+    }
 
 
 async def _call_openai_gpt4o(

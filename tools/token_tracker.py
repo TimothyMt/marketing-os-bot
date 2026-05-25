@@ -59,6 +59,35 @@ def track_usage(session, response, label: str = "") -> int:
     return total
 
 
+def track_usage_raw(session, input_tokens: int, output_tokens: int, label: str = "") -> int:
+    """Track tokens manually — cho providers KHÔNG phải Anthropic (Gemini, OpenAI...).
+
+    Khác track_usage: không parse response object, accept raw int.
+    Cùng cumulative counter trong session.preferences['token_used'].
+    """
+    if session is None:
+        return 0
+
+    total = max(0, int(input_tokens)) + max(0, int(output_tokens))
+    if total <= 0:
+        return 0
+
+    prefs = session.preferences or {}
+    try:
+        current = int(str(prefs.get("token_used", "0")).replace(",", "").replace(".", ""))
+    except (ValueError, TypeError):
+        current = 0
+    new_total = current + total
+    prefs["token_used"] = str(new_total)
+    session.preferences = prefs
+
+    logger.info(
+        "[token-raw] user=%s call=%s in=%d out=%d total=%d cumulative=%d",
+        session.user_id, label, input_tokens, output_tokens, total, new_total,
+    )
+    return total
+
+
 def get_quota(session) -> int:
     """Lấy quota của user (mặc định 1M)."""
     prefs = session.preferences or {}

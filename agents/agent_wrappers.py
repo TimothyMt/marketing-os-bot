@@ -199,15 +199,120 @@ async def synthesizer_agent(session: Session) -> str:
 
     Tier 4 — aggregate all T1-T3 outputs thành Marketing Strategy hoàn chỉnh.
 
-    S8.3 sẽ route: PRIMARY=Gemini 2.5 Pro (1M context, $1.25/$10),
-    POLISH=Haiku 4.5 (VN tone), FALLBACK=Sonnet.
+    Pattern: Gemini 2.5 Pro (long context primary) → Haiku polish (VN tone).
+    Failover chain (trong llm_router): Gemini Pro → Gemini Flash → Anthropic Sonnet.
 
-    S8.2 hiện chỉ wrap existing Sonnet path — Gemini integration ở S8.3.
+    Khi GEMINI_API_KEY chưa setup hoặc credit hết, failover xuống Sonnet —
+    pipeline KHÔNG fail, chỉ chậm hơn + cost cao hơn.
     """
     from agents.pipeline import _run_skill
-    result = await _run_skill(StrategySynthesisSkill(), session)
-    session.add_result("synthesis", result)
-    return result
+    from tools.llm_router import call as router_call, TaskType, AllProvidersFailedError
+    from agents.output_formats import get_format_instruction, get_lang_instruction
+
+    skill = StrategySynthesisSkill()
+
+    # Build context + user_msg (same logic as _run_skill, but route output qua router)
+    context = skill.build_context(session)
+    user_msg = skill.build_user_msg(session)
+
+    format_instruction = get_format_instruction(skill.output_format)
+    en_level = (session.preferences or {}).get("en_level", "moderate")
+    lang_instruction = get_lang_instruction(en_level)
+
+    user_name = ((session.preferences or {}).get("user_name", "") or "").strip()
+    name_directive = (
+        f"\n\n---\n\n**Tên user:** {user_name}. Khi xưng hô gọi 'sếp {user_name}'."
+    ) if user_name else ""
+
+    augmented_system = (
+        skill.system_prompt + format_instruction + "\n\n---\n\n"
+        + lang_instruction + name_directive
+    )
+    full_user = f"{context}\n\n---\n\n{user_msg}"
+
+    # Step 1: Primary call — Gemini Pro (auto failover trong router)
+    try:
+        result = await router_call(
+            task_type=TaskType.SYNTHESIS_LONG_CONTEXT,
+            system=augmented_system,
+            user=full_user,
+            max_tokens=skill.max_tokens,
+        )
+        raw_output = result["output"]
+        provider = result.get("provider", "unknown")
+        logger.info(
+            f"Synthesizer: provider={provider} "
+            f"in={result.get('tokens_in')} out={result.get('tokens_out')} "
+            f"latency={result.get('latency_sec', 0):.1f}s"
+        )
+
+        # Track tokens vào session (cho /settings hiển thị)
+        try:
+            from tools.token_tracker import track_usage_raw
+            track_usage_raw(
+                session,
+                input_tokens=result.get("tokens_in", 0),
+                output_tokens=result.get("tokens_out", 0),
+                label=f"synthesis_{provider}",
+            )
+        except (ImportError, AttributeError):
+            pass  # token_tracker không support raw — skip
+
+    except AllProvidersFailedError as e:
+        logger.error(f"Synthesizer: all providers failed, fallback _run_skill: {e}")
+        # Last-resort: use legacy _run_skill path (calls Anthropic directly với retry SDK)
+        raw_output = await _run_skill(skill, session)
+        session.add_result("synthesis", raw_output)
+        return raw_output
+
+    # Step 2: Haiku polish VN tone — chỉ khi Gemini đã trả output
+    # (nếu Sonnet đã chạy ở fallback path thì skip polish — Sonnet VN tone đã tốt)
+    if provider in ("gemini_pro", "gemini_flash"):
+        try:
+            polished = await _haiku_polish_vn(raw_output, session)
+            session.add_result("synthesis", polished)
+            return polished
+        except Exception as e:
+            logger.warning(f"Haiku polish failed, returning raw Gemini output: {e}")
+            session.add_result("synthesis", raw_output)
+            return raw_output
+
+    # Sonnet/Haiku path — no polish needed
+    session.add_result("synthesis", raw_output)
+    return raw_output
+
+
+HAIKU_POLISH_SYSTEM = """Bạn là VN Editor — chuyên viên Việt hoá tone marketing.
+
+Nhiệm vụ: Đọc output Marketing Strategy đã có sẵn, POLISH lại tone VN cho:
+- Giọng "em-sếp" tự nhiên (KHÔNG dùng "mình/bạn/anh/chị")
+- Việt hoá thuật ngữ EN không cần thiết (vd: "implement" → "triển khai")
+- Câu cú flow hơn, bớt cứng nhắc
+- GIỮ NGUYÊN: structure (sections, numbers, KPI, frameworks), số liệu, USP
+
+QUY TẮC:
+- KHÔNG đổi nội dung — chỉ polish tone
+- KHÔNG xoá section, KHÔNG đổi số liệu
+- KHÔNG thêm preamble như "Đây là bản polished..." — output trực tiếp"""
+
+
+async def _haiku_polish_vn(raw_text: str, session: Session) -> str:
+    """Polish step — Haiku 4.5 nhẹ refine VN tone.
+
+    Input ~10K tokens, output ~10K. Latency ~15-25s, cost ~$0.05.
+    """
+    from tools.llm_router import call as router_call, TaskType
+    result = await router_call(
+        task_type=TaskType.CRITIC_REVIEW,  # Route → Haiku primary
+        system=HAIKU_POLISH_SYSTEM,
+        user=f"Polish VN tone cho text sau:\n\n{raw_text}",
+        max_tokens=12000,  # Buffer cho output ngang input
+    )
+    logger.info(
+        f"Synthesizer polish: provider={result.get('provider')} "
+        f"latency={result.get('latency_sec', 0):.1f}s"
+    )
+    return result["output"]
 
 
 # ─────────────────────────────────────────────────────────────────
