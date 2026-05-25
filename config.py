@@ -28,6 +28,12 @@ CLAUDE_SONNET_MODEL = "claude-sonnet-4-6"
 CLAUDE_HAIKU_MODEL  = "claude-haiku-4-5"
 CLAUDE_MODEL        = CLAUDE_SONNET_MODEL  # backward-compat alias
 
+# OpenAI models (S8.8 — Phase 1b multi-provider router)
+GPT5_MODEL          = "gpt-5"           # Flagship — competitor + USP + psychology fallback
+GPT5_MINI_MODEL     = "gpt-5-mini"      # Sweet spot — retention/winback/intake primary
+GPT5_NANO_MODEL     = "gpt-5-nano"      # Cheap — bulk classify
+GPT_4_1_MINI_MODEL  = "gpt-4.1-mini"    # Long context fallback (1M ctx)
+
 # Pipeline timeouts (Sprint hotfix: synthesis với 8-stage pipeline cần buffer lớn hơn)
 # Synthesis context ~70K input + 10K output có thể tốn 180-300s + retry → 540s+ wall time
 AGENT_TIMEOUT  = 900  # 15 phút — buffer cho stage nặng (synthesis sau Sprint 2-3 mở rộng pipeline)

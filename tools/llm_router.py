@@ -43,8 +43,12 @@ class Provider(str, Enum):
     GEMINI_PRO           = "gemini_pro"            # gemini-2.5-pro (1M context)
     GEMINI_PRO_GROUNDED  = "gemini_pro_grounded"   # gemini-2.5-pro + Google Search (replace Perplexity)
     GEMINI_FLASH         = "gemini_flash"          # gemini-2.5-flash (cheap)
-    OPENAI_GPT4O         = "openai_gpt4o"          # gpt-4o (structured)
-    OPENAI_GPT4O_MINI    = "openai_gpt4o_mini"     # gpt-4o-mini (bulk cheap)
+    OPENAI_GPT5          = "openai_gpt5"           # gpt-5 (flagship structured + reasoning)
+    OPENAI_GPT5_MINI     = "openai_gpt5_mini"      # gpt-5-mini (sweet spot quality+cost)
+    OPENAI_GPT5_NANO     = "openai_gpt5_nano"      # gpt-5-nano (bulk cheap)
+    OPENAI_GPT_4_1_MINI  = "openai_gpt_4_1_mini"   # gpt-4.1-mini (1M ctx fallback)
+    OPENAI_GPT4O         = "openai_gpt4o"          # legacy gpt-4o (deprecated by GPT-5)
+    OPENAI_GPT4O_MINI    = "openai_gpt4o_mini"     # legacy gpt-4o-mini
     PERPLEXITY_SONAR     = "perplexity_sonar"      # DEPRECATED — replaced bởi GEMINI_PRO_GROUNDED
 
 
@@ -86,41 +90,47 @@ class TaskType(str, Enum):
 # ─────────────────────────────────────────────────────────────────
 
 ROUTING_TABLE: dict[TaskType, list[Provider]] = {
-    # Research stages — Gemini Pro Grounded primary (Google Search built-in)
-    # Replaced Perplexity (VN coverage kém + extra vendor) sau CEO eval.
+    # ─── Strategic pipeline — CEO-locked chains (Phase 1b) ────────────
+    # Research — Gemini Grounded for citations (Google Search built-in)
     TaskType.MARKET_RESEARCH_DATA:       [Provider.GEMINI_PRO_GROUNDED, Provider.GEMINI_PRO, Provider.ANTHROPIC_SONNET],
-    TaskType.MARKET_RESEARCH_NARRATIVE:  [Provider.ANTHROPIC_HAIKU, Provider.OPENAI_GPT4O_MINI],
+    TaskType.MARKET_RESEARCH_NARRATIVE:  [Provider.ANTHROPIC_HAIKU, Provider.OPENAI_GPT5_MINI],
     TaskType.COMPETITOR_RESEARCH:        [Provider.GEMINI_PRO_GROUNDED, Provider.GEMINI_PRO, Provider.ANTHROPIC_SONNET],
-    TaskType.COMPETITOR_MATRIX:          [Provider.OPENAI_GPT4O, Provider.ANTHROPIC_SONNET],
 
-    # Creative VN — Anthropic Sonnet primary
-    TaskType.CUSTOMER_INSIGHT:           [Provider.ANTHROPIC_SONNET, Provider.GEMINI_PRO],
-    TaskType.PSYCHOLOGY:                 [Provider.ANTHROPIC_SONNET, Provider.OPENAI_GPT4O],
-    TaskType.USP_CREATIVE:               [Provider.ANTHROPIC_SONNET, Provider.GEMINI_PRO],
-    TaskType.CONTENT_HERO:               [Provider.ANTHROPIC_SONNET],
+    # Structured matrix — GPT-5 primary (em mạnh nhất cho tables)
+    TaskType.COMPETITOR_MATRIX:          [Provider.OPENAI_GPT5, Provider.ANTHROPIC_SONNET, Provider.OPENAI_GPT5_MINI],
 
-    # Structured/Math — OpenAI primary
-    TaskType.PRICING_MATH:               [Provider.OPENAI_GPT4O, Provider.ANTHROPIC_SONNET],
-    TaskType.RETENTION_MATRIX:           [Provider.OPENAI_GPT4O, Provider.ANTHROPIC_SONNET],
-    TaskType.WINBACK_STRATEGY:           [Provider.OPENAI_GPT4O, Provider.ANTHROPIC_SONNET],
-    TaskType.CONTENT_TABLE:              [Provider.OPENAI_GPT4O, Provider.ANTHROPIC_SONNET],
+    # VN-critical creative — Sonnet primary, GPT-5 fallback (diff provider)
+    TaskType.CUSTOMER_INSIGHT:           [Provider.ANTHROPIC_SONNET, Provider.OPENAI_GPT5, Provider.GEMINI_PRO],
+    TaskType.PSYCHOLOGY:                 [Provider.ANTHROPIC_SONNET, Provider.OPENAI_GPT5, Provider.OPENAI_GPT5_MINI],
+    TaskType.USP_CREATIVE:               [Provider.ANTHROPIC_SONNET, Provider.OPENAI_GPT5, Provider.OPENAI_GPT5_MINI],
+    TaskType.CONTENT_HERO:               [Provider.ANTHROPIC_SONNET, Provider.OPENAI_GPT5_MINI],
 
-    # Long context aggregation — Gemini Pro primary (1M context champion)
-    TaskType.SYNTHESIS_LONG_CONTEXT:     [Provider.GEMINI_PRO, Provider.GEMINI_FLASH, Provider.ANTHROPIC_SONNET],
+    # Math/structured — GPT-5 mini sweet spot
+    TaskType.PRICING_MATH:               [Provider.OPENAI_GPT5, Provider.ANTHROPIC_SONNET, Provider.OPENAI_GPT5_MINI],
+    TaskType.RETENTION_MATRIX:           [Provider.OPENAI_GPT5_MINI, Provider.ANTHROPIC_SONNET, Provider.OPENAI_GPT_4_1_MINI],
+    TaskType.WINBACK_STRATEGY:           [Provider.OPENAI_GPT5_MINI, Provider.ANTHROPIC_SONNET, Provider.GEMINI_FLASH],
+    TaskType.CONTENT_TABLE:              [Provider.OPENAI_GPT5_MINI, Provider.ANTHROPIC_SONNET, Provider.OPENAI_GPT_4_1_MINI],
 
-    # Cheap/fast tasks — Haiku or mini
-    TaskType.INTAKE_JSON:                [Provider.ANTHROPIC_HAIKU, Provider.OPENAI_GPT4O_MINI],
-    TaskType.CRITIC_REVIEW:              [Provider.ANTHROPIC_HAIKU, Provider.OPENAI_GPT4O_MINI],
-    TaskType.CONTENT_BULK:               [Provider.OPENAI_GPT4O, Provider.ANTHROPIC_SONNET],
-    TaskType.CHANNEL_ADAPT:              [Provider.OPENAI_GPT4O_MINI, Provider.ANTHROPIC_HAIKU],
-    TaskType.CLASSIFICATION:             [Provider.OPENAI_GPT4O_MINI, Provider.GEMINI_FLASH, Provider.ANTHROPIC_HAIKU],
+    # Synthesis — Gemini Pro 1M ctx primary (CEO-locked: avoid Sonnet rate-limit)
+    TaskType.SYNTHESIS_LONG_CONTEXT:     [Provider.GEMINI_PRO, Provider.OPENAI_GPT5_MINI, Provider.ANTHROPIC_SONNET],
 
-    # Vision (Anthropic vision strong)
-    TaskType.VISION_ANALYSIS:            [Provider.ANTHROPIC_SONNET, Provider.OPENAI_GPT4O],
+    # Intake — GPT-5 mini primary (CEO-locked: reduce Sonnet load)
+    TaskType.INTAKE_JSON:                [Provider.OPENAI_GPT5_MINI, Provider.ANTHROPIC_HAIKU, Provider.ANTHROPIC_SONNET],
+
+    # Polish/critic — Haiku primary, GPT-5 mini fallback (avoid Sonnet for polish)
+    TaskType.CRITIC_REVIEW:              [Provider.ANTHROPIC_HAIKU, Provider.OPENAI_GPT5_MINI, Provider.OPENAI_GPT5],
+
+    # Bulk content — GPT-5 mini cheap & fast
+    TaskType.CONTENT_BULK:               [Provider.OPENAI_GPT5_MINI, Provider.ANTHROPIC_SONNET, Provider.GEMINI_FLASH],
+    TaskType.CHANNEL_ADAPT:              [Provider.OPENAI_GPT5_MINI, Provider.ANTHROPIC_HAIKU, Provider.GEMINI_FLASH],
+    TaskType.CLASSIFICATION:             [Provider.OPENAI_GPT5_NANO, Provider.GEMINI_FLASH, Provider.ANTHROPIC_HAIKU],
+
+    # Vision — Anthropic vision strong
+    TaskType.VISION_ANALYSIS:            [Provider.ANTHROPIC_SONNET, Provider.OPENAI_GPT5],
 
     # Generic fallbacks
-    TaskType.GENERIC_CREATIVE:           [Provider.ANTHROPIC_SONNET, Provider.GEMINI_PRO],
-    TaskType.GENERIC_STRUCTURED:         [Provider.OPENAI_GPT4O, Provider.ANTHROPIC_SONNET],
+    TaskType.GENERIC_CREATIVE:           [Provider.ANTHROPIC_SONNET, Provider.OPENAI_GPT5, Provider.GEMINI_PRO],
+    TaskType.GENERIC_STRUCTURED:         [Provider.OPENAI_GPT5_MINI, Provider.ANTHROPIC_SONNET, Provider.OPENAI_GPT_4_1_MINI],
 }
 
 
@@ -457,22 +467,116 @@ async def _call_gemini_flash(
     }
 
 
-async def _call_openai_gpt4o(
-    system: str, user: str, max_tokens: int = 4000, json_schema: Optional[dict] = None, **kwargs
+# OpenAI client singleton (lazy init, AsyncOpenAI)
+_openai_client = None
+
+
+def _get_openai_client():
+    global _openai_client
+    if _openai_client is not None:
+        return _openai_client
+    api_key = os.getenv("OPENAI_API_KEY", "")
+    if not api_key:
+        raise ProviderUnavailable("OPENAI_API_KEY env var không có")
+    try:
+        from openai import AsyncOpenAI
+        _openai_client = AsyncOpenAI(api_key=api_key, timeout=180.0, max_retries=1)
+        return _openai_client
+    except ImportError as e:
+        raise ProviderUnavailable(f"openai SDK chưa cài: {e}")
+
+
+async def _call_openai_generic(model: str, system: str, user: str, max_tokens: int, provider_enum: "Provider") -> dict:
+    """Shared OpenAI Chat Completions caller — dùng cho mọi GPT model.
+
+    GPT-5 series là reasoning models — tokens chia giữa reasoning + output.
+    Auto-pick reasoning_effort theo max_tokens để tránh output bị cắt.
+    """
+    client = _get_openai_client()
+    is_gpt5_reasoning = model.startswith("gpt-5")
+
+    request_args = {
+        "model": model,
+        "messages": [
+            {"role": "system", "content": system},
+            {"role": "user", "content": user},
+        ],
+        "max_completion_tokens": max_tokens,
+    }
+
+    if is_gpt5_reasoning:
+        # Auto-pick reasoning effort: lower max_tokens → minimal reasoning để giữ output
+        # max < 500: minimal (no reasoning)
+        # max 500-3000: low
+        # max 3000-10000: medium (default)
+        # max > 10000: medium (chuyển high khi cần)
+        if max_tokens < 500:
+            request_args["reasoning_effort"] = "minimal"
+        elif max_tokens < 3000:
+            request_args["reasoning_effort"] = "low"
+        # else: omit → OpenAI default = medium
+
+    response = await client.chat.completions.create(**request_args)
+    choice = response.choices[0]
+    output = (choice.message.content or "").strip()
+    if not output:
+        raise RuntimeError(
+            f"OpenAI {model} returned empty output (finish_reason={choice.finish_reason}, "
+            f"max_tokens={max_tokens}). GPT-5 reasoning models cần max_tokens lớn hơn (~500+)."
+        )
+    usage = response.usage
+    return {
+        "output": output,
+        "tokens_in": getattr(usage, "prompt_tokens", 0) if usage else 0,
+        "tokens_out": getattr(usage, "completion_tokens", 0) if usage else 0,
+        "provider": provider_enum.value,
+    }
+
+
+async def _call_openai_gpt5(
+    system: str, user: str, max_tokens: int = 4000, **kwargs
 ) -> dict:
-    """Call OpenAI GPT-4o. STUB — wire khi có OPENAI_API_KEY."""
-    if not os.getenv("OPENAI_API_KEY"):
-        raise ProviderUnavailable("OpenAI chưa setup")
-    raise NotImplementedError("OpenAI GPT-4o deferred (post-S8)")
+    """Call OpenAI GPT-5 — flagship structured + reasoning."""
+    from config import GPT5_MODEL
+    return await _call_openai_generic(GPT5_MODEL, system, user, max_tokens, Provider.OPENAI_GPT5)
+
+
+async def _call_openai_gpt5_mini(
+    system: str, user: str, max_tokens: int = 4000, **kwargs
+) -> dict:
+    """Call OpenAI GPT-5 mini — sweet spot quality+cost."""
+    from config import GPT5_MINI_MODEL
+    return await _call_openai_generic(GPT5_MINI_MODEL, system, user, max_tokens, Provider.OPENAI_GPT5_MINI)
+
+
+async def _call_openai_gpt5_nano(
+    system: str, user: str, max_tokens: int = 2048, **kwargs
+) -> dict:
+    """Call OpenAI GPT-5 nano — bulk cheap."""
+    from config import GPT5_NANO_MODEL
+    return await _call_openai_generic(GPT5_NANO_MODEL, system, user, max_tokens, Provider.OPENAI_GPT5_NANO)
+
+
+async def _call_openai_gpt_4_1_mini(
+    system: str, user: str, max_tokens: int = 4000, **kwargs
+) -> dict:
+    """Call OpenAI GPT-4.1 mini — 1M context fallback."""
+    from config import GPT_4_1_MINI_MODEL
+    return await _call_openai_generic(GPT_4_1_MINI_MODEL, system, user, max_tokens, Provider.OPENAI_GPT_4_1_MINI)
+
+
+async def _call_openai_gpt4o(
+    system: str, user: str, max_tokens: int = 4000, **kwargs
+) -> dict:
+    """Call OpenAI GPT-4o (legacy)."""
+    return await _call_openai_generic("gpt-4o", system, user, max_tokens, Provider.OPENAI_GPT4O)
 
 
 async def _call_openai_gpt4o_mini(
     system: str, user: str, max_tokens: int = 2048, **kwargs
 ) -> dict:
-    """Call OpenAI GPT-4o-mini — bulk cheap. STUB."""
-    if not os.getenv("OPENAI_API_KEY"):
-        raise ProviderUnavailable("OpenAI chưa setup")
-    raise NotImplementedError("OpenAI GPT-4o-mini deferred")
+    """Call OpenAI GPT-4o mini (legacy)."""
+    return await _call_openai_generic("gpt-4o-mini", system, user, max_tokens, Provider.OPENAI_GPT4O_MINI)
 
 
 async def _call_perplexity_sonar(
@@ -491,6 +595,10 @@ PROVIDER_CALLERS = {
     Provider.GEMINI_PRO:          _call_gemini_pro,
     Provider.GEMINI_PRO_GROUNDED: _call_gemini_pro_grounded,
     Provider.GEMINI_FLASH:        _call_gemini_flash,
+    Provider.OPENAI_GPT5:         _call_openai_gpt5,
+    Provider.OPENAI_GPT5_MINI:    _call_openai_gpt5_mini,
+    Provider.OPENAI_GPT5_NANO:    _call_openai_gpt5_nano,
+    Provider.OPENAI_GPT_4_1_MINI: _call_openai_gpt_4_1_mini,
     Provider.OPENAI_GPT4O:        _call_openai_gpt4o,
     Provider.OPENAI_GPT4O_MINI:   _call_openai_gpt4o_mini,
     Provider.PERPLEXITY_SONAR:    _call_perplexity_sonar,
@@ -588,7 +696,14 @@ def is_provider_available(provider: Provider) -> bool:
         return bool(ANTHROPIC_API_KEY)
     if provider in (Provider.GEMINI_PRO, Provider.GEMINI_PRO_GROUNDED, Provider.GEMINI_FLASH):
         return bool(os.getenv("GEMINI_API_KEY"))
-    if provider in (Provider.OPENAI_GPT4O, Provider.OPENAI_GPT4O_MINI):
+    if provider in (
+        Provider.OPENAI_GPT5,
+        Provider.OPENAI_GPT5_MINI,
+        Provider.OPENAI_GPT5_NANO,
+        Provider.OPENAI_GPT_4_1_MINI,
+        Provider.OPENAI_GPT4O,
+        Provider.OPENAI_GPT4O_MINI,
+    ):
         return bool(os.getenv("OPENAI_API_KEY"))
     if provider == Provider.PERPLEXITY_SONAR:
         return bool(os.getenv("PERPLEXITY_API_KEY"))
