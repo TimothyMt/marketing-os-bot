@@ -146,27 +146,31 @@ async def run_tier(
         )
 
     # Log summary
-    successful = sum(1 for r in results.values() if r.success)
-    failed_nice = [
-        name for name in tier.nice_to_have
-        if name in results and not results[name].success
-    ]
-    if failed_nice:
+    successful_agents = [n for n, r in results.items() if r.success]
+    failed_agents = [n for n, r in results.items() if not r.success]
+    successful = len(successful_agents)
+
+    if failed_agents:
         logger.warning(
-            f"Tier {tier.name}: nice_to_have agents failed (pipeline continues): {failed_nice}"
+            f"Tier {tier.name}: failed agents = {failed_agents} "
+            f"(critical={[a for a in failed_agents if a in tier.must_have]})"
         )
 
     logger.info(
         f"Tier {tier.name}: {successful}/{len(tasks)} agents succeeded "
-        f"in {tier_duration:.1f}s"
+        f"in {tier_duration:.1f}s "
+        f"(avg latency: {sum(r.latency_sec for r in results.values())/len(results):.1f}s)"
     )
 
     if progress_callback:
         status_emoji = "✅" if successful == len(tasks) else "⚠️"
-        await progress_callback(
-            f"{status_emoji} {tier.name}: {successful}/{len(tasks)} agents thành công "
-            f"({tier_duration:.1f}s)"
+        msg = (
+            f"{status_emoji} {tier.name}: {successful}/{len(tasks)} agents "
+            f"thành công ({tier_duration:.1f}s)"
         )
+        if failed_agents:
+            msg += f"\n  Failed: {', '.join(failed_agents)}"
+        await progress_callback(msg)
 
     return results
 
@@ -364,12 +368,57 @@ async def run_multi_agent_pipeline(
     )
 
     if progress_callback:
-        await progress_callback(
-            f"🎉 Pipeline hoàn thành: {successful}/{len(all_results)} agents "
-            f"thành công trong {overall_duration/60:.1f} phút"
-        )
+        summary = format_pipeline_summary(all_results, overall_duration)
+        await progress_callback(summary)
 
     return all_results
+
+
+def format_pipeline_summary(
+    results: dict[str, AgentResult],
+    total_duration_sec: float,
+) -> str:
+    """Format pipeline-level summary cho user display.
+
+    Output Telegram-friendly Markdown với:
+    - Total duration
+    - Per-agent status + latency + provider
+    - Aggregate token cost (if tracked)
+    """
+    if not results:
+        return "ℹ️ Pipeline kết thúc — không có agent nào chạy."
+
+    successful = [r for r in results.values() if r.success]
+    failed = [r for r in results.values() if not r.success]
+
+    lines = [
+        f"🎉 *Pipeline hoàn thành* — {total_duration_sec/60:.1f} phút",
+        "",
+        f"✅ Thành công: {len(successful)}/{len(results)} agents",
+    ]
+
+    if failed:
+        lines.append(f"⚠️ Failed: {len(failed)}")
+        for r in failed:
+            error_short = (r.error or "unknown")[:80]
+            lines.append(f"  • `{r.agent_name}` — {error_short}")
+
+    # Latency breakdown (top 3 slowest)
+    sorted_by_latency = sorted(results.values(), key=lambda r: -r.latency_sec)
+    lines.append("")
+    lines.append("⏱ *Latency breakdown (top 3 slowest):*")
+    for r in sorted_by_latency[:3]:
+        status = "✓" if r.success else "✗"
+        lines.append(f"  {status} {r.agent_name}: {r.latency_sec:.1f}s ({r.provider_used})")
+
+    # Token aggregation (if any)
+    total_in = sum(r.tokens_in for r in results.values())
+    total_out = sum(r.tokens_out for r in results.values())
+    if total_in or total_out:
+        lines.append("")
+        lines.append(f"📊 Tokens: input={total_in:,} | output={total_out:,}")
+
+    return "\n".join(lines)
 
 
 # ─────────────────────────────────────────────────────────────────
