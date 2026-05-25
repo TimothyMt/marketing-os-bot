@@ -229,10 +229,13 @@ class Session:
 
     # ─── Intake history ───────────────────────────────────────────
 
-    def add_to_history(self, role: str, content: str):
-        self.intake_history.append({"role": role, "content": content})
-        if len(self.intake_history) > 20:
-            self.intake_history = self.intake_history[-20:]
+def add_to_history(self, role: str, content: str):
+    if not content or not content.strip():
+        return  # ← bỏ qua nếu content rỗng
+    self.intake_history.append({"role": role, "content": content})
+    if len(self.intake_history) > 20:
+        self.intake_history = self.intake_history[-20:]
+
 
     # ─── Results helpers ──────────────────────────────────────────
 
