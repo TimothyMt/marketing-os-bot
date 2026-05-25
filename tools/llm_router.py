@@ -38,13 +38,14 @@ logger = logging.getLogger(__name__)
 
 class Provider(str, Enum):
     """Available LLM providers. Order matters: primary first, fallbacks after."""
-    ANTHROPIC_SONNET   = "anthropic_sonnet"      # claude-sonnet-4-6
-    ANTHROPIC_HAIKU    = "anthropic_haiku"       # claude-haiku-4-5
-    GEMINI_PRO         = "gemini_pro"            # gemini-2.5-pro (1M context)
-    GEMINI_FLASH       = "gemini_flash"          # gemini-2.5-flash (cheap)
-    OPENAI_GPT4O       = "openai_gpt4o"          # gpt-4o (structured)
-    OPENAI_GPT4O_MINI  = "openai_gpt4o_mini"     # gpt-4o-mini (bulk cheap)
-    PERPLEXITY_SONAR   = "perplexity_sonar"      # research + citations
+    ANTHROPIC_SONNET     = "anthropic_sonnet"      # claude-sonnet-4-6
+    ANTHROPIC_HAIKU      = "anthropic_haiku"       # claude-haiku-4-5
+    GEMINI_PRO           = "gemini_pro"            # gemini-2.5-pro (1M context)
+    GEMINI_PRO_GROUNDED  = "gemini_pro_grounded"   # gemini-2.5-pro + Google Search (replace Perplexity)
+    GEMINI_FLASH         = "gemini_flash"          # gemini-2.5-flash (cheap)
+    OPENAI_GPT4O         = "openai_gpt4o"          # gpt-4o (structured)
+    OPENAI_GPT4O_MINI    = "openai_gpt4o_mini"     # gpt-4o-mini (bulk cheap)
+    PERPLEXITY_SONAR     = "perplexity_sonar"      # DEPRECATED — replaced bởi GEMINI_PRO_GROUNDED
 
 
 # ─────────────────────────────────────────────────────────────────
@@ -85,10 +86,11 @@ class TaskType(str, Enum):
 # ─────────────────────────────────────────────────────────────────
 
 ROUTING_TABLE: dict[TaskType, list[Provider]] = {
-    # Research stages — Perplexity primary (real-time + citations)
-    TaskType.MARKET_RESEARCH_DATA:       [Provider.PERPLEXITY_SONAR, Provider.GEMINI_PRO, Provider.ANTHROPIC_SONNET],
+    # Research stages — Gemini Pro Grounded primary (Google Search built-in)
+    # Replaced Perplexity (VN coverage kém + extra vendor) sau CEO eval.
+    TaskType.MARKET_RESEARCH_DATA:       [Provider.GEMINI_PRO_GROUNDED, Provider.GEMINI_PRO, Provider.ANTHROPIC_SONNET],
     TaskType.MARKET_RESEARCH_NARRATIVE:  [Provider.ANTHROPIC_HAIKU, Provider.OPENAI_GPT4O_MINI],
-    TaskType.COMPETITOR_RESEARCH:        [Provider.PERPLEXITY_SONAR, Provider.GEMINI_PRO, Provider.ANTHROPIC_SONNET],
+    TaskType.COMPETITOR_RESEARCH:        [Provider.GEMINI_PRO_GROUNDED, Provider.GEMINI_PRO, Provider.ANTHROPIC_SONNET],
     TaskType.COMPETITOR_MATRIX:          [Provider.OPENAI_GPT4O, Provider.ANTHROPIC_SONNET],
 
     # Creative VN — Anthropic Sonnet primary
@@ -218,6 +220,24 @@ def _get_gemini_client():
         )
 
 
+def _calc_thinking_budget(max_tokens: int) -> int:
+    """Smart thinking budget — tránh ăn hết max_tokens.
+
+    Gemini 2.5 Pro counts thinking tokens vào max_output_tokens.
+    Nếu thinking_budget >= max_tokens → output empty (no room left).
+
+    Rule:
+    - max_tokens < 1500: thinking=0 (no thinking — short response)
+    - max_tokens 1500-5000: thinking = 30% (mild reasoning)
+    - max_tokens > 5000: thinking = min(8000, 40%) — deep reasoning for synthesis
+    """
+    if max_tokens < 1500:
+        return 0
+    if max_tokens < 5000:
+        return int(max_tokens * 0.3)
+    return min(8000, int(max_tokens * 0.4))
+
+
 async def _call_gemini_pro(
     system: str, user: str, max_tokens: int = 10000, **kwargs
 ) -> dict:
@@ -227,28 +247,54 @@ async def _call_gemini_pro(
 
     Config:
     - temperature=0.7: balance creative + consistent
-    - thinking_budget=8000: enable Gemini thinking mode cho deep reasoning
+    - thinking_budget: AUTO-calculated theo max_tokens (tránh ăn hết budget)
     - max_output_tokens: configurable per call (default 10K cho synthesis)
     """
     client = _get_gemini_client()
     from google.genai import types
 
-    config = types.GenerateContentConfig(
+    thinking_budget = _calc_thinking_budget(max_tokens)
+
+    config_kwargs = dict(
         system_instruction=system,
         max_output_tokens=max_tokens,
         temperature=0.7,
         top_p=0.95,
-        thinking_config=types.ThinkingConfig(
-            thinking_budget=8000,  # Deep reasoning budget — Pro auto thinks
-        ),
     )
+    if thinking_budget > 0:
+        config_kwargs["thinking_config"] = types.ThinkingConfig(
+            thinking_budget=thinking_budget,
+        )
 
-    # Gemini async client
+    config = types.GenerateContentConfig(**config_kwargs)
+
     response = await client.aio.models.generate_content(
         model="gemini-2.5-pro",
         contents=user,
         config=config,
     )
+
+    # Extract output — handle None safely (Gemini có thể return text=None
+    # khi hit safety filter hoặc max_tokens chỉ đủ cho thinking)
+    output_text = response.text or ""
+    if not output_text:
+        # Try fallback: extract từ candidates parts
+        try:
+            candidates = response.candidates or []
+            if candidates and candidates[0].content and candidates[0].content.parts:
+                output_text = "".join(
+                    p.text or "" for p in candidates[0].content.parts if hasattr(p, "text")
+                )
+        except (AttributeError, IndexError):
+            pass
+
+        if not output_text:
+            finish_reason = getattr(response.candidates[0], "finish_reason", "unknown") if response.candidates else "no_candidates"
+            raise RuntimeError(
+                f"Gemini Pro empty output (finish_reason={finish_reason}, "
+                f"thinking_budget={thinking_budget}, max_tokens={max_tokens}). "
+                "Có thể safety block, hoặc max_tokens không đủ cho output."
+            )
 
     # Extract token usage
     usage = getattr(response, "usage_metadata", None)
@@ -256,17 +302,109 @@ async def _call_gemini_pro(
     tokens_out = getattr(usage, "candidates_token_count", 0) if usage else 0
 
     return {
-        "output": response.text,
-        "tokens_in": tokens_in,
-        "tokens_out": tokens_out,
+        "output": output_text,
+        "tokens_in": tokens_in or 0,
+        "tokens_out": tokens_out or 0,
         "provider": Provider.GEMINI_PRO.value,
+    }
+
+
+async def _call_gemini_pro_grounded(
+    system: str, user: str, max_tokens: int = 6000, **kwargs
+) -> dict:
+    """Call Gemini 2.5 Pro VỚI Google Search Grounding — replace Perplexity.
+
+    Thêm tool google_search() → Gemini tự search Google trước khi answer.
+    Output includes inline citations với real URLs.
+
+    Phù hợp cho:
+    - Market Research (TAM/SAM/SOM real-time data)
+    - Competitor Research (recent competitor moves)
+    - Bất kỳ task nào cần fresh data + citations
+
+    Cost: same as Gemini Pro ($1.25/$10) — Search Grounding FREE bundled.
+    """
+    client = _get_gemini_client()
+    from google.genai import types
+
+    thinking_budget = _calc_thinking_budget(max_tokens)
+
+    config_kwargs = dict(
+        system_instruction=system,
+        max_output_tokens=max_tokens,
+        temperature=0.7,
+        top_p=0.95,
+        # KEY: enable Google Search tool
+        tools=[types.Tool(google_search=types.GoogleSearch())],
+    )
+    if thinking_budget > 0:
+        config_kwargs["thinking_config"] = types.ThinkingConfig(
+            thinking_budget=thinking_budget,
+        )
+
+    config = types.GenerateContentConfig(**config_kwargs)
+
+    response = await client.aio.models.generate_content(
+        model="gemini-2.5-pro",
+        contents=user,
+        config=config,
+    )
+
+    # Extract output (same handling as non-grounded version)
+    output_text = response.text or ""
+    if not output_text:
+        try:
+            candidates = response.candidates or []
+            if candidates and candidates[0].content and candidates[0].content.parts:
+                output_text = "".join(
+                    p.text or "" for p in candidates[0].content.parts if hasattr(p, "text")
+                )
+        except (AttributeError, IndexError):
+            pass
+        if not output_text:
+            raise RuntimeError("Gemini Pro Grounded returned empty output")
+
+    # Extract citations từ grounding_metadata (nếu có)
+    citations_text = ""
+    try:
+        candidate = response.candidates[0] if response.candidates else None
+        grounding_meta = getattr(candidate, "grounding_metadata", None) if candidate else None
+        if grounding_meta:
+            chunks = getattr(grounding_meta, "grounding_chunks", []) or []
+            if chunks:
+                citations = []
+                for i, chunk in enumerate(chunks[:10], 1):  # cap 10 sources
+                    web = getattr(chunk, "web", None)
+                    if web:
+                        title = getattr(web, "title", "") or "Source"
+                        uri = getattr(web, "uri", "") or ""
+                        citations.append(f"[{i}] {title}: {uri}")
+                if citations:
+                    citations_text = "\n\n---\n\n**Nguồn tham khảo (Google Search):**\n" + "\n".join(citations)
+    except (AttributeError, IndexError):
+        pass
+
+    final_output = output_text + citations_text
+
+    usage = getattr(response, "usage_metadata", None)
+    tokens_in = getattr(usage, "prompt_token_count", 0) if usage else 0
+    tokens_out = getattr(usage, "candidates_token_count", 0) if usage else 0
+
+    return {
+        "output": final_output,
+        "tokens_in": tokens_in or 0,
+        "tokens_out": tokens_out or 0,
+        "provider": Provider.GEMINI_PRO_GROUNDED.value,
     }
 
 
 async def _call_gemini_flash(
     system: str, user: str, max_tokens: int = 10000, **kwargs
 ) -> dict:
-    """Call Gemini 2.5 Flash — cheap fallback cho Pro (10x rẻ hơn)."""
+    """Call Gemini 2.5 Flash — cheap fallback cho Pro (10x rẻ hơn).
+
+    Flash KHÔNG có thinking mode mặc định nên không cần config thinking_budget.
+    """
     client = _get_gemini_client()
     from google.genai import types
 
@@ -282,14 +420,27 @@ async def _call_gemini_flash(
         config=config,
     )
 
+    output_text = response.text or ""
+    if not output_text:
+        try:
+            candidates = response.candidates or []
+            if candidates and candidates[0].content and candidates[0].content.parts:
+                output_text = "".join(
+                    p.text or "" for p in candidates[0].content.parts if hasattr(p, "text")
+                )
+        except (AttributeError, IndexError):
+            pass
+        if not output_text:
+            raise RuntimeError("Gemini Flash returned empty output")
+
     usage = getattr(response, "usage_metadata", None)
     tokens_in = getattr(usage, "prompt_token_count", 0) if usage else 0
     tokens_out = getattr(usage, "candidates_token_count", 0) if usage else 0
 
     return {
-        "output": response.text,
-        "tokens_in": tokens_in,
-        "tokens_out": tokens_out,
+        "output": output_text,
+        "tokens_in": tokens_in or 0,
+        "tokens_out": tokens_out or 0,
         "provider": Provider.GEMINI_FLASH.value,
     }
 
@@ -323,13 +474,14 @@ async def _call_perplexity_sonar(
 
 # Provider → call function mapping
 PROVIDER_CALLERS = {
-    Provider.ANTHROPIC_SONNET:   _call_anthropic_sonnet,
-    Provider.ANTHROPIC_HAIKU:    _call_anthropic_haiku,
-    Provider.GEMINI_PRO:         _call_gemini_pro,
-    Provider.GEMINI_FLASH:       _call_gemini_flash,
-    Provider.OPENAI_GPT4O:       _call_openai_gpt4o,
-    Provider.OPENAI_GPT4O_MINI:  _call_openai_gpt4o_mini,
-    Provider.PERPLEXITY_SONAR:   _call_perplexity_sonar,
+    Provider.ANTHROPIC_SONNET:    _call_anthropic_sonnet,
+    Provider.ANTHROPIC_HAIKU:     _call_anthropic_haiku,
+    Provider.GEMINI_PRO:          _call_gemini_pro,
+    Provider.GEMINI_PRO_GROUNDED: _call_gemini_pro_grounded,
+    Provider.GEMINI_FLASH:        _call_gemini_flash,
+    Provider.OPENAI_GPT4O:        _call_openai_gpt4o,
+    Provider.OPENAI_GPT4O_MINI:   _call_openai_gpt4o_mini,
+    Provider.PERPLEXITY_SONAR:    _call_perplexity_sonar,
 }
 
 
@@ -422,7 +574,7 @@ def is_provider_available(provider: Provider) -> bool:
     """Check provider khả dụng (API key setup)."""
     if provider in (Provider.ANTHROPIC_SONNET, Provider.ANTHROPIC_HAIKU):
         return bool(ANTHROPIC_API_KEY)
-    if provider in (Provider.GEMINI_PRO, Provider.GEMINI_FLASH):
+    if provider in (Provider.GEMINI_PRO, Provider.GEMINI_PRO_GROUNDED, Provider.GEMINI_FLASH):
         return bool(os.getenv("GEMINI_API_KEY"))
     if provider in (Provider.OPENAI_GPT4O, Provider.OPENAI_GPT4O_MINI):
         return bool(os.getenv("OPENAI_API_KEY"))
