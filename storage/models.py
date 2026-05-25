@@ -37,6 +37,9 @@ class PipelineStage(str, Enum):
     COMPETITOR = "competitor"
     CUSTOMER_INSIGHT = "customer_insight"
     PSYCHOLOGY_PRICING = "psychology_pricing"
+    USP_DEFINITION = "usp_definition"          # Sprint 2 — NEW
+    RETENTION_STRATEGY = "retention_strategy"  # Sprint 3 — NEW (Full Pipeline integration)
+    WINBACK_VISION = "winback_vision"          # Sprint 3 — NEW
     SOCIAL_LISTENING = "social_listening"
     SYNTHESIS = "synthesis"
     COMPLETE = "complete"
@@ -58,6 +61,16 @@ class BusinessProfile:
     main_challenge: Optional[str] = None
     competitors: Optional[str] = None
     location: Optional[str] = None
+
+    # Sprint 2 — USP layer
+    # usp: 1 câu USP user đã có (nếu confidence='clear') hoặc draft (nếu 'draft')
+    # usp_confidence: "clear" | "draft" | "missing" | None (chưa hỏi)
+    #   - clear   = user khẳng định đã có USP rõ ràng → skip USP definition skill
+    #   - draft   = user có ý tưởng nhưng chưa rõ → USP skill REFINE
+    #   - missing = user chưa có → USP skill FIND từ market+competitor+customer
+    #   - None    = intake chưa hỏi (legacy users hoặc skip)
+    usp: Optional[str] = None
+    usp_confidence: Optional[str] = None
 
     def is_ready_for_analysis(self) -> bool:
         """Legacy global check — kept for backward compat.
@@ -102,6 +115,16 @@ class BusinessProfile:
         for key, val in fields.items():
             if val:
                 lines.append(f"- **{key}**: {val}")
+        # USP block — chỉ render nếu user đã trả lời intake
+        if self.usp_confidence:
+            usp_line = f"- **USP**: {self.usp}" if self.usp else "- **USP**: (chưa định nghĩa rõ ràng)"
+            confidence_label = {
+                "clear":   "đã có USP rõ ràng",
+                "draft":   "có ý tưởng USP nhưng cần refine",
+                "missing": "chưa có USP — cần Max tìm",
+            }.get(self.usp_confidence, self.usp_confidence)
+            lines.append(usp_line)
+            lines.append(f"- **USP confidence**: {confidence_label}")
         return "\n".join(lines)
 
 
@@ -165,6 +188,41 @@ class Session:
     # When user opts to "Chạy A→Z, rồi quay lại task này", store the original task here.
     # After pipeline completes, bot auto-launches this skill.
     pending_followup_skill: Optional[str] = None
+
+    # Sprint 6 — Tone calibration state cho Content Writing loop.
+    # Schema khi đang chạy loop:
+    #   {
+    #     "campaign_id": "...",
+    #     "stage": "waiting_first" | "checking_tone" | "locked" | "generating_rest" | "done",
+    #     "rejection_count": 0,
+    #     "current_attempt": {...},        # current draft of post 1 (full content dict)
+    #     "locked_signals": {...},          # populated after user OK — inject vào prompt N-1
+    #     "calendar_remaining": [...],      # N-1 posts to gen sau khi lock
+    #     "sample_content": str | None,     # PA1 fallback nếu rejection >= 3
+    #   }
+    tone_calibration: dict = field(default_factory=dict)
+
+    # Sprint 7 — Content outputs với mã ID `POST-XXX`.
+    # Schema: {
+    #   "POST-001": {
+    #     "campaign_id": "...",
+    #     "week": 1, "day": "Mon",
+    #     "channel": "facebook",
+    #     "pillar": "Educate", "funnel": "TOFU",
+    #     "content": {hook, body, cta, hashtags, visual_brief},
+    #     "adapted_versions": ["POST-001-TT", "POST-001-ZALO"],
+    #     "status": "draft" | "approved" | "posted",
+    #     "created_at": "ISO timestamp",
+    #     "updated_at": "ISO timestamp",
+    #   },
+    #   "POST-001-TT": {
+    #     "parent_id": "POST-001",
+    #     "channel": "tiktok",
+    #     "content": {...},
+    #     ...
+    #   },
+    # }
+    content_outputs: dict = field(default_factory=dict)
 
     created_at: Optional[str] = None
     updated_at: Optional[str] = None

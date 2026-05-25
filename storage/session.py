@@ -72,6 +72,9 @@ def _row_to_session(row: dict) -> Session:
     preferences = raw_results.pop("_preferences", {}) or {}
     feedback = raw_results.pop("_feedback", {}) or {}
     pending_followup_skill = raw_results.pop("_pending_followup_skill", None) or None
+    # Sprint 1 — NEW meta fields
+    tone_calibration = raw_results.pop("_tone_calibration", {}) or {}
+    content_outputs = raw_results.pop("_content_outputs", {}) or {}
     raw_results.pop("_brand_candidates", None)  # backward-compat: drop old field
 
     results = _normalize_results(raw_results)
@@ -87,6 +90,8 @@ def _row_to_session(row: dict) -> Session:
         preferences=preferences if isinstance(preferences, dict) else {},
         feedback=feedback if isinstance(feedback, dict) else {},
         pending_followup_skill=pending_followup_skill,
+        tone_calibration=tone_calibration if isinstance(tone_calibration, dict) else {},
+        content_outputs=content_outputs if isinstance(content_outputs, dict) else {},
         created_at=str(row.get("created_at") or ""),
         updated_at=str(row.get("updated_at") or ""),
     )
@@ -130,6 +135,11 @@ async def save_session(session: Session):
         results_serialized["_feedback"] = session.feedback
     if session.pending_followup_skill:
         results_serialized["_pending_followup_skill"] = session.pending_followup_skill
+    # Sprint 1 — persist tone_calibration + content_outputs
+    if session.tone_calibration:
+        results_serialized["_tone_calibration"] = session.tone_calibration
+    if session.content_outputs:
+        results_serialized["_content_outputs"] = session.content_outputs
 
     payload = {
         "user_id":          session.user_id,
