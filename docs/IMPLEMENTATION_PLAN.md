@@ -563,14 +563,204 @@ Sprint 1 (Foundation DB)
 - ✅ Implemented Sprint 1 (Foundation DB)
 - ✅ Implemented Sprint 2 (USP layer)
 - ✅ Implemented Sprint 3 (Retention/Winback Strategic integration)
+- ✅ Hotfix synthesis timeout + HTML resilience
+- ✅ **Designed Sprint 8 — Multi-Agent Orchestrator (foundation)**
 
-**Future session (Senior dev pickup):**
-- ⏳ Sprint 4 — Campaign Brief 2.0 (largest, ~1.5 tuần)
-- ⏳ Sprint 5 — Brand Voice DB (parallel với S4)
-- ⏳ Sprint 6 — Tone Calibration Loop
-- ⏳ Sprint 7 — Mã ID + Per-post Actions
+**🔄 Priority change (CEO direction):**
+> **Sprint 4-7 DEFERRED.** Build Sprint 8 trước vì là **foundation cho cả hệ thống**.
+> Sau khi có Multi-Agent Orchestrator → Sprint 4-7 sẽ leverage parallel execution
+> + LLM router → effort giảm 30-40% mỗi sprint sau.
 
-**Entry points cho session sau:**
-1. Đọc plan này từ `docs/IMPLEMENTATION_PLAN.md`
-2. Check Sprint 1-3 đã merge vào `content-gen-suite`
-3. Pick Sprint 4 (Brief 2.0) — file template sẵn ở `docs/sprint4_brief_v2_template.md` (em sẽ tạo nếu có thời gian session này)
+**Updated execution order:**
+1. ✅ S1-S3 done
+2. ✅ Hotfix done
+3. 🔜 **Sprint 8 — Multi-Agent Orchestrator (NEW PRIORITY)**
+4. ⏳ Sprint 4 — Campaign Brief 2.0 (build on top of orchestrator)
+5. ⏳ Sprint 5 — Brand Voice DB
+6. ⏳ Sprint 6 — Content Writing Tone Calibration (sử dụng parallel gen từ S8)
+7. ⏳ Sprint 7 — Mã ID + Per-post Actions
+
+---
+
+## 7. Sprint 8 Design — Multi-Agent Orchestrator (FOUNDATION)
+
+### 7.1 Why Sprint 8 first?
+
+3 lý do bắt buộc làm trước S4-7:
+
+1. **Giải timeout bug production ngay:** Latency từ 12-15 phút → 4-5 phút. Synthesis không còn bị skip vì context bloat.
+
+2. **Foundation cho LLM Router multi-provider:** Mỗi agent có thể swap provider riêng (Perplexity cho research, GPT-4o cho structured, Gemini cho long context, Sonnet cho creative VN). S8 build infrastructure, các sprint sau swap được dễ dàng.
+
+3. **Sprint 6 (Tone Calibration) cần parallel gen 7-14 bài:** Pattern parallel agent đã có sẵn = không phải code lại.
+
+### 7.2 Architecture — Inspired by Antigravity Multi-Agent
+
+```
+┌──────────────────────────────────────────────────────────────┐
+│                  🎼 ORCHESTRATOR                              │
+│             (light Sonnet — director only)                    │
+│  Decides tier sequence, handles progress callbacks            │
+└─────────────────────────────────┬────────────────────────────┘
+                                  │
+   TIER 1 — Foundation (3 agents parallel, no deps)            │
+        ├─ 🌍 Anna (Market Research)        [primary: Sonnet]  │
+        ├─ 🕵️ Bình (Competitor)             [primary: Sonnet]  │
+        └─ 👥 Chi  (Customer Insight)        [primary: Sonnet]  │
+        Wait: asyncio.gather → max latency ~80s                 │
+                                  ↓                              │
+   TIER 2 — Strategy synthesis (2 agents parallel after T1)    │
+        ├─ 🎯 Linh (USP Definition)         [primary: Sonnet]  │
+        └─ 🧠 David (Psychology+Pricing)    [primary: Sonnet]  │
+        Wait: max latency ~80s                                  │
+                                  ↓                              │
+   TIER 3 — Customer journey (sequential — Winback needs Ret)  │
+        ├─ 🔄 Minh (Retention) → 🔁 Phương (Winback)           │
+        Wait: ~160s sequential                                   │
+                                  ↓                              │
+   TIER 4 — Final aggregation                                   │
+        └─ 📋 Tâm (Synthesizer)              [Sonnet + cache]  │
+        Wait: ~90s                                              │
+                                                                 │
+   TOTAL: ~80 + 80 + 160 + 90 = ~7 phút (vs current 12-15p)    │
+└──────────────────────────────────────────────────────────────┘
+```
+
+### 7.3 Files map
+
+**Create:**
+- `agents/orchestrator.py` (~300 lines)
+  - `TierConfig` dataclass
+  - `AgentResult` dataclass
+  - `run_tier()` — parallel agents within tier with fault isolation
+  - `run_multi_agent_pipeline()` — top-level entry, tier-by-tier
+  - `STRATEGIC_PIPELINE_TIERS` — 4-tier definition
+- `agents/agent_wrappers.py` (~200 lines)
+  - Wrap existing `AgentSkill` classes as async agent functions
+  - Each wrapper handles: timeout, error capture, result formatting
+- `tools/llm_router.py` (~150 lines — initial stub)
+  - `Provider` enum (anthropic_sonnet, anthropic_haiku, openai_gpt4o, perplexity_sonar, gemini_pro)
+  - `TaskType` enum (mapping mỗi agent → task type)
+  - `ROUTING_TABLE` — primary + fallback chain per task
+  - `call()` — single entry point (initial: chỉ wrap Anthropic, sẵn extend)
+
+**Modify:**
+- `agents/pipeline.py` — add `run_multi_agent_pipeline()` as ALTERNATIVE entry point
+  - Keep `run_targeted_pipeline()` cũ — backward compat, dùng cho single skill
+  - Mới `run_multi_agent_pipeline()` — dùng cho `task=full` (multi-agent path)
+- `bot/handlers.py` — `_run_pipeline_sequentially()` dispatch:
+  - `task=full` → `run_multi_agent_pipeline()` (new path)
+  - Single task → `run_targeted_pipeline()` (existing path)
+- `bot/handlers.py` — `TASK_STAGE_COUNT` add tier metadata
+- `config.py` — feature flag `USE_MULTI_AGENT = True` (toggle để rollback nhanh nếu cần)
+
+**Optional (nice-to-have S8):**
+- `agents/digital_twin_personas.py` — light upgrade existing prompts với role name + personality
+- `bot/keyboards.py` — progress indicator có tier name (vd: "Tier 2/4: Strategy synthesis...")
+
+### 7.4 Sub-sprints (S8.1 → S8.7)
+
+| Sub | Việc | Effort | Definition of Done |
+|---|---|---|---|
+| **S8.1** | Core orchestrator skeleton (TierConfig, AgentResult, run_tier) | 4h | Unit test: tier runs N agents parallel, fault isolation pass |
+| **S8.2** | Agent wrappers — wrap 8 existing AgentSkill classes | 4h | Each wrapped agent returns AgentResult; smoke test all 8 |
+| **S8.3** | LLM Router stub — single provider, prepare interface | 3h | call() works with anthropic; ROUTING_TABLE defined |
+| **S8.4** | STRATEGIC_PIPELINE_TIERS definition (4 tier) | 2h | Tier dependencies validated; dry-run shows correct order |
+| **S8.5** | Wire vào pipeline.py + handlers (feature flag) | 4h | `task=full` chạy multi-agent path, single task chạy old path |
+| **S8.6** | Fault isolation + progress callbacks | 3h | 1 agent fail → others continue; user thấy "Tier 1: 2/3 OK" |
+| **S8.7** | Smoke test + E2E test | 4h | Full pipeline 4 tier chạy thành công với mock profile |
+
+**Total effort:** ~24 hours = 3 ngày dev senior.
+
+### 7.5 Backward compatibility — additive, không destructive
+
+```python
+# Feature flag in config.py
+USE_MULTI_AGENT_PIPELINE = os.getenv("USE_MULTI_AGENT", "true").lower() == "true"
+
+# In handlers.py
+if session.selected_task == "full" and USE_MULTI_AGENT_PIPELINE:
+    # NEW path
+    from agents.orchestrator import run_multi_agent_pipeline
+    pipeline_runner = run_multi_agent_pipeline
+else:
+    # OLD path (single skill OR feature flag off)
+    pipeline_runner = run_targeted_pipeline
+
+async for stage_key, result in pipeline_runner(session, ...):
+    ...
+```
+
+Rollback strategy: set env var `USE_MULTI_AGENT=false` → instant revert.
+
+### 7.6 Test plan
+
+**Unit tests:**
+- `run_tier()` với 3 mock agents — verify parallel execution + result aggregation
+- Fault isolation: 1 agent raise exception → tier vẫn return, other agents OK
+- Critical agent fail → PipelineAbortError
+
+**Integration tests:**
+- Mock session với full profile → orchestrator chạy 4 tier → verify order: T1 trước T2 trước T3 trước T4
+- Latency benchmark: parallel vs sequential — expect 40-60% reduction
+
+**E2E test (manual):**
+- Real user flow trên Telegram bot
+- Compare output Sprint 1-3 sequential vs Sprint 8 multi-agent
+- Quality scoring qua Haiku critic — expect <5% quality drop
+
+### 7.7 Risk register
+
+| Risk | Likelihood | Impact | Mitigation |
+|---|---|---|---|
+| Rate limit hit khi 3 agent parallel cùng lúc | Medium | High | Semaphore cap 3 concurrent + exponential backoff |
+| Context sharing giữa tiers — agent T2 cần T1 output | High | Medium | Session.results lưu sau mỗi tier xong → T2 đọc qua session.build_pipeline_context() |
+| Synthesis vẫn context bloat (cần T1-T3 outputs) | Medium | High | Gemini Pro long context OR Anthropic prompt caching |
+| User confused khi 3 progress message cùng lúc | Low | Low | UI hiển thị 1 dòng "Tier 1: đang chạy 3 agent..." |
+
+### 7.8 What Sprint 8 enables (downstream impact)
+
+**Sprint 4 (Brief 2.0):**
+- Brief 2.0 conversation 8 turn có thể dùng multiple agents (mỗi turn 1 mini-agent với scope library, decision rules, vv.)
+- Final aggregation reuse orchestrator pattern
+
+**Sprint 6 (Tone Calibration):**
+- Gen N-1 bài còn lại = N-1 agents parallel
+- Reuse `run_tier()` pattern → effort giảm 50%
+
+**Sprint 7 (Mã ID):**
+- Edit/Adapt/Variant flows có thể parallel khi user paste nhiều mã ID cùng lúc
+
+**Long-term:**
+- Multi-provider migration (Phase P3-P5) chỉ cần update `ROUTING_TABLE` dict — không phải rewrite skill code
+- Multi-region Anthropic (direct + Bedrock + Vertex) = thêm provider entries
+
+### 7.9 Definition of Done — Sprint 8
+
+- [ ] `agents/orchestrator.py` working với 4 tier
+- [ ] `agents/agent_wrappers.py` wrap 8 strategic skills
+- [ ] `tools/llm_router.py` stub với ROUTING_TABLE
+- [ ] Feature flag `USE_MULTI_AGENT_PIPELINE` in config
+- [ ] Handler dispatch logic
+- [ ] Unit tests pass (parallel execution, fault isolation)
+- [ ] E2E smoke test: full pipeline complete trong ≤8 phút
+- [ ] Latency benchmark vs Sprint 1-3: ≥40% reduction
+- [ ] Quality drop ≤5% (Haiku critic scoring)
+- [ ] Backward compat verified: single-skill path không thay đổi
+- [ ] Documentation update vào IMPLEMENTATION_PLAN.md
+
+---
+
+## 8. Final Roadmap (Updated)
+
+```
+✅ S1 Foundation DB              (done)
+✅ S2 USP Layer                  (done)
+✅ S3 Retention/Winback Strategic (done)
+✅ Hotfix synthesis timeout       (done)
+🔜 S8 Multi-Agent Orchestrator    (NEXT — foundation)
+⏳ S4 Campaign Brief 2.0         (after S8)
+⏳ S5 Brand Voice DB              (parallel với S4)
+⏳ S6 Tone Calibration Loop       (uses S8 parallel pattern)
+⏳ S7 Mã ID + Per-post Actions    (final)
+```
