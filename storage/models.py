@@ -78,6 +78,29 @@ class BusinessProfile:
         required = [self.industry, self.product_service, self.target_customer]
         return all(f for f in required)
 
+    def is_intake_complete(self) -> bool:
+        """Stricter check — intake bị "exit early" bug khi user trả lời mơ hồ
+        thì LLM extract JSON sớm với chỉ 3 fields. Production cần đủ 8 fields
+        critical để skill chạy có meaningful output.
+
+        Hard rule (Smart Intake v2): 8 fields MUST_HAVE non-null.
+        Field "chưa có" / "chưa rõ" / "0" coi như có value (user đã trả lời).
+        """
+        must_have = [
+            self.industry,
+            self.product_service,
+            self.target_customer,
+            self.location,
+            self.monthly_revenue,
+            self.current_channels,
+            self.primary_goal,
+            self.main_challenge,
+        ]
+        for f in must_have:
+            if not f or (isinstance(f, str) and not f.strip()):
+                return False
+        return True
+
     def is_ready_for(self, task_name: str) -> bool:
         """Per-task readiness check using task_registry intake_required_fields.
         Phase 1.2 — skill-aware intake skip."""

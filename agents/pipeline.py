@@ -289,7 +289,21 @@ def _extract_profile_from_response(text: str) -> tuple[Optional[BusinessProfile]
             usp=data.get("usp"),                       # Sprint 2
             usp_confidence=usp_confidence,             # Sprint 2
         )
-        return profile, profile.is_ready_for_analysis()
+        # Smart Intake v2: HARD rule 8 fields — LLM hay exit early khi gặp
+        # user trả lời ngắn gọn. Return profile (partial OK) nhưng KHÔNG
+        # mark complete cho đến khi đủ 8 must-have fields.
+        is_complete = profile.is_intake_complete()
+        if not is_complete:
+            missing = []
+            for f in ("industry", "product_service", "target_customer", "location",
+                     "monthly_revenue", "current_channels", "primary_goal", "main_challenge"):
+                if not getattr(profile, f, None):
+                    missing.append(f)
+            logger.info(
+                "Intake JSON found but incomplete (missing %d/8 fields): %s",
+                len(missing), missing,
+            )
+        return profile, is_complete
     except (json.JSONDecodeError, TypeError):
         return None, False
 

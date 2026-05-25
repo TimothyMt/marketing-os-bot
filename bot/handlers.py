@@ -602,7 +602,12 @@ async def _handle_intake(update, context, session, text):
             reply_markup=CONFIRM_KEYBOARD,
         )
     else:
-        await _safe_reply(update.message, response, parse_mode=ParseMode.MARKDOWN)
+        # Smart Intake v2: LLM có thể vô tình output JSON sớm dù chưa đủ 8
+        # fields. Strip JSON block để user không thấy block thô trong chat.
+        clean_response = re.sub(r"```json.*?```", "", response, flags=re.DOTALL).strip()
+        if not clean_response:
+            clean_response = "Em note rồi sếp. Cho em hỏi thêm 1 câu nữa nhé..."
+        await _safe_reply(update.message, clean_response, parse_mode=ParseMode.MARKDOWN)
 
 
 # ─── Follow-up Q&A after analysis complete ───────────────────────
