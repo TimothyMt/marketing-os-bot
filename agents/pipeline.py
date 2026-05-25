@@ -191,36 +191,66 @@ LƯU Ý:
 async def run_intake(session: Session, user_message: str) -> tuple[str, bool]:
     """
     Run one turn of the intake conversation.
+
+    Sau Smart Intake update: route qua llm_router (INTAKE_JSON chain).
+    Primary GPT-5 mini → Haiku fallback → Sonnet last resort.
+
     Returns (response_text, is_profile_complete).
     """
     session.add_to_history("user", user_message)
 
     system_prompt = get_intake_system(session.selected_task or "full")
-    # Inject user name nếu có
     user_name = (session.preferences.get("user_name", "") or "").strip()
     if user_name:
         system_prompt = system_prompt + (
             f"\n\n**Tên user:** {user_name}. Khi xưng hô gọi 'sếp {user_name}' "
             f"(vd: 'Em cảm ơn sếp {user_name}'), KHÔNG chỉ gọi 'sếp'."
         )
-    messages = session.intake_history.copy()
 
-    # Intake = classification + JSON extract → dùng Haiku (rẻ, nhanh)
-    response = await client.messages.create(
-        model=CLAUDE_HAIKU_MODEL,
-        max_tokens=1024,
-        system=[{"type": "text", "text": system_prompt, "cache_control": {"type": "ephemeral"}}],
-        messages=messages,
+    # Build user prompt = concatenated history (router không hỗ trợ multi-turn messages
+    # đồng nhất cross-provider — flatten thành single user message).
+    history_text = "\n\n".join(
+        f"**{m['role'].upper()}:** {m['content']}" for m in session.intake_history
     )
 
-    # Token tracking
     try:
-        from tools.token_tracker import track_usage
-        track_usage(session, response, label="intake")
-    except Exception as e:
-        logger.warning("Token tracking failed (intake): %s", e)
+        from tools.llm_router import call as router_call, TaskType, AllProvidersFailedError
+        result = await router_call(
+            task_type=TaskType.INTAKE_JSON,
+            system=system_prompt,
+            user=history_text,
+            max_tokens=2048,  # GPT-5 mini cần buffer cho reasoning
+        )
+        assistant_text = result["output"]
+        provider = result.get("provider", "unknown")
 
-    assistant_text = response.content[0].text
+        # Token tracking (raw — router trả tokens_in/out)
+        try:
+            from tools.token_tracker import track_usage_raw
+            track_usage_raw(
+                session,
+                input_tokens=result.get("tokens_in", 0),
+                output_tokens=result.get("tokens_out", 0),
+                label=f"intake_{provider}",
+            )
+        except Exception as e:
+            logger.warning("Token tracking failed (intake via router): %s", e)
+    except AllProvidersFailedError as e:
+        # Last-resort: legacy Anthropic Haiku path
+        logger.error("Intake all router providers failed, fallback Haiku direct: %s", e)
+        response = await client.messages.create(
+            model=CLAUDE_HAIKU_MODEL,
+            max_tokens=1024,
+            system=[{"type": "text", "text": system_prompt, "cache_control": {"type": "ephemeral"}}],
+            messages=session.intake_history.copy(),
+        )
+        try:
+            from tools.token_tracker import track_usage
+            track_usage(session, response, label="intake")
+        except Exception:
+            pass
+        assistant_text = response.content[0].text
+
     session.add_to_history("assistant", assistant_text)
     profile, is_complete = _extract_profile_from_response(assistant_text)
     if is_complete and profile:

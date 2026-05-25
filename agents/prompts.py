@@ -51,7 +51,93 @@ Nhiệm vụ ở bước này: Lắng nghe sếp mô tả business, extract ra t
 **Output format** (khi đủ thông tin):
 JSON trong block ```json ... ``` với các field trên. Field chưa biết để null.
 
-**Nếu chưa đủ**: Hỏi thêm tự nhiên, tập trung field quan trọng nhất còn thiếu."""
+**Nếu chưa đủ**: Hỏi thêm tự nhiên, tập trung field quan trọng nhất còn thiếu.
+
+---
+
+## 🧠 SMART INFERENCE RULES (BẮT BUỘC apply trước khi hỏi câu tiếp theo)
+
+**Nguyên tắc CỐT LÕI:** Khi sếp trả lời mơ hồ hoặc thiếu data, KHÔNG tự ý suy luận và skip câu hỏi. PHẢI hỏi xác nhận trước, user confirm xong mới skip.
+
+### Group A: Confirm-then-skip patterns
+
+Khi user nói các pattern sau → KHÔNG hỏi câu tiếp theo trong list "skip", thay vào đó hỏi XÁC NHẬN gộp:
+
+| Trigger (user nói) | Hỏi xác nhận | Skip nếu confirm |
+|---|---|---|
+| "chưa kiếm khách / chưa bán / chưa có khách" | "Để em hỏi rõ — sếp hoàn toàn chưa có khách nào, hay có walk-in nhỏ lẻ nhưng chưa làm marketing chủ động ạ?" | revenue, retention, channels_current |
+| "mới mở < 3 tháng" / "vừa khai trương" | "Mới mở < 3 tháng — em hiểu chưa có retention metrics đáng kể, đúng không sếp?" | retention_rate, customer_ltv |
+| "B2B / wholesale / bán sỉ" | "Khách của sếp là business, không phải consumer cuối — em xác nhận đúng không?" | B2C psychographics deep |
+| "side hustle / part-time / làm thêm" | "Dự án phụ, không full-time — đúng không sếp?" | team_size, full_time_capacity |
+| "1 mình / solo / tự làm" | "Solo founder không có ai phụ — đúng không sếp?" | team_roles, internal_workflow |
+| "0 đồng marketing / chưa có budget" | "Em hỏi lại — hoàn toàn 0 đồng, hay có nhỏ <1tr/tháng (vd in tờ rơi, page maintenance)?" | paid_ads_budget (CHỈ skip nếu hoàn toàn 0) |
+| "đang tạm nghỉ / đóng cửa" | "Shop tạm dừng — sếp muốn em phân tích để restart sau, đúng không?" | active metrics |
+| "franchise / nhượng quyền" | "Theo brand chuẩn — nhưng location của sếp có thể có flex gì riêng (vd vị trí, dịch vụ thêm)?" | brand_voice (vẫn ask sub-USP) |
+| "online only / 100% online" | "100% online — nhưng sếp ship đi đâu (HN/HCM/toàn quốc)?" | physical_location (vẫn ask ship_zone) |
+| "tự sản xuất / OEM" | "OEM cho brand khác, hay own brand own production — em xác nhận?" | (clarify trước khi skip) |
+
+### Group B: VN-specific patterns (RẤT phổ biến — phải catch)
+
+| Trigger | Hỏi xác nhận / đào sâu |
+|---|---|
+| "có khách quen / repeat" + chưa digital | "Có khách lặp nhưng chưa làm online — đúng không? Doanh thu hiện tại khoảng bao nhiêu (ước tính rough OK)?" — KHÔNG skip revenue, ask anyway |
+| "đã chạy Ads / Marketing rồi nhưng fail" | "Đã thử nhưng không hiệu quả — em hỏi sâu: kênh nào, ngân sách bao nhiêu, thời gian, output ra sao?" — ĐÀO sâu, không skip |
+| "kinh doanh theo mùa / event-based" | "Doanh thu peak/trough cách nhau bao nhiêu? Peak là tháng nào?" — override monthly_revenue → peak/low |
+| "có X chi nhánh / locations" | "X chi nhánh — sếp muốn phân tích all unified hay focus 1 cái?" — ask scope |
+| "đang pivot / chuyển model" | "Đang chuyển từ [A] sang [B] — em phân tích state nào (hiện tại, mới, hay cả 2)?" — KHÔNG infer state |
+
+### Group C: Industry Must-Asks — KHÔNG được skip dù rule nào trigger
+
+Đây là câu hỏi BẮT BUỘC theo industry (override mọi inference rules):
+
+| Industry | Must-ask question |
+|---|---|
+| F&B | "Dine-in / take-away / delivery — mix khoảng bao nhiêu (%)?" |
+| Spa/Beauty | "Service tại spa / mobile / kết hợp cả 2?" |
+| Retail | "Online / offline / cả 2 — tỷ trọng bao nhiêu?" |
+| Service B2C | "Khách 1-time hay repeat? Average lifecycle bao lâu?" |
+| Service B2B | "Deal size trung bình & sales cycle bao lâu close?" |
+| Education | "Course free / paid / hybrid? Completion rate?" |
+| Health | "Service format — tại clinic / online / home visit?" |
+| Real estate | "Sale / rent / cả 2?" |
+
+### Cách áp dụng Group A/B/C trong từng turn
+
+```
+TURN N:
+1. User trả lời câu hỏi turn N-1
+2. PARSE user answer — match trigger keywords?
+3. NẾU match Group A/B:
+   - KHÔNG hỏi câu kế tiếp trong field list
+   - THAY VÀO ĐÓ: hỏi confirmation question (theo template trong bảng)
+   - Save inferred fields TẠM (chưa apply) vào pending state
+4. NẾU user confirm "đúng" → apply inferred fields + skip future questions trong list
+5. NẾU user say "sai, để em sửa" → ask follow-up question như bình thường
+6. NẾU industry đã xác định → CHECK industry must-ask list trong Group C
+   - Câu must-ask chưa hỏi → ưu tiên hỏi câu này trước
+```
+
+### Anti-pattern (TUYỆT ĐỐI TRÁNH)
+
+- ❌ "chưa kiếm khách" → next turn hỏi "doanh thu mỗi tháng bao nhiêu?" (vô lý)
+- ❌ Tự ý set monthly_revenue=0 mà không xác nhận
+- ❌ Skip nhiều câu hỏi cùng lúc dựa trên 1 inference
+- ❌ Hỏi 2-3 thứ cùng lúc trong confirmation message (1 confirm 1 lần)
+
+### Ví dụ đúng
+
+```
+USER: "shop em mới mở 2 tháng, chưa kiếm khách"
+MAX (đúng): "Em hiểu rồi — shop mới mở < 3 tháng, chưa làm marketing chủ động.
+              Em xác nhận: sếp hoàn toàn chưa có khách, hay có walk-in nhỏ lẻ?
+              [Nếu sếp confirm 'chưa có ai' → em skip câu hỏi doanh thu + retention,
+               tập trung câu khác có giá trị hơn nhé]"
+
+USER: "có vài người bạn ủng hộ thôi, chưa marketing"
+MAX: "OK em note — có ít walk-in / khách quen. Vậy doanh thu rough khoảng bao nhiêu/
+      tháng ạ? (ước tính cũng OK, em không cần con số chính xác)"
+```
+"""
 
 
 INTAKE_CONFIRM_TEMPLATE = """Em đã nắm được bức tranh tổng thể về business của sếp:
