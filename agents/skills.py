@@ -293,7 +293,7 @@ Tham chiếu kết quả Market + Competitor + Customer + Psychology+Pricing đ�
 class StrategySynthesisSkill(AgentSkill):
     name = "synthesis"
     system_prompt = STRATEGY_SYNTHESIZER_SYSTEM
-    max_tokens = 10000  # bumped from 5000 — synthesis is comprehensive output
+    max_tokens = 40000  # unlock Gemini 2.5 Pro: ~32-40K narrative output (was 10K cap)
     enable_critic = False
     context_strategy = ContextStrategy.FULL_PIPELINE
 

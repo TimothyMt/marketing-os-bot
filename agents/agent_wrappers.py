@@ -299,14 +299,16 @@ QUY TẮC:
 async def _haiku_polish_vn(raw_text: str, session: Session) -> str:
     """Polish step — Haiku 4.5 nhẹ refine VN tone.
 
-    Input ~10K tokens, output ~10K. Latency ~15-25s, cost ~$0.05.
+    Match Synthesizer output 40K → polish max_tokens 40K (Haiku 4.5 extended
+    output beta cần header `anthropic-beta: output-128k-2025-02-19` set sẵn
+    trong Anthropic SDK 0.40+).
     """
     from tools.llm_router import call as router_call, TaskType
     result = await router_call(
         task_type=TaskType.CRITIC_REVIEW,  # Route → Haiku primary
         system=HAIKU_POLISH_SYSTEM,
         user=f"Polish VN tone cho text sau:\n\n{raw_text}",
-        max_tokens=12000,  # Buffer cho output ngang input
+        max_tokens=40000,  # Match Synthesizer 40K (was 12K — too small for full polish)
     )
     logger.info(
         f"Synthesizer polish: provider={result.get('provider')} "

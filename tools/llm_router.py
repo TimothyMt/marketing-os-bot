@@ -182,13 +182,21 @@ async def _call_anthropic_sonnet(
 async def _call_anthropic_haiku(
     system: str, user: str, max_tokens: int = 2048, **kwargs
 ) -> dict:
-    """Call Anthropic Haiku 4.5 — cheap classification + critic."""
+    """Call Anthropic Haiku 4.5 — cheap classification + critic.
+
+    Default max output = 8192. Khi max_tokens > 8192 (polish 40K case)
+    cần extended output beta header `output-128k-2025-02-19`.
+    """
     client = _get_anthropic_client()
+    extra_headers = {}
+    if max_tokens > 8192:
+        extra_headers["anthropic-beta"] = "output-128k-2025-02-19"
     response = await client.messages.create(
         model=CLAUDE_HAIKU_MODEL,
         max_tokens=max_tokens,
         system=[{"type": "text", "text": system, "cache_control": {"type": "ephemeral"}}],
         messages=[{"role": "user", "content": user}],
+        extra_headers=extra_headers,
     )
     return {
         "output": response.content[0].text,
@@ -229,13 +237,17 @@ def _calc_thinking_budget(max_tokens: int) -> int:
     Rule:
     - max_tokens < 1500: thinking=0 (no thinking — short response)
     - max_tokens 1500-5000: thinking = 30% (mild reasoning)
-    - max_tokens > 5000: thinking = min(8000, 40%) — deep reasoning for synthesis
+    - max_tokens 5000-20000: thinking = min(8000, 40%) — medium reasoning
+    - max_tokens >= 20000: thinking = min(12000, 25%) — deep reasoning for
+      synthesis 30-40K. Giữ output ≥75% budget cho narrative dày.
     """
     if max_tokens < 1500:
         return 0
     if max_tokens < 5000:
         return int(max_tokens * 0.3)
-    return min(8000, int(max_tokens * 0.4))
+    if max_tokens < 20000:
+        return min(8000, int(max_tokens * 0.4))
+    return min(12000, int(max_tokens * 0.25))
 
 
 async def _call_gemini_pro(
