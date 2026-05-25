@@ -23,10 +23,96 @@ from agents.skills import (
     PsychologyPricingSkill,
     UspDefinitionSkill,
     StrategySynthesisSkill,
+    AgentSkill,
     ContextStrategy,
 )
 
 logger = logging.getLogger(__name__)
+
+
+# ─────────────────────────────────────────────────────────────────
+# Helper — run skill via LLM Router (multi-provider failover)
+# ─────────────────────────────────────────────────────────────────
+
+async def _run_skill_via_router(skill: AgentSkill, session: Session, task_type) -> str:
+    """Execute skill qua llm_router (multi-provider chain).
+
+    Khác với _run_skill (hardcode Anthropic): build context giống nhau nhưng
+    output route qua ROUTING_TABLE → primary + fallbacks tự động.
+
+    Use case: agents có primary provider NON-Anthropic (competitor=GPT-5,
+    retention=GPT-5 mini, winback=GPT-5 mini, market=Gemini Grounded).
+    """
+    from tools.llm_router import call as router_call, AllProvidersFailedError
+    from agents.output_formats import get_format_instruction, get_lang_instruction
+    from tools.token_tracker import track_usage_raw
+
+    context = skill.build_context(session)
+    user_msg = skill.build_user_msg(session)
+
+    # Inject user correction (regen flow)
+    user_correction = (session.pending_intake or {}).get("_user_correction")
+    if user_correction and "USER CORRECTION" not in user_msg:
+        user_msg += (
+            "\n\n---\n\n"
+            "**USER CORRECTION (sếp đã feedback ở lần chạy trước):**\n"
+            f"{user_correction}\n\nApply correction vào output mới."
+        )
+
+    format_instruction = get_format_instruction(skill.output_format)
+    en_level = (session.preferences or {}).get("en_level", "moderate")
+    lang_instruction = get_lang_instruction(en_level)
+
+    user_name = ((session.preferences or {}).get("user_name", "") or "").strip()
+    name_directive = (
+        f"\n\n---\n\n**Tên user:** {user_name}. Khi xưng hô gọi 'sếp {user_name}'."
+    ) if user_name else ""
+
+    augmented_system = (
+        skill.system_prompt + format_instruction + "\n\n---\n\n"
+        + lang_instruction + name_directive
+    )
+    full_user = f"{context}\n\n---\n\n{user_msg}"
+
+    logger.info(
+        "Skill %s via router: task=%s max_tokens=%d ctx_chars=%d",
+        skill.name, task_type.value, skill.max_tokens, len(context) + len(user_msg),
+    )
+
+    try:
+        result = await router_call(
+            task_type=task_type,
+            system=augmented_system,
+            user=full_user,
+            max_tokens=skill.max_tokens,
+        )
+    except AllProvidersFailedError as e:
+        # Last-resort: fallback xuống legacy _run_skill (Anthropic SDK với retry)
+        logger.error("Skill %s: all router providers failed, fallback _run_skill: %s", skill.name, e)
+        from agents.pipeline import _run_skill
+        return await _run_skill(skill, session)
+
+    raw_output = result["output"]
+    provider = result.get("provider", "unknown")
+    logger.info(
+        "Skill %s: provider=%s in=%d out=%d latency=%.1fs",
+        skill.name, provider,
+        result.get("tokens_in", 0), result.get("tokens_out", 0),
+        result.get("latency_sec", 0),
+    )
+
+    # Token tracking
+    try:
+        track_usage_raw(
+            session,
+            input_tokens=result.get("tokens_in", 0),
+            output_tokens=result.get("tokens_out", 0),
+            label=f"{skill.name}_{provider}",
+        )
+    except Exception as e:
+        logger.warning("Token tracking failed (%s via router): %s", skill.name, e)
+
+    return raw_output
 
 
 # Helper marker — dùng để track provider per agent (S8.3 LLM Router sẽ override)
@@ -42,30 +128,32 @@ def _with_provider(provider_name: str):
 # TIER 1 — Foundation agents (parallel, no deps)
 # ─────────────────────────────────────────────────────────────────
 
-@_with_provider("anthropic_sonnet")
+@_with_provider("gemini_grounded_router")
 async def market_research_agent(session: Session) -> str:
     """🌍 Anna — Sr Market Research Analyst.
 
-    Foundation tier — không có dependency, chỉ cần profile.
-    Output: TAM/SAM/SOM + Market Dynamics theo VN context.
-
-    S8.3 sẽ route: primary=Perplexity Sonar Pro, fallback=Sonnet.
+    Routes via llm_router → MARKET_RESEARCH_DATA chain:
+    Gemini Pro Grounded (citations) → Gemini Pro → Sonnet (fallback)
     """
-    from agents.pipeline import _run_skill
-    result = await _run_skill(MarketResearchSkill(), session)
+    from tools.llm_router import TaskType
+    result = await _run_skill_via_router(
+        MarketResearchSkill(), session, TaskType.MARKET_RESEARCH_DATA,
+    )
     session.add_result("market_research", result)
     return result
 
 
-@_with_provider("anthropic_sonnet")
+@_with_provider("openai_gpt5_router")
 async def competitor_agent(session: Session) -> str:
     """🕵️ Bình — Competitor Intelligence Analyst.
 
-    Foundation tier — analyze landscape + market gap.
-    S8.3 sẽ route: Perplexity (research) + GPT-4o (matrix), fallback Sonnet.
+    Routes via llm_router → COMPETITOR_MATRIX chain:
+    GPT-5 (structured matrix) → Sonnet → GPT-5 mini (fallback)
     """
-    from agents.pipeline import _run_skill
-    result = await _run_skill(CompetitorSkill(), session)
+    from tools.llm_router import TaskType
+    result = await _run_skill_via_router(
+        CompetitorSkill(), session, TaskType.COMPETITOR_MATRIX,
+    )
     session.add_result("competitor", result)
     return result
 
@@ -128,43 +216,42 @@ async def psychology_pricing_agent(session: Session) -> str:
 # TIER 3 — Customer Journey (sequential: Winback needs Retention)
 # ─────────────────────────────────────────────────────────────────
 
-@_with_provider("anthropic_sonnet")
+@_with_provider("openai_gpt5_mini_router")
 async def retention_strategy_agent(session: Session) -> str:
     """🔄 Minh — Customer Retention Strategist.
 
-    Tier 3 step 1 — reuse operational skill với FULL_PIPELINE context override.
-    S8.3 sẽ route: GPT-4o (tier matrix structured).
+    Routes via llm_router → RETENTION_MATRIX chain:
+    GPT-5 mini (tier matrix structured) → Sonnet → GPT-4.1 mini
     """
     from agents.operational_skills_config import get_operational_skill
-    from agents.pipeline import _run_skill
+    from tools.llm_router import TaskType
 
     skill = get_operational_skill("retention_strategy")
-    # Override context strategy — pipeline mode cần đọc full T1+T2, không chỉ profile+synthesis
     skill.context_strategy = ContextStrategy.FULL_PIPELINE
     if hasattr(skill, "_config"):
         skill._config.context_strategy = ContextStrategy.FULL_PIPELINE
 
-    result = await _run_skill(skill, session)
+    result = await _run_skill_via_router(skill, session, TaskType.RETENTION_MATRIX)
     session.add_result("retention_strategy", result)
     return result
 
 
-@_with_provider("anthropic_sonnet")
+@_with_provider("openai_gpt5_mini_router")
 async def winback_vision_agent(session: Session) -> str:
     """🔁 Phương — Winback Campaign Specialist.
 
-    Tier 3 step 2 — depends on Retention output (đã save vào session.results
-    bởi retention_strategy_agent ngay trước).
+    Routes via llm_router → WINBACK_STRATEGY chain:
+    GPT-5 mini (sequence structured) → Sonnet → Gemini Flash
     """
     from agents.operational_skills_config import get_operational_skill
-    from agents.pipeline import _run_skill
+    from tools.llm_router import TaskType
 
     skill = get_operational_skill("winback_campaign")
     skill.context_strategy = ContextStrategy.FULL_PIPELINE
     if hasattr(skill, "_config"):
         skill._config.context_strategy = ContextStrategy.FULL_PIPELINE
 
-    result = await _run_skill(skill, session)
+    result = await _run_skill_via_router(skill, session, TaskType.WINBACK_STRATEGY)
     session.add_result("winback_campaign", result)
     return result
 

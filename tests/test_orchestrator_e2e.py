@@ -72,23 +72,32 @@ class MockBehavior:
     async def mock_router_call(self, task_type, system, user, max_tokens=4000, **kwargs):
         """Mock router calls — bypass real Gemini/Anthropic/OpenAI APIs.
 
-        synthesizer_agent (S8.7-prod) routes qua llm_router.call() instead of
-        _run_skill directly. Tests cần mock cả 2.
+        Sau Phase 1c, các agents wire qua router gồm: synthesizer,
+        market_research, competitor, retention, winback, polish.
         """
-        # Use task_type.value as identifier
         task_id = task_type.value if hasattr(task_type, "value") else str(task_type)
+        # Map task_type → skill_name để check fail_skills/timeout_skills
+        task_to_skill = {
+            "synthesis_long_context": "synthesis",
+            "market_research_data":   "market_research",
+            "competitor_matrix":      "competitor",
+            "retention_matrix":       "retention_strategy",
+            "winback_strategy":       "winback_campaign",
+            "critic_review":          "polish",
+        }
+        skill_name = task_to_skill.get(task_id, task_id)
 
-        if "synthesis" in task_id and "synthesis" in self.fail_skills:
-            raise ValueError(f"MOCK: forced fail for {task_id}")
+        if skill_name in self.fail_skills:
+            raise ValueError(f"MOCK: forced fail for {skill_name} (task={task_id})")
 
-        if "synthesis" in task_id and "synthesis" in self.timeout_skills:
+        if skill_name in self.timeout_skills:
             await asyncio.sleep(300)
             return {"output": "should not reach", "provider": "mock", "tokens_in": 0, "tokens_out": 0}
 
         await asyncio.sleep(self.latency_sec)
         return {
-            "output": MOCK_OUTPUTS.get("synthesis", "mock synthesis output"),
-            "provider": "mock_gemini_pro",
+            "output": MOCK_OUTPUTS.get(skill_name, f"mock {skill_name} output"),
+            "provider": f"mock_router_{skill_name}",
             "tokens_in": 200,
             "tokens_out": 800,
             "latency_sec": self.latency_sec,
