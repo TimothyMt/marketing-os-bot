@@ -164,6 +164,15 @@ class OperationalSkill(AgentSkill):
                 f"{synthesis[:6000]}"
             )
 
+        # Sprint 4: Inject Campaign Scope Library cho campaign_brief
+        if self._config.name == "campaign_brief" and session.profile.industry:
+            try:
+                from agents.campaign_scope_library import format_scope_for_prompt
+                scope_block = format_scope_for_prompt(session.profile.industry)
+                msg += f"\n\n---\n\n{scope_block}"
+            except Exception:
+                pass  # Graceful — scope library optional
+
         # Inject Calendar context nếu skill cần (Content Generator)
         calendar = session.get_latest_result("content_calendar")
         if calendar and self._config.name in ("content_generator",):

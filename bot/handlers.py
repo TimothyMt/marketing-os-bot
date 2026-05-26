@@ -404,6 +404,31 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
         return
 
+    # Sprint 6: Tone calibration feedback
+    if session.tone_calibration.get("stage") == "waiting_feedback":
+        await _handle_tone_feedback(update, context, session, text)
+        return
+
+    # Sprint 7: Post edit instruction
+    if session.pending_intake.get("_post_editing"):
+        post_id = session.pending_intake.pop("_post_editing")
+        post = session.content_outputs.get(post_id)
+        if post:
+            await update.message.reply_text("✏️ _Đang chỉnh sửa..._", parse_mode=ParseMode.MARKDOWN)
+            from agents.post_actions import edit_post
+            edited = await edit_post(post.get("content", ""), text, session)
+            session.content_outputs[post_id]["content"] = edited
+            session.content_outputs[post_id]["status"] = "draft"
+            await save_session(session)
+            from agents.post_actions import format_post_preview
+            from bot.keyboards import post_action_keyboard
+            await update.message.reply_text(
+                f"✅ *`{post_id}` đã chỉnh:*\n\n" + format_post_preview(post_id, session.content_outputs[post_id]),
+                parse_mode=ParseMode.MARKDOWN,
+                reply_markup=post_action_keyboard(post_id),
+            )
+        return
+
     # Sprint 5 v2: Image edit text reply
     if session.pending_intake.get("_awaiting_image_edit"):
         await _handle_image_edit_text(update, context, session, text)
@@ -733,6 +758,20 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def _handle_callback_inner(update, context, query, session, data, user_id):
+
+    # ── Sprint 6: Tone Calibration ────────────────────────────────
+    if data.startswith("tone_"):
+        await _handle_tone_callback(query, session)
+        return
+
+    # ── Sprint 7: Per-post Actions ────────────────────────────────
+    if data.startswith("post_"):
+        await _handle_post_action_callback(query, session)
+        return
+
+    if data.startswith("adapt_"):
+        await _handle_adapt_channel_callback(query, session)
+        return
 
     # ── Competitor → Compare follow-up (Sprint 4) ─────────────────
     if data == "run_compare":
@@ -2413,6 +2452,11 @@ async def _handle_ops_intake_reply(update: Update, context: ContextTypes.DEFAULT
             await save_session(session)
             await _send_ops_result(update.message, session, task_name, result)
 
+            # Sprint 6: Tone Calibration Loop cho content_calendar
+            if task_name == "content_calendar":
+                await _start_tone_calibration(update.message, session, result)
+                return
+
             # Sprint 5: Persist Brand Voice to DB sau khi gen xong
             if task_name == "brand_voice":
                 await _persist_brand_voice_from_session(session, result)
@@ -3845,3 +3889,340 @@ async def cmd_history(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
 
     lines.append("\n💡 _Dùng `/history <từ khoá>` để tìm campaign tương tự_")
     await update.message.reply_text("\n".join(lines), parse_mode=ParseMode.MARKDOWN)
+
+
+# ═════════════════════════════════════════════════════════════════
+# Sprint 6 — Tone Calibration Loop
+# ═════════════════════════════════════════════════════════════════
+
+async def _start_tone_calibration(message, session, calendar_result: str) -> None:
+    """
+    Khởi động Tone Calibration Loop sau khi content_calendar gen xong.
+    Extract Post 1 → show với tone check keyboard.
+    """
+    from agents.tone_calibration import parse_first_post
+    from bot.keyboards import TONE_CHECK_KEYBOARD
+
+    first = parse_first_post(calendar_result)
+    if not first:
+        # Không parse được → skip calibration
+        return
+
+    # Lưu state calibration
+    session.tone_calibration = {
+        "stage":            "checking_tone",
+        "rejection_count":  0,
+        "post1_content":    first["full_block"],
+        "calendar_full":    calendar_result,
+        "locked_signals":   {},
+    }
+    await save_session(session)
+
+    preview = first["preview"][:500]
+    await message.reply_text(
+        "🎨 *Kiểm tra Tone — Bài đăng đầu tiên*\n\n"
+        "_Em extract bài đầu tiên để sếp check tone trước khi em apply cho toàn bộ calendar:_\n\n"
+        f"```\n{preview}\n```\n\n"
+        "Tone ổn chưa sếp? Nếu muốn chỉnh, gõ feedback sau khi bấm *Chỉnh tone*.",
+        parse_mode=ParseMode.MARKDOWN,
+        reply_markup=TONE_CHECK_KEYBOARD,
+    )
+
+
+async def _handle_tone_feedback(update, context, session, text: str) -> None:
+    """
+    Xử lý feedback text sau khi user bấm 'Chỉnh tone'.
+    Extract signals → regen Post 1 → show với TONE_REGEN_KEYBOARD.
+    """
+    from agents.tone_calibration import (
+        extract_tone_signals, regen_post_with_signals, format_signals_card
+    )
+    from bot.keyboards import TONE_REGEN_KEYBOARD
+
+    cal = session.tone_calibration
+    rejection_count = cal.get("rejection_count", 0) + 1
+
+    await update.message.reply_text("🔄 _Đang chỉnh tone..._", parse_mode=ParseMode.MARKDOWN)
+
+    post1 = cal.get("post1_content", "")
+    signals = await extract_tone_signals(session, text, post1)
+    new_post = await regen_post_with_signals(session, post1, signals)
+
+    # Update state
+    session.tone_calibration.update({
+        "stage":           "checking_tone",
+        "rejection_count": rejection_count,
+        "post1_content":   new_post,
+        "locked_signals":  signals,
+    })
+    await save_session(session)
+
+    signals_card = format_signals_card(signals)
+    max_attempts = 3
+    remaining = max_attempts - rejection_count
+
+    kb = TONE_REGEN_KEYBOARD
+    suffix = ""
+    if rejection_count >= max_attempts:
+        suffix = "\n\n⚠️ _Đã chỉnh tối đa 3 lần — lần này sẽ tự lock tone._"
+        # Auto-approve after 3 rejections
+        await _tone_lock_and_apply(update.message, session)
+        return
+
+    await update.message.reply_text(
+        f"{signals_card}\n\n"
+        f"*Bài viết lại:*\n```\n{new_post[:500]}\n```\n"
+        f"_(Còn {remaining} lần chỉnh){suffix}_",
+        parse_mode=ParseMode.MARKDOWN,
+        reply_markup=kb,
+    )
+
+
+async def _tone_lock_and_apply(message, session) -> None:
+    """
+    Lock tone signals → apply lên full calendar → update session.
+    """
+    from agents.tone_calibration import apply_tone_to_calendar
+    from agents.post_actions import parse_calendar_to_posts
+
+    cal = session.tone_calibration
+    signals = cal.get("locked_signals", {})
+    post1 = cal.get("post1_content", "")
+    calendar_full = cal.get("calendar_full", "")
+
+    await message.reply_text(
+        "🔒 *Tone đã lock!* Em đang apply cho toàn bộ calendar...",
+        parse_mode=ParseMode.MARKDOWN,
+    )
+
+    # Apply tone lên full calendar
+    if signals:
+        updated_calendar = await apply_tone_to_calendar(session, calendar_full, signals, post1)
+    else:
+        updated_calendar = calendar_full
+
+    # Sprint 7: Parse posts → assign POST-XXX IDs
+    campaign_id = session.pending_intake.get("campaign_name", "")
+    posts = parse_calendar_to_posts(updated_calendar, campaign_id=campaign_id)
+    if posts:
+        session.content_outputs.update(posts)
+
+    # Update results + clear tone state
+    session.add_result("content_calendar", updated_calendar)
+    session.tone_calibration = {"stage": "done", "locked_signals": signals}
+    await save_session(session)
+
+    # Show updated calendar
+    preview = updated_calendar[:2000] + ("..." if len(updated_calendar) > 2000 else "")
+    await message.reply_text(
+        f"✅ *Content Calendar (Tone Applied)*\n\n{preview}",
+        parse_mode=ParseMode.MARKDOWN,
+    )
+
+    # Sprint 7: Show post IDs summary
+    if posts:
+        post_count = len(posts)
+        await message.reply_text(
+            f"📋 *{post_count} bài đã được gán ID*\n\n"
+            + "\n".join([f"`{pid}` — {p.get('channel','').capitalize()} · Tuần {p.get('week',1)}"
+                        for pid, p in list(posts.items())[:10]])
+            + ("\n..." if post_count > 10 else "")
+            + "\n\n💡 _Dùng /post \\<ID\\> để xem + quản lý từng bài_",
+            parse_mode=ParseMode.MARKDOWN,
+        )
+
+
+# ─── Tone calibration callbacks ───────────────────────────────────────────────
+
+async def _handle_tone_callback(query, session) -> None:
+    """Dispatch tone_* callback queries."""
+    data = query.data
+
+    if data == "tone_approve":
+        await query.edit_message_reply_markup(reply_markup=None)
+        # Lock với signals hiện tại (có thể rỗng nếu approve ngay lần đầu)
+        await _tone_lock_and_apply(query.message, session)
+
+    elif data == "tone_reject":
+        await query.edit_message_reply_markup(reply_markup=None)
+        session.tone_calibration["stage"] = "waiting_feedback"
+        await save_session(session)
+        await query.message.reply_text(
+            "✏️ *Gõ feedback về tone để em chỉnh:*\n\n"
+            "_Ví dụ: 'Viết thân mật hơn, bớt formal' / 'Thêm emoji' / 'Ngắn hơn, mạnh hơn'_",
+            parse_mode=ParseMode.MARKDOWN,
+        )
+
+    elif data == "tone_skip":
+        await query.edit_message_reply_markup(reply_markup=None)
+        # Skip: parse calendar gốc sang POST-XXX luôn không apply tone
+        cal = session.tone_calibration
+        from agents.post_actions import parse_calendar_to_posts
+        posts = parse_calendar_to_posts(cal.get("calendar_full", ""))
+        if posts:
+            session.content_outputs.update(posts)
+        session.tone_calibration = {"stage": "done"}
+        await save_session(session)
+        await query.message.reply_text(
+            f"⏭ _Bỏ qua tone calibration. Calendar đã lưu với {len(posts)} bài._",
+            parse_mode=ParseMode.MARKDOWN,
+        )
+
+
+# ═════════════════════════════════════════════════════════════════
+# Sprint 7 — Per-post Actions (/post command + callbacks)
+# ═════════════════════════════════════════════════════════════════
+
+async def cmd_post(update, context) -> None:
+    """
+    /post <POST-ID> — Xem chi tiết + action menu cho 1 bài.
+    Ví dụ: /post POST-001  hoặc  /post 001
+    """
+    user_id = update.effective_user.id
+    from storage import get_session
+    session = await get_session(user_id)
+
+    arg = " ".join(context.args).strip().upper()
+    if not arg.startswith("POST-"):
+        arg = f"POST-{arg.zfill(3)}"
+
+    post = session.content_outputs.get(arg)
+    if not post:
+        await update.message.reply_text(
+            f"❌ Không tìm thấy `{arg}`.\n"
+            "Dùng `/history` để xem danh sách posts.",
+            parse_mode=ParseMode.MARKDOWN,
+        )
+        return
+
+    from agents.post_actions import format_post_preview
+    from bot.keyboards import post_action_keyboard
+
+    preview = format_post_preview(arg, post)
+    await update.message.reply_text(
+        preview,
+        parse_mode=ParseMode.MARKDOWN,
+        reply_markup=post_action_keyboard(arg),
+    )
+
+
+async def _handle_post_action_callback(query, session) -> None:
+    """Dispatch post_edit/adapt/variant/delete callbacks."""
+    data = query.data  # e.g. "post_edit_001"
+    parts = data.split("_", 2)  # ["post", "edit", "001"]
+    if len(parts) < 3:
+        return
+
+    action = parts[1]  # edit | adapt | variant | delete
+    pid_short = parts[2]  # "001"
+    post_id = f"POST-{pid_short}"
+    post = session.content_outputs.get(post_id)
+
+    if not post:
+        await query.answer("Không tìm thấy bài này.", show_alert=True)
+        return
+
+    await query.edit_message_reply_markup(reply_markup=None)
+
+    if action == "delete":
+        session.content_outputs[post_id]["status"] = "deleted"
+        await save_session(session)
+        await query.message.reply_text(
+            f"🗑 `{post_id}` đã xoá khỏi calendar.",
+            parse_mode=ParseMode.MARKDOWN,
+        )
+        return
+
+    if action == "adapt":
+        # Show channel selection
+        from telegram import InlineKeyboardMarkup, InlineKeyboardButton
+        kb = InlineKeyboardMarkup([
+            [InlineKeyboardButton("📱 TikTok",    callback_data=f"adapt_{pid_short}_tiktok")],
+            [InlineKeyboardButton("💬 Zalo OA",   callback_data=f"adapt_{pid_short}_zalo")],
+            [InlineKeyboardButton("📸 Instagram", callback_data=f"adapt_{pid_short}_instagram")],
+            [InlineKeyboardButton("📧 Email",     callback_data=f"adapt_{pid_short}_email")],
+        ])
+        await query.message.reply_text(
+            f"🔄 Adapt `{post_id}` sang kênh nào?",
+            parse_mode=ParseMode.MARKDOWN,
+            reply_markup=kb,
+        )
+        return
+
+    if action == "variant":
+        await query.message.reply_text("✨ _Đang tạo A/B variant..._", parse_mode=ParseMode.MARKDOWN)
+        from agents.post_actions import gen_variant
+        variant_content = await gen_variant(post.get("content", ""), session)
+        # Assign new ID
+        existing = [k for k in session.content_outputs if k.startswith(f"{post_id}-V")]
+        variant_id = f"{post_id}-V{len(existing)+1}"
+        session.content_outputs[variant_id] = {
+            **post,
+            "content":   variant_content,
+            "parent_id": post_id,
+            "status":    "draft",
+        }
+        await save_session(session)
+        from agents.post_actions import format_post_preview
+        from bot.keyboards import post_action_keyboard
+        await query.message.reply_text(
+            f"✨ *Variant tạo thành công:* `{variant_id}`\n\n"
+            + format_post_preview(variant_id, session.content_outputs[variant_id]),
+            parse_mode=ParseMode.MARKDOWN,
+            reply_markup=post_action_keyboard(variant_id),
+        )
+        return
+
+    if action == "edit":
+        # Set state chờ edit instruction
+        session.pending_intake["_post_editing"] = post_id
+        await save_session(session)
+        await query.message.reply_text(
+            f"✏️ *Edit `{post_id}`* — gõ yêu cầu chỉnh sửa:\n\n"
+            "_Ví dụ: 'Viết hook mạnh hơn' / 'Thêm social proof' / 'Ngắn hơn 30%'_",
+            parse_mode=ParseMode.MARKDOWN,
+        )
+
+
+async def _handle_adapt_channel_callback(query, session) -> None:
+    """Xử lý adapt_<pid>_<channel> callback."""
+    parts = query.data.split("_", 2)  # ["adapt", "001", "tiktok"]
+    if len(parts) < 3:
+        return
+    pid_short = parts[1]
+    channel   = parts[2]
+    post_id   = f"POST-{pid_short}"
+    post = session.content_outputs.get(post_id)
+    if not post:
+        await query.answer("Không tìm thấy bài.", show_alert=True)
+        return
+
+    await query.edit_message_reply_markup(reply_markup=None)
+    await query.message.reply_text(
+        f"🔄 _Đang adapt `{post_id}` sang {channel.capitalize()}..._",
+        parse_mode=ParseMode.MARKDOWN,
+    )
+
+    from agents.post_actions import adapt_post
+    adapted = await adapt_post(post.get("content", ""), channel, session)
+
+    adapted_id = f"{post_id}-{channel[:2].upper()}"
+    session.content_outputs[adapted_id] = {
+        **post,
+        "content":   adapted,
+        "channel":   channel,
+        "parent_id": post_id,
+        "status":    "draft",
+    }
+    # Track adapted versions on parent
+    session.content_outputs[post_id].setdefault("adapted_versions", []).append(adapted_id)
+    await save_session(session)
+
+    from agents.post_actions import format_post_preview
+    from bot.keyboards import post_action_keyboard
+    await query.message.reply_text(
+        f"✅ *Adapted: `{adapted_id}`* ({channel.capitalize()})\n\n"
+        + format_post_preview(adapted_id, session.content_outputs[adapted_id]),
+        parse_mode=ParseMode.MARKDOWN,
+        reply_markup=post_action_keyboard(adapted_id),
+    )

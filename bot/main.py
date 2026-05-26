@@ -26,6 +26,7 @@ from bot.handlers import (
     cmd_admin_resetusage,
     cmd_admin_userinfo,
     cmd_history,
+    cmd_post,
 )
 
 logging.basicConfig(
@@ -72,6 +73,9 @@ def main():
 
     # Sprint 8 — Campaign History + Semantic Search
     app.add_handler(CommandHandler("history", cmd_history))
+
+    # Sprint 7 — Per-post Actions
+    app.add_handler(CommandHandler("post", cmd_post))
 
     # Inline keyboard callbacks
     app.add_handler(CallbackQueryHandler(handle_callback))
