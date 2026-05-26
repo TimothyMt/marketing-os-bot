@@ -100,23 +100,25 @@ def _row_to_session(row: dict) -> Session:
 async def get_session(user_id: int) -> Session:
     """Fetch existing session or return a fresh one.
 
-    DB v2 flag: nếu USE_DB_V2=true → đọc từ normalized tables.
-    Otherwise: dùng sessions monolithic cũ.
-    """
-    # Feature flag: switch to v2 normalized schema
-    try:
-        from config import USE_DB_V2
-    except ImportError:
-        USE_DB_V2 = False
+    Dual-Write strategy:
+      DB_V2_READ=True  → đọc từ v2 normalized (production hit v2)
+      DB_V2_READ=False → đọc từ v1 sessions (default, an toàn)
 
-    if USE_DB_V2:
+    Nếu v2 read fail → tự động fallback v1.
+    """
+    try:
+        from config import DB_V2_READ
+    except ImportError:
+        DB_V2_READ = False
+
+    if DB_V2_READ:
         try:
             from storage.session_v2_adapter import get_session_v2
             return await get_session_v2(user_id)
         except Exception as e:
             logger.exception("V2 get_session failed, fallback to v1: %s", e)
 
-    # v1 path (legacy)
+    # v1 path (legacy / fallback)
     resp = (
         await _client.table(TABLE)
         .select("*")
@@ -131,27 +133,44 @@ async def get_session(user_id: int) -> Session:
 
 async def save_session(session: Session):
     """Upsert session via Supabase REST.
-    Serializes VersionedResult list per skill as list of dicts.
-    Packs meta fields (selected_task, pending_intake) inside `results` to avoid schema change.
 
-    DB v2 flag: nếu USE_DB_V2=true → ghi vào normalized tables.
-    Otherwise: upsert sessions monolithic cũ.
+    Dual-Write strategy:
+      DB_V2_WRITE=True → ghi cả v1 (legacy) + v2 (normalized) song song
+      DB_V2_WRITE=False → chỉ ghi v1 (default, an toàn)
+
+    V1 write LUÔN chạy (source of truth) trừ khi đã ở Phase D (WRITE=False + READ=True).
+    V2 write là BEST-EFFORT — nếu fail, log warning nhưng không throw exception
+    (tránh làm crash bot).
     """
-    # Feature flag: switch to v2 normalized schema
     try:
-        from config import USE_DB_V2
+        from config import DB_V2_WRITE, DB_V2_READ
     except ImportError:
-        USE_DB_V2 = False
+        DB_V2_WRITE = False
+        DB_V2_READ = False
 
-    if USE_DB_V2:
+    # Phase D logic: nếu chỉ READ=True và WRITE=False → đã cutover sang v2 only
+    _v2_only = DB_V2_READ and not DB_V2_WRITE
+
+    if _v2_only:
+        # Phase D: skip v1 write hoàn toàn
         try:
             from storage.session_v2_adapter import save_session_v2
             await save_session_v2(session)
             return
         except Exception as e:
-            logger.exception("V2 save_session failed, fallback to v1: %s", e)
+            logger.exception("V2-only save failed, NO FALLBACK in Phase D: %s", e)
+            raise
 
-    # v1 path (legacy)
+    # Phase A/B/C: write to v1 (always) + maybe v2
+    if DB_V2_WRITE:
+        # Best-effort v2 write (don't fail v1)
+        try:
+            from storage.session_v2_adapter import save_session_v2
+            await save_session_v2(session)
+        except Exception as e:
+            logger.warning("Dual-write v2 failed (v1 will still save): %s", e)
+
+    # v1 path (always — primary source of truth during dual-write phase)
     from dataclasses import asdict
     profile_dict = asdict(session.profile)
 

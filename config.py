@@ -50,15 +50,26 @@ MAX_HISTORY_TURNS = 20
 # Set qua env var để rollback nhanh: USE_MULTI_AGENT=false
 USE_MULTI_AGENT_PIPELINE = os.getenv("USE_MULTI_AGENT", "true").lower() in ("true", "1", "yes")
 
-# DB Refactor v2 — Normalized schema feature flag (Migration 006).
-# False (default): dùng schema cũ (sessions monolithic)
-# True: đọc/ghi qua v2 tables (users, user_business_profile, user_sessions_slim,
-#       skill_runs, campaigns, posts)
-# Roll-out: chỉ flip True sau khi:
-#   1. Chạy migration 006_normalize_schema.sql trong Supabase
-#   2. Run scripts/backfill_v2.py để migrate data cũ
-#   3. Verify data integrity bằng SQL queries
-USE_DB_V2 = os.getenv("USE_DB_V2", "false").lower() in ("true", "1", "yes")
+# DB Refactor v2 — Dual-Write Migration (Migration 006).
+#
+# 2 flags độc lập để rollout từng giai đoạn an toàn:
+#
+#   DB_V2_WRITE  : True → ghi vào CẢ v1 + v2 (dual-write mode)
+#                  False → chỉ ghi v1 (legacy)
+#   DB_V2_READ   : True → đọc TỪ v2 (production hit v2)
+#                  False → đọc từ v1 (tested)
+#
+# Workflow 4 giai đoạn:
+#   Phase A: WRITE=F READ=F → v1 only (như hiện tại)
+#   Phase B: WRITE=T READ=F → dual-write, đọc v1 (1-2 tuần test v2)
+#   Phase C: WRITE=T READ=T → đọc v2, vẫn ghi cả 2 (1-2 tuần)
+#   Phase D: WRITE=F READ=T → v2 only (sau khi confident)
+#
+# Rollback: set 2 vars về False bất cứ lúc nào → quay về v1 only
+DB_V2_WRITE = os.getenv("DB_V2_WRITE", "false").lower() in ("true", "1", "yes")
+DB_V2_READ  = os.getenv("DB_V2_READ",  "false").lower() in ("true", "1", "yes")
+# Legacy compat
+USE_DB_V2 = DB_V2_READ  # backward-compat nếu code khác đang đọc
 
 INDUSTRIES = [
     "fnb", "tech_saas", "ecommerce", "education",
