@@ -2322,6 +2322,24 @@ async def _send_single_shot_form(message: Message, session, task_name: str):
         await _send_basic_business_form(message, session, task_name)
         return
 
+    # ── Self-heal: tách location khỏi target_customer nếu profile cũ có lẫn ──
+    p = session.profile
+    if p.target_customer and not p.location:
+        _VN_CITIES = [
+            r"\bHà Nội\b", r"\bHCM\b", r"\bTP\.?\s*HCM\b", r"\bSài Gòn\b",
+            r"\bĐà Nẵng\b", r"\bHải Phòng\b", r"\bCần Thơ\b", r"\bNha Trang\b",
+            r"\bVũng Tàu\b", r"\bBiên Hòa\b", r"\bHuế\b",
+        ]
+        for pat in _VN_CITIES:
+            m = re.search(pat, p.target_customer, re.IGNORECASE)
+            if m:
+                p.location = m.group(0).strip()
+                cleaned = re.sub(pat, "", p.target_customer, flags=re.IGNORECASE).strip(" ,;.-")
+                if cleaned:
+                    p.target_customer = cleaned
+                await save_session(session)
+                break
+
     # ── Smart Pre-fill: map task field keys → profile attributes
     _PROFILE_KEY_MAP = {
         "industry":          "industry",
@@ -4433,31 +4451,36 @@ async def _send_basic_business_form(message: Message, session, pending_skill: st
 
 
 async def _haiku_extract_basic_business(text: str, session) -> dict:
-    """Extract 5 basic business fields từ free-form text via Haiku.
-    Returns dict {industry, product_service, target_customer, stage, primary_goal}.
+    """Extract basic business fields từ free-form text via Haiku.
+    Returns dict — 5 must-have + location bonus nếu user có nhắc.
     """
     import anthropic, json as _json
     from config import CLAUDE_HAIKU_MODEL, ANTHROPIC_API_KEY
 
-    system = """Extract 5 basic business fields từ user message thành JSON.
+    system = """Extract business fields từ user message thành JSON.
 
-Fields BẮT BUỘC extract (nếu user có nhắc):
+Fields cần extract (nếu user có nhắc):
 - industry         : ngành kinh doanh, NORMALIZE thành 1 trong: fnb, tech_saas, ecommerce, education, health_beauty, retail, b2b_service, real_estate. Nếu không match exact, chọn gần nhất.
 - product_service  : sản phẩm/dịch vụ chính (1 câu ngắn)
-- target_customer  : khách hàng mục tiêu (1 câu ngắn, kèm demographic nếu user có)
+- target_customer  : khách hàng mục tiêu — CHỈ demographic/psychographic, KHÔNG kèm địa danh (vd "Gen Z 18-25", "phụ nữ 25-35", "SME 10-50 NV")
+- location         : địa bàn — TÁCH RIÊNG nếu user nhắc thành phố/khu vực (vd "Hà Nội", "HCM", "Đà Nẵng", "TP HCM Q1-Q3", "miền Bắc"). Nếu user gộp "Gen Z Hà Nội" → tách thành target_customer="Gen Z" và location="Hà Nội".
 - stage            : NORMALIZE thành 1 trong: idea, mvp, growth, scale. Mapping: "mới mở/dưới 6 tháng"→idea/mvp, "tăng trưởng"→growth, "ổn định/scale/maturity"→scale.
 - primary_goal     : mục tiêu chính (1 câu ngắn)
 
 QUY TẮC:
 - Field nào không có trong message → bỏ qua, KHÔNG put null/empty.
-- KHÔNG thêm field nào ngoài 5 fields trên.
-- Output CHỈ JSON object, không markdown, không giải thích."""
+- KHÔNG thêm field nào ngoài list trên.
+- Output CHỈ JSON object, không markdown, không giải thích.
+
+Ví dụ:
+Input: "1: thời trang\\n2: cho thuê quần áo\\n3: Gen Z Hà Nội\\n4: mới mở\\nTăng doanh thu 50%"
+Output: {"industry":"retail","product_service":"cho thuê quần áo","target_customer":"Gen Z","location":"Hà Nội","stage":"mvp","primary_goal":"Tăng doanh thu 50%"}"""
 
     client = anthropic.AsyncAnthropic(api_key=ANTHROPIC_API_KEY)
     try:
         resp = await client.messages.create(
             model=CLAUDE_HAIKU_MODEL,
-            max_tokens=400,
+            max_tokens=500,
             system=system,
             messages=[{"role": "user", "content": text}],
         )
@@ -4471,8 +4494,30 @@ QUY TẮC:
         raw = re.sub(r"^```json\s*|^```\s*|```$", "", raw, flags=re.MULTILINE).strip()
         data = _json.loads(raw)
 
-        valid = {"industry", "product_service", "target_customer", "stage", "primary_goal"}
-        return {k: str(v).strip() for k, v in data.items() if k in valid and v}
+        valid = {"industry", "product_service", "target_customer", "location",
+                 "stage", "primary_goal"}
+        extracted = {k: str(v).strip() for k, v in data.items() if k in valid and v}
+
+        # Fallback regex: nếu Haiku miss location, detect VN cities trong target_customer
+        if not extracted.get("location") and extracted.get("target_customer"):
+            target = extracted["target_customer"]
+            _VN_CITIES = [
+                r"\bHà Nội\b", r"\bHCM\b", r"\bTP\.?\s*HCM\b", r"\bSài Gòn\b",
+                r"\bĐà Nẵng\b", r"\bHải Phòng\b", r"\bCần Thơ\b", r"\bNha Trang\b",
+                r"\bVũng Tàu\b", r"\bBiên Hòa\b", r"\bHuế\b",
+            ]
+            for pat in _VN_CITIES:
+                m = re.search(pat, target, re.IGNORECASE)
+                if m:
+                    city = m.group(0)
+                    extracted["location"] = city.strip()
+                    # Strip city khỏi target_customer
+                    cleaned = re.sub(pat, "", target, flags=re.IGNORECASE).strip(" ,;.-")
+                    if cleaned:
+                        extracted["target_customer"] = cleaned
+                    break
+
+        return extracted
     except Exception as e:
         logger.warning("Haiku extract basic business failed: %s — text=%s", e, text[:100])
         return {}
@@ -4500,6 +4545,7 @@ async def _handle_basic_business_text(update, context, session, text: str):
     if extracted.get("industry"):         p.industry         = extracted["industry"]
     if extracted.get("product_service"):  p.product_service  = extracted["product_service"]
     if extracted.get("target_customer"):  p.target_customer  = extracted["target_customer"]
+    if extracted.get("location"):         p.location         = extracted["location"]
     if extracted.get("stage"):            p.stage            = extracted["stage"]
     if extracted.get("primary_goal"):     p.primary_goal     = extracted["primary_goal"]
 
@@ -4525,16 +4571,25 @@ async def _handle_basic_business_text(update, context, session, text: str):
     # Confirm + chain
     task = get_task(pending_skill)
     skill_label = task.label if task else pending_skill
+
+    summary_lines = [
+        f"• *Ngành:* {p.industry}",
+        f"• *Sản phẩm:* {p.product_service}",
+        f"• *Khách hàng:* {p.target_customer}",
+    ]
+    if p.location:
+        summary_lines.append(f"• *Địa bàn:* {p.location}")
+    summary_lines.extend([
+        f"• *Stage:* {p.stage}",
+        f"• *Mục tiêu:* {p.primary_goal}",
+    ])
+
     await update.message.reply_text(
-        f"✅ *Em đã ghi nhớ:*\n\n"
-        f"• *Ngành:* {p.industry}\n"
-        f"• *Sản phẩm:* {p.product_service}\n"
-        f"• *Khách hàng:* {p.target_customer}\n"
-        f"• *Stage:* {p.stage}\n"
-        f"• *Mục tiêu:* {p.primary_goal}\n\n"
-        f"_Lần sau dùng skill khác em không cần hỏi lại nữa._\n\n"
-        f"━━━━━━━━━━━━━━━\n"
-        f"Giờ em chạy *{skill_label}* ngay 👇",
+        "✅ *Em đã ghi nhớ:*\n\n"
+        + "\n".join(summary_lines)
+        + "\n\n_Lần sau dùng skill khác em không cần hỏi lại nữa._\n\n"
+        + "━━━━━━━━━━━━━━━\n"
+        + f"Giờ em chạy *{skill_label}* ngay 👇",
         parse_mode=ParseMode.MARKDOWN,
     )
 
