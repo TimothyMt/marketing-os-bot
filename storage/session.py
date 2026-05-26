@@ -98,7 +98,25 @@ def _row_to_session(row: dict) -> Session:
 
 
 async def get_session(user_id: int) -> Session:
-    """Fetch existing session or return a fresh one."""
+    """Fetch existing session or return a fresh one.
+
+    DB v2 flag: nếu USE_DB_V2=true → đọc từ normalized tables.
+    Otherwise: dùng sessions monolithic cũ.
+    """
+    # Feature flag: switch to v2 normalized schema
+    try:
+        from config import USE_DB_V2
+    except ImportError:
+        USE_DB_V2 = False
+
+    if USE_DB_V2:
+        try:
+            from storage.session_v2_adapter import get_session_v2
+            return await get_session_v2(user_id)
+        except Exception as e:
+            logger.exception("V2 get_session failed, fallback to v1: %s", e)
+
+    # v1 path (legacy)
     resp = (
         await _client.table(TABLE)
         .select("*")
@@ -115,7 +133,25 @@ async def save_session(session: Session):
     """Upsert session via Supabase REST.
     Serializes VersionedResult list per skill as list of dicts.
     Packs meta fields (selected_task, pending_intake) inside `results` to avoid schema change.
+
+    DB v2 flag: nếu USE_DB_V2=true → ghi vào normalized tables.
+    Otherwise: upsert sessions monolithic cũ.
     """
+    # Feature flag: switch to v2 normalized schema
+    try:
+        from config import USE_DB_V2
+    except ImportError:
+        USE_DB_V2 = False
+
+    if USE_DB_V2:
+        try:
+            from storage.session_v2_adapter import save_session_v2
+            await save_session_v2(session)
+            return
+        except Exception as e:
+            logger.exception("V2 save_session failed, fallback to v1: %s", e)
+
+    # v1 path (legacy)
     from dataclasses import asdict
     profile_dict = asdict(session.profile)
 

@@ -1,0 +1,35 @@
+"""
+Storage v2 — Normalized schema (Migration 006).
+
+Modules:
+- users       : User identity + token quota + soft delete
+- profiles    : Business profile (1:1 with users)
+- sessions    : Slim session state (hot data only)
+- skill_runs  : Immutable versioned skill outputs
+- campaigns   : Campaign entity with embeddings
+- posts       : POST-XXX with adapt/variant linkage
+
+Coexists with v1 (storage/session.py) during Phase 1-2 migration.
+"""
+from .users import (
+    get_user, upsert_user, soft_delete_user,
+    add_token_usage, set_token_quota, reset_token_usage,
+)
+from .profiles import (
+    get_profile, upsert_profile,
+)
+from .sessions_slim import (
+    get_session_slim, upsert_session_slim, touch_last_message,
+)
+from .skill_runs import (
+    insert_skill_run, get_latest_skill_run, list_skill_runs,
+    update_rating,
+)
+from .campaigns_v2 import (
+    create_campaign, get_campaign, list_campaigns_v2,
+    update_campaign_embedding,
+)
+from .posts import (
+    insert_post, get_post, update_post,
+    list_posts_by_campaign, list_posts_by_user, soft_delete_post,
+)

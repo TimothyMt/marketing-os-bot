@@ -50,6 +50,16 @@ MAX_HISTORY_TURNS = 20
 # Set qua env var để rollback nhanh: USE_MULTI_AGENT=false
 USE_MULTI_AGENT_PIPELINE = os.getenv("USE_MULTI_AGENT", "true").lower() in ("true", "1", "yes")
 
+# DB Refactor v2 — Normalized schema feature flag (Migration 006).
+# False (default): dùng schema cũ (sessions monolithic)
+# True: đọc/ghi qua v2 tables (users, user_business_profile, user_sessions_slim,
+#       skill_runs, campaigns, posts)
+# Roll-out: chỉ flip True sau khi:
+#   1. Chạy migration 006_normalize_schema.sql trong Supabase
+#   2. Run scripts/backfill_v2.py để migrate data cũ
+#   3. Verify data integrity bằng SQL queries
+USE_DB_V2 = os.getenv("USE_DB_V2", "false").lower() in ("true", "1", "yes")
+
 INDUSTRIES = [
     "fnb", "tech_saas", "ecommerce", "education",
     "health_beauty", "retail", "b2b_service", "real_estate",
