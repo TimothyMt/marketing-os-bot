@@ -404,6 +404,76 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
         return
 
+    # ─── Universal Greeting Intercept ────────────────────────────────
+    # Returning user (đã có business_name) gõ greeting → show menu ngay,
+    # KHÔNG rơi vào intake/followup/advisor để tránh bot hỏi lại info đã có.
+    _GREETING_KEYWORDS = (
+        "max ơi", "max", "ơi", "hello", "hi", "chào",
+        "hey", "xin chào", "helo", "hii", "alo", "yo", "sup", "hola",
+    )
+    _t = text.lower().strip()
+    _is_greeting = (
+        len(_t) <= 25
+        and (
+            _t in _GREETING_KEYWORDS
+            or any(
+                _t == kw or _t.startswith(kw + " ") or _t.startswith(kw + ",")
+                or _t.startswith(kw + "!") or _t.startswith(kw + "?")
+                for kw in _GREETING_KEYWORDS
+            )
+        )
+    )
+    # Chỉ intercept nếu user đã có business_name (returning user thật sự)
+    # và không đang dở các flow đặc biệt (tone, post edit, campaign idea, image edit)
+    _in_special_flow = (
+        session.tone_calibration.get("stage") in ("checking_tone", "waiting_feedback")
+        or session.pending_intake.get("_post_editing")
+        or session.pending_intake.get("_awaiting_image_edit")
+        or session.pending_intake.get("_awaiting_campaign_idea")
+        or session.pending_intake.get("_awaiting_campaign_finalize")
+        or session.pending_intake.get("_awaiting_image_reference")
+    )
+    # Returning user heuristic: bất kỳ field profile nào có data → coi như đã có context
+    _p = session.profile
+    _has_any_profile = bool(
+        _p.business_name or _p.product_service or _p.industry
+        or _p.target_customer or _p.primary_goal or _p.main_challenge
+    )
+    # Hoặc user đã từng có results từ skill nào đó (returning power user)
+    _has_any_results = bool(session.results)
+    _is_returning_user = _has_any_profile or _has_any_results
+
+    # Log để debug nếu lần sau vẫn lỗi
+    if _is_greeting:
+        logger.info(
+            "Greeting detected (user=%d) | stage=%s | biz=%s | product=%s | industry=%s | results_keys=%s | in_special=%s",
+            session.user_id, session.stage.value,
+            bool(_p.business_name), bool(_p.product_service), bool(_p.industry),
+            list(session.results.keys())[:5], _in_special_flow,
+        )
+
+    if _is_greeting and _is_returning_user and not _in_special_flow:
+        # Reset stage về IDLE để show menu — KHÔNG đi qua intake/followup
+        if session.stage not in (PipelineStage.IDLE, PipelineStage.TASK_SELECT, PipelineStage.COMPLETE):
+            session.stage = PipelineStage.IDLE
+        # Clear stale pending_intake flags để không route nhầm lần tiếp
+        session.pending_intake.pop(OPS_INTAKE_AWAITING, None)
+        session.pending_intake.pop("_awaiting_followup_for", None)
+        session.pending_intake.pop("_advisor_mode", None)
+        await save_session(session)
+
+        addr = _addr(session)
+        if session.profile.is_intake_complete():
+            msg = f"Em chào {addr}! Hôm nay tiếp tục phần nào ạ? 👇"
+        else:
+            msg = f"Em chào {addr}! Mình làm gì tiếp ạ? 👇"
+        await update.message.reply_text(
+            msg,
+            parse_mode=ParseMode.MARKDOWN,
+            reply_markup=MAIN_MENU_KEYBOARD,
+        )
+        return
+
     # Sprint 6: Tone calibration feedback
     if session.tone_calibration.get("stage") == "waiting_feedback":
         await _handle_tone_feedback(update, context, session, text)
@@ -455,33 +525,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     if session.stage in (PipelineStage.IDLE, PipelineStage.TASK_SELECT):
-        # Greeting detection — nếu user chỉ chào/nhắn ngắn → show menu trực tiếp
-        # Không gọi LLM để tránh bot hỏi lại business info khi đã có trong DB
-        _GREETING_KEYWORDS = (
-            "max ơi", "ơi", "hello", "hi ", "chào", "hey", "xin chào",
-            "helo", "hii", "alo", "yo ", "sup", "hola",
-        )
-        _is_greeting = (
-            len(text.strip()) <= 25
-            or any(text.lower().strip().startswith(kw) or text.lower().strip() == kw.strip()
-                   for kw in _GREETING_KEYWORDS)
-        )
-        if _is_greeting:
-            addr = _addr(session)
-            biz = session.profile.business_name
-            if session.profile.is_intake_complete():
-                msg = f"Em chào {addr}! Hôm nay tiếp tục phần nào ạ? 👇"
-            elif biz:
-                msg = f"Em chào {addr}! Mình tiếp tục từ đây nhé 👇"
-            else:
-                msg = f"Em chào {addr}! Sếp muốn bắt đầu từ đâu ạ? 👇"
-            await update.message.reply_text(
-                msg,
-                parse_mode=ParseMode.MARKDOWN,
-                reply_markup=MAIN_MENU_KEYBOARD,
-            )
-            return
-        # Câu hỏi / yêu cầu thực → Sonnet advisor với full context
+        # User typed free-form text instead of using keyboard
+        # → Fallback: Sonnet advisor with full context
         await _claude_advisor_fallback(update, context, session, text)
         return
 
