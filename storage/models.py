@@ -151,6 +151,71 @@ class BusinessProfile:
         return "\n".join(lines)
 
 
+@dataclass
+class BrandVoice:
+    """Persistent Brand Voice rules per user — Sprint 5.
+
+    Stored in `user_brand_voice` table (Supabase). Auto-injected vào
+    ops creative skills (post_write, ads_copy, video_scripts, ...).
+    """
+    user_id: int
+    id: Optional[str] = None  # UUID, server-generated
+    version: int = 1
+
+    do_rules: list[str] = field(default_factory=list)
+    dont_rules: list[str] = field(default_factory=list)
+    tone_descriptors: list[str] = field(default_factory=list)
+    banned_words: list[str] = field(default_factory=list)
+    preferred_words: list[dict] = field(default_factory=list)  # [{from, to}]
+    sample_content: Optional[str] = None
+    rules_markdown: Optional[str] = None
+    industry_context: Optional[str] = None
+    is_active: bool = True
+    created_at: Optional[str] = None
+    updated_at: Optional[str] = None
+
+    def to_prompt_block(self, max_chars: int = 2000) -> str:
+        """Format BV thành block để inject vào system/user prompt của ops skill.
+        Cap max_chars để tránh bloat token."""
+        lines = ["## 🎙 Brand Voice Rules (sếp đã setup — TUÂN THỦ TUYỆT ĐỐI)"]
+
+        if self.tone_descriptors:
+            lines.append(f"**Tone:** {', '.join(self.tone_descriptors)}")
+
+        if self.do_rules:
+            lines.append("**✅ NÊN làm:**")
+            for r in self.do_rules:
+                lines.append(f"- {r}")
+
+        if self.dont_rules:
+            lines.append("**❌ KHÔNG nên:**")
+            for r in self.dont_rules:
+                lines.append(f"- {r}")
+
+        if self.banned_words:
+            lines.append(f"**🚫 Từ CẤM:** {', '.join(self.banned_words)}")
+
+        if self.preferred_words:
+            lines.append("**🔄 Thay thế từ:**")
+            for pair in self.preferred_words:
+                lines.append(f"- '{pair.get('from','?')}' → '{pair.get('to','?')}'")
+
+        if self.industry_context:
+            lines.append(f"**Industry context:** {self.industry_context}")
+
+        text = "\n".join(lines)
+        if len(text) > max_chars:
+            text = text[:max_chars] + "\n... (truncated)"
+        return text
+
+    def is_empty(self) -> bool:
+        """True nếu BV chưa có rules nào meaningful."""
+        return not (
+            self.do_rules or self.dont_rules or self.tone_descriptors
+            or self.banned_words or self.rules_markdown
+        )
+
+
 MAX_VERSIONS_PER_SKILL = 5  # FIFO cap to avoid Supabase bloat
 
 

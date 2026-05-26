@@ -48,7 +48,17 @@ from bot.keyboards import (
     CAMPAIGN_OPTION_KEYBOARD,
     CAMPAIGN_IDEA_CONFIRM_KEYBOARD,
     OFFER_LEVER_KEYBOARD,
+    BRAND_VOICE_PROMPT_KEYBOARD,
 )
+
+
+# Sprint 5: Creative ops skills cần Brand Voice — lazy trigger gate
+BRAND_VOICE_GATED_SKILLS = {
+    "post_write", "post_adapt", "post_batch", "post_hooks", "post_visual",
+    "ads_generator", "ads_copy", "video_scripts",
+    "sales_inbox_script", "email_zalo_sequence", "content_repurpose",
+    "content_generator",
+}
 
 logger = logging.getLogger(__name__)
 
@@ -932,6 +942,54 @@ async def _handle_callback_inner(update, context, query, session, data, user_id)
         await _show_offer_lever_selection(query.message, session, campaign)
         return
 
+    # ── Sprint 5: Brand Voice lazy trigger callbacks ─────────────
+    if data == "bv_setup_now":
+        await query.edit_message_reply_markup(reply_markup=None)
+        # Pivot session sang brand_voice skill — _bv_pending_skill đã lưu task gốc
+        session.selected_task = "brand_voice"
+        # KHÔNG xóa _bv_pending_skill — sẽ chain sau khi BV xong
+        await save_session(session)
+        await query.message.reply_text(
+            "🎙 *Setup Brand Voice* — em hỏi vài câu để build bộ quy tắc.\n",
+            parse_mode=ParseMode.MARKDOWN,
+        )
+        await _send_single_shot_form(query.message, session, "brand_voice")
+        return
+
+    if data == "bv_skip_for_now":
+        await query.edit_message_reply_markup(reply_markup=None)
+        # Mark skip cho session này — không hỏi lại
+        session.pending_intake["_bv_skipped_session"] = "1"
+        pending_skill = session.pending_intake.pop("_bv_pending_skill", None)
+        await save_session(session)
+
+        if pending_skill:
+            # Resume skill gốc user định chạy
+            from bot.keyboards import ADS_COPY_TIER_KEYBOARD as _ADS_KB, VIDEO_CREATOR_KEYBOARD as _VID_KB
+            session.selected_task = (
+                "ads_generator" if pending_skill in ("ads_copy", "ads_generator") else pending_skill
+            )
+            await save_session(session)
+
+            if pending_skill in ("ads_copy", "ads_generator"):
+                await query.message.reply_text(
+                    "OK ạ. *Sản Xuất Nội Dung Ads* — Sếp muốn gen tier nào trước?",
+                    parse_mode=ParseMode.MARKDOWN,
+                    reply_markup=_ADS_KB,
+                )
+                return
+            if pending_skill == "video_scripts":
+                await query.message.reply_text(
+                    "OK ạ. *Viết Kịch Bản Video* — Brief cho loại creator nào?",
+                    parse_mode=ParseMode.MARKDOWN,
+                    reply_markup=_VID_KB,
+                )
+                return
+            await _send_single_shot_form(query.message, session, pending_skill)
+        else:
+            await query.message.reply_text("OK, sếp /start để chọn skill khác nhé.")
+        return
+
     if data == "az_skip_campaign":
         await query.edit_message_reply_markup(reply_markup=None)
         # Cleanup full ideation + lever + finalize state
@@ -1613,6 +1671,34 @@ async def _handle_callback_inner(update, context, query, session, data, user_id)
                     ]),
                 )
                 return
+
+        # ── Sprint 5: Brand Voice lazy gate cho creative ops skills ─
+        if task_type in BRAND_VOICE_GATED_SKILLS:
+            # Skip nếu user đã skip trong session này
+            skipped_flag = session.pending_intake.get("_bv_skipped_session")
+            if not skipped_flag:
+                try:
+                    from storage import has_brand_voice
+                    has_bv = await has_brand_voice(user_id)
+                except Exception as e:
+                    logger.warning("[BV] has_brand_voice check failed: %s", e)
+                    has_bv = True  # fail-safe: skip prompt nếu DB lỗi
+                if not has_bv:
+                    await query.edit_message_reply_markup(reply_markup=None)
+                    # Lưu task gốc để resume sau khi BV setup xong
+                    session.pending_intake["_bv_pending_skill"] = task_type
+                    await save_session(session)
+                    task_label = get_task(task_type).label if get_task(task_type) else task_type
+                    await query.message.reply_text(
+                        f"🎙 *Sếp chưa setup Brand Voice cho brand.*\n\n"
+                        f"Em recommend setup 1 lần để các skill creative "
+                        f"(*{task_label}*, post, ads, video, email...) tuân thủ đúng tone & "
+                        f"từ ngữ brand — output nhất quán hơn 10x.\n\n"
+                        f"_Sếp có thể bỏ qua giờ và setup sau, em vẫn chạy được skill này._",
+                        parse_mode=ParseMode.MARKDOWN,
+                        reply_markup=BRAND_VOICE_PROMPT_KEYBOARD,
+                    )
+                    return
 
         # Operational skills → single-shot form (or variant chooser first)
         if task_type in OPERATIONAL_TASKS:
@@ -2326,6 +2412,42 @@ async def _handle_ops_intake_reply(update: Update, context: ContextTypes.DEFAULT
             )
             await save_session(session)
             await _send_ops_result(update.message, session, task_name, result)
+
+            # Sprint 5: Persist Brand Voice to DB sau khi gen xong
+            if task_name == "brand_voice":
+                await _persist_brand_voice_from_session(session, result)
+                # Chain sang skill gốc nếu user vào BV qua lazy trigger
+                pending_skill = session.pending_intake.pop("_bv_pending_skill", None)
+                session.pending_intake.pop("_bv_skipped_session", None)
+                if pending_skill and pending_skill != "brand_voice":
+                    await save_session(session)
+                    pending_label = (
+                        get_task(pending_skill).label if get_task(pending_skill) else pending_skill
+                    )
+                    await update.message.reply_text(
+                        f"✅ *Brand Voice đã lưu!* Em tiếp tục *{pending_label}* "
+                        f"với BV vừa setup luôn nhé...",
+                        parse_mode=ParseMode.MARKDOWN,
+                    )
+                    session.selected_task = pending_skill
+                    session.pending_intake = {}  # reset for fresh intake
+                    await save_session(session)
+                    if pending_skill in ("ads_copy", "ads_generator"):
+                        from bot.keyboards import ADS_COPY_TIER_KEYBOARD as _ADS_KB
+                        await update.message.reply_text(
+                            "📢 *Sản Xuất Nội Dung Ads* — chọn tier:",
+                            parse_mode=ParseMode.MARKDOWN,
+                            reply_markup=_ADS_KB,
+                        )
+                    elif pending_skill == "video_scripts":
+                        from bot.keyboards import VIDEO_CREATOR_KEYBOARD as _VID_KB
+                        await update.message.reply_text(
+                            "🎬 *Viết Kịch Bản Video* — chọn loại creator:",
+                            parse_mode=ParseMode.MARKDOWN,
+                            reply_markup=_VID_KB,
+                        )
+                    else:
+                        await _send_single_shot_form(update.message, session, pending_skill)
     except asyncio.TimeoutError:
         logger.error("Skill %s timeout sau %ds", task_name, 500)
         await update.message.reply_text(
@@ -3416,6 +3538,85 @@ async def _handle_campaign_finalize_text(update, context, session, text: str):
     except Exception as e:
         logger.exception("Campaign brief auto-run failed: %s", e)
         await update.message.reply_text(f"⚠️ Lỗi khi chạy Brief: {str(e)[:200]}")
+
+
+# ─── Brand Voice Persistence (Sprint 5) ──────────────────────────
+
+def _split_rule_lines(text: str) -> list[str]:
+    """Parse multiline rules from user input (numbered list, bullets, plain lines)."""
+    if not text:
+        return []
+    items = []
+    for line in text.split("\n"):
+        line = line.strip()
+        cleaned = re.sub(r"^[\d\.\-\*\+\)\s]+", "", line).strip()
+        if cleaned:
+            items.append(cleaned)
+    return items[:10]  # cap
+
+
+def _extract_banned_words_from_md(markdown: str) -> list[str]:
+    """Best-effort parse banned-words table từ BrandVoiceSkill markdown output."""
+    words = []
+    # Section "NÊN TRÁNH" followed by markdown table
+    m = re.search(r"(?i)NÊN TRÁNH.*?\n((?:\|.*\n){2,})", markdown, re.DOTALL)
+    if not m:
+        return words
+    for line in m.group(1).split("\n"):
+        if "|" not in line or "---" in line or "Lý do" in line:
+            continue
+        cells = [c.strip().strip("`*\"'") for c in line.split("|") if c.strip()]
+        if len(cells) >= 2:
+            w = cells[1] if cells[0].isdigit() else cells[0]
+            if w and w not in ("...", "Từ/cụm tránh"):
+                words.append(w)
+    return words[:10]
+
+
+def _extract_tone_from_md(markdown: str) -> list[str]:
+    """Heuristic — extract tone descriptors from markdown."""
+    m = re.search(r"(?i)tone[^:\n]*:\s*([^\n]+)", markdown)
+    if not m:
+        return []
+    tones = re.split(r"[,;]|\s+và\s+", m.group(1))
+    return [t.strip().strip("*_.`") for t in tones if t.strip()][:5]
+
+
+async def _persist_brand_voice_from_session(session, raw_markdown: str):
+    """Sau khi brand_voice skill xong, save BV vào user_brand_voice DB.
+    Parse what we can từ pending_intake + markdown output. Graceful on error.
+    """
+    try:
+        from storage import save_brand_voice, BrandVoice
+
+        intake = session.pending_intake or {}
+        do_rules = _split_rule_lines(intake.get("do_list", ""))
+        dont_rules = _split_rule_lines(intake.get("dont_list", ""))
+        sample_content = intake.get("sample_content") or None
+
+        bv = BrandVoice(
+            user_id=session.user_id,
+            do_rules=do_rules,
+            dont_rules=dont_rules,
+            tone_descriptors=_extract_tone_from_md(raw_markdown),
+            banned_words=_extract_banned_words_from_md(raw_markdown),
+            sample_content=sample_content,
+            rules_markdown=raw_markdown[:10000],  # cap 10K
+            industry_context=session.profile.industry,
+        )
+
+        saved = await save_brand_voice(bv)
+        if saved:
+            logger.info(
+                "[BV] Persisted user=%d version=%d do=%d dont=%d banned=%d",
+                session.user_id, saved.version,
+                len(saved.do_rules), len(saved.dont_rules), len(saved.banned_words),
+            )
+        else:
+            logger.warning("[BV] save_brand_voice returned None for user=%d", session.user_id)
+    except Exception as e:
+        # Non-fatal — flow vẫn tiếp tục
+        logger.exception("[BV] persist failed for user=%d: %s", session.user_id, e)
 
 
 # ─── Admin Commands ───────────────────────────────────────────────

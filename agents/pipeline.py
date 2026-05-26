@@ -351,6 +351,24 @@ async def _run_skill(skill: AgentSkill, session: Session) -> str:
     context = skill.build_context(session)
     user_msg = skill.build_user_msg(session)
 
+    # Sprint 5: Inject Brand Voice nếu user đã setup — chỉ cho creative ops skills
+    BV_INJECTED_SKILLS = {
+        "post_write", "post_adapt", "post_batch", "post_hooks", "post_visual",
+        "ads_generator", "ads_copy", "video_scripts",
+        "sales_inbox_script", "email_zalo_sequence", "content_repurpose",
+        "content_generator",
+    }
+    if skill.name in BV_INJECTED_SKILLS:
+        try:
+            from storage import get_brand_voice
+            bv = await get_brand_voice(session.user_id)
+            if bv and not bv.is_empty():
+                bv_block = bv.to_prompt_block()
+                context = f"{bv_block}\n\n---\n\n{context}"
+                logger.info("[BV] Injected for skill=%s user=%d", skill.name, session.user_id)
+        except Exception as e:
+            logger.warning("[BV] Inject failed (non-fatal) skill=%s: %s", skill.name, e)
+
     # Sprint 2: Strategic skills cũng cần inject user_correction nếu đang regen
     user_correction = (session.pending_intake or {}).get("_user_correction")
     if user_correction and "USER CORRECTION" not in user_msg:

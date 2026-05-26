@@ -280,6 +280,13 @@ NEEDS_STRATEGY_KEYBOARD = InlineKeyboardMarkup([
     [InlineKeyboardButton("⏭️ Quay lại menu",                  callback_data="menu_main")],
 ])
 
+# Sprint 5: Lazy Brand Voice setup prompt (creative ops skills)
+BRAND_VOICE_PROMPT_KEYBOARD = InlineKeyboardMarkup([
+    [InlineKeyboardButton("✅ Setup Brand Voice ngay",          callback_data="bv_setup_now")],
+    [InlineKeyboardButton("⏭️ Bỏ qua, chạy luôn skill này",     callback_data="bv_skip_for_now")],
+    [InlineKeyboardButton("🔙 Quay lại menu",                   callback_data="menu_main")],
+])
+
 # Sau khi A→Z xong — hỏi có muốn triển khai campaign ngay không
 POST_AZ_CAMPAIGN_KEYBOARD = InlineKeyboardMarkup([
     [InlineKeyboardButton("💡 Tôi đã có ý tưởng campaign",      callback_data="az_have_idea")],
