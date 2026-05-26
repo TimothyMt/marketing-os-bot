@@ -3016,3 +3016,176 @@ async def _send_html_report(message: Message, html_str: str, session):
         caption="📄 *Báo cáo đầy đủ* — mở để xem full analysis với layout đẹp.",
         parse_mode=ParseMode.MARKDOWN,
     )
+
+
+# ─── Admin Commands ───────────────────────────────────────────────
+
+def _admin_only(handler):
+    """Decorator: block non-admin users khỏi admin commands."""
+    @functools.wraps(handler)
+    async def wrapped(update: Update, context: ContextTypes.DEFAULT_TYPE):
+        from config import ADMIN_IDS
+        user_id = update.effective_user.id if update.effective_user else None
+        if not user_id or user_id not in ADMIN_IDS:
+            await update.message.reply_text("⛔ Lệnh này chỉ dành cho admin.")
+            return
+        return await handler(update, context)
+    return wrapped
+
+
+@_admin_only
+async def cmd_admin_addquota(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """/addquota <user_id> <amount> — Cộng thêm N token vào quota của user."""
+    args = context.args
+    if len(args) != 2 or not args[0].lstrip("-").isdigit() or not args[1].lstrip("-").isdigit():
+        await update.message.reply_text(
+            "⚠️ *Cú pháp:* `/addquota <user_id> <amount>`\n"
+            "Ví dụ: `/addquota 123456789 500000`",
+            parse_mode=ParseMode.MARKDOWN,
+        )
+        return
+
+    target_id = int(args[0])
+    amount = int(args[1])
+    if amount <= 0:
+        await update.message.reply_text("⚠️ Amount phải là số dương.")
+        return
+
+    session = await get_session(target_id)
+    from tools.token_tracker import get_quota, get_used, fmt
+
+    old_quota = get_quota(session)
+    new_quota = old_quota + amount
+    session.preferences["token_quota"] = str(new_quota)
+    await save_session(session)
+
+    used = get_used(session)
+    await update.message.reply_text(
+        f"✅ *Nạp token thành công*\n\n"
+        f"👤 User ID: `{target_id}`\n"
+        f"➕ Nạp thêm: *{fmt(amount)}*\n"
+        f"📊 Quota mới: *{fmt(new_quota)}* (trước: {fmt(old_quota)})\n"
+        f"📉 Đã dùng: *{fmt(used)}*\n"
+        f"💚 Còn lại: *{fmt(max(0, new_quota - used))}*",
+        parse_mode=ParseMode.MARKDOWN,
+    )
+    logger.info("[admin] addquota user=%d amount=%d new_quota=%d by admin=%d",
+                target_id, amount, new_quota, update.effective_user.id)
+
+
+@_admin_only
+async def cmd_admin_setquota(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """/setquota <user_id> <amount> — Set quota tuyệt đối cho user (ghi đè)."""
+    args = context.args
+    if len(args) != 2 or not args[0].lstrip("-").isdigit() or not args[1].lstrip("-").isdigit():
+        await update.message.reply_text(
+            "⚠️ *Cú pháp:* `/setquota <user_id> <amount>`\n"
+            "Ví dụ: `/setquota 123456789 2000000`",
+            parse_mode=ParseMode.MARKDOWN,
+        )
+        return
+
+    target_id = int(args[0])
+    new_quota = int(args[1])
+    if new_quota < 0:
+        await update.message.reply_text("⚠️ Quota phải >= 0.")
+        return
+
+    session = await get_session(target_id)
+    from tools.token_tracker import get_quota, get_used, fmt
+
+    old_quota = get_quota(session)
+    session.preferences["token_quota"] = str(new_quota)
+    await save_session(session)
+
+    used = get_used(session)
+    await update.message.reply_text(
+        f"✅ *Set quota thành công*\n\n"
+        f"👤 User ID: `{target_id}`\n"
+        f"📊 Quota mới: *{fmt(new_quota)}* (trước: {fmt(old_quota)})\n"
+        f"📉 Đã dùng: *{fmt(used)}*\n"
+        f"💚 Còn lại: *{fmt(max(0, new_quota - used))}*",
+        parse_mode=ParseMode.MARKDOWN,
+    )
+    logger.info("[admin] setquota user=%d new_quota=%d old_quota=%d by admin=%d",
+                target_id, new_quota, old_quota, update.effective_user.id)
+
+
+@_admin_only
+async def cmd_admin_resetusage(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """/resetusage <user_id> — Reset token_used về 0, giữ nguyên quota."""
+    args = context.args
+    if len(args) != 1 or not args[0].lstrip("-").isdigit():
+        await update.message.reply_text(
+            "⚠️ *Cú pháp:* `/resetusage <user_id>`\n"
+            "Ví dụ: `/resetusage 123456789`",
+            parse_mode=ParseMode.MARKDOWN,
+        )
+        return
+
+    target_id = int(args[0])
+    session = await get_session(target_id)
+    from tools.token_tracker import get_quota, get_used, fmt
+
+    old_used = get_used(session)
+    quota = get_quota(session)
+    session.preferences["token_used"] = "0"
+    await save_session(session)
+
+    await update.message.reply_text(
+        f"✅ *Reset usage thành công*\n\n"
+        f"👤 User ID: `{target_id}`\n"
+        f"🗑️ Đã xóa: *{fmt(old_used)}* tokens đã dùng\n"
+        f"📊 Quota hiện tại: *{fmt(quota)}*\n"
+        f"💚 Còn lại sau reset: *{fmt(quota)}*",
+        parse_mode=ParseMode.MARKDOWN,
+    )
+    logger.info("[admin] resetusage user=%d old_used=%d by admin=%d",
+                target_id, old_used, update.effective_user.id)
+
+
+@_admin_only
+async def cmd_admin_userinfo(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """/userinfo <user_id> — Xem thông tin token + profile của user."""
+    args = context.args
+    if len(args) != 1 or not args[0].lstrip("-").isdigit():
+        await update.message.reply_text(
+            "⚠️ *Cú pháp:* `/userinfo <user_id>`\n"
+            "Ví dụ: `/userinfo 123456789`",
+            parse_mode=ParseMode.MARKDOWN,
+        )
+        return
+
+    target_id = int(args[0])
+    session = await get_session(target_id)
+    from tools.token_tracker import get_quota, get_used, get_remaining, fmt, is_low, is_exhausted
+
+    used = get_used(session)
+    quota = get_quota(session)
+    remaining = get_remaining(session)
+    pct = (used / quota * 100) if quota else 0
+
+    if is_exhausted(session):
+        status = "🔴 Hết quota"
+    elif is_low(session):
+        status = "⚠️ Sắp hết (< 10%)"
+    else:
+        status = "✅ Bình thường"
+
+    name = session.preferences.get("user_name", "_(chưa đặt)_")
+    business = session.profile.business_name or "_(chưa có)_"
+    stage = session.stage.value
+
+    await update.message.reply_text(
+        f"👤 *Thông tin user `{target_id}`*\n\n"
+        f"🏷️ Tên: {name}\n"
+        f"🏢 Business: {business}\n"
+        f"📍 Stage hiện tại: `{stage}`\n\n"
+        f"─────────────────────\n"
+        f"💎 *Token*\n"
+        f"📊 Quota: *{fmt(quota)}*\n"
+        f"📉 Đã dùng: *{fmt(used)}* ({pct:.1f}%)\n"
+        f"💚 Còn lại: *{fmt(remaining)}*\n"
+        f"📌 Trạng thái: {status}",
+        parse_mode=ParseMode.MARKDOWN,
+    )

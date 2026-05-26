@@ -21,6 +21,10 @@ from bot.handlers import (
     handle_message,
     handle_callback,
     handle_photo,
+    cmd_admin_addquota,
+    cmd_admin_setquota,
+    cmd_admin_resetusage,
+    cmd_admin_userinfo,
 )
 
 logging.basicConfig(
@@ -58,6 +62,12 @@ def main():
     app.add_handler(CommandHandler("settings", cmd_settings))
     app.add_handler(CommandHandler("setting",  cmd_settings))  # alias
     app.add_handler(CommandHandler("config",   cmd_settings))  # alias
+
+    # Admin commands (chỉ ADMIN_IDS mới dùng được)
+    app.add_handler(CommandHandler("addquota",   cmd_admin_addquota))
+    app.add_handler(CommandHandler("setquota",   cmd_admin_setquota))
+    app.add_handler(CommandHandler("resetusage", cmd_admin_resetusage))
+    app.add_handler(CommandHandler("userinfo",   cmd_admin_userinfo))
 
     # Inline keyboard callbacks
     app.add_handler(CallbackQueryHandler(handle_callback))

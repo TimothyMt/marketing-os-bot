@@ -7,6 +7,11 @@ TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
 ANTHROPIC_API_KEY  = os.getenv("ANTHROPIC_API_KEY", "")
 OPENAI_API_KEY     = os.getenv("OPENAI_API_KEY", "")  # cho image gen (gpt-image-1)
 
+# Admin Telegram user IDs — phân cách bằng dấu phẩy: "123456789,987654321"
+ADMIN_IDS: set[int] = {
+    int(x.strip()) for x in os.getenv("ADMIN_IDS", "").split(",") if x.strip().isdigit()
+}
+
 # Facebook APIs
 FB_ACCESS_TOKEN    = os.getenv("FB_ACCESS_TOKEN", "")   # User/System token (ads_read, read_insights)
 FB_APP_ID          = os.getenv("FB_APP_ID", "")         # App ID
