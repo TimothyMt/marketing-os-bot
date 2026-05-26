@@ -433,7 +433,26 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         or session.pending_intake.get("_awaiting_campaign_finalize")
         or session.pending_intake.get("_awaiting_image_reference")
     )
-    if _is_greeting and session.profile.business_name and not _in_special_flow:
+    # Returning user heuristic: bất kỳ field profile nào có data → coi như đã có context
+    _p = session.profile
+    _has_any_profile = bool(
+        _p.business_name or _p.product_service or _p.industry
+        or _p.target_customer or _p.primary_goal or _p.main_challenge
+    )
+    # Hoặc user đã từng có results từ skill nào đó (returning power user)
+    _has_any_results = bool(session.results)
+    _is_returning_user = _has_any_profile or _has_any_results
+
+    # Log để debug nếu lần sau vẫn lỗi
+    if _is_greeting:
+        logger.info(
+            "Greeting detected (user=%d) | stage=%s | biz=%s | product=%s | industry=%s | results_keys=%s | in_special=%s",
+            session.user_id, session.stage.value,
+            bool(_p.business_name), bool(_p.product_service), bool(_p.industry),
+            list(session.results.keys())[:5], _in_special_flow,
+        )
+
+    if _is_greeting and _is_returning_user and not _in_special_flow:
         # Reset stage về IDLE để show menu — KHÔNG đi qua intake/followup
         if session.stage not in (PipelineStage.IDLE, PipelineStage.TASK_SELECT, PipelineStage.COMPLETE):
             session.stage = PipelineStage.IDLE
