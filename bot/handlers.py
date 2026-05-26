@@ -1871,18 +1871,18 @@ async def _handle_callback_inner(update, context, query, session, data, user_id)
             await _show_profile_reuse_confirm(query.message, session, task_type)
             return
 
-        # Phase 3: Strategic single-skill (market/competitor/customer/pricing) → single-shot form
-        # KHÔNG dùng multi-turn để tránh hỏi đi hỏi lại
-        # ONLY full + strategy giữ multi-turn (vì cần full profile + explore)
-        SINGLE_SHOT_STRATEGIC = {"market", "competitor", "customer", "pricing"}
+        # Strategic tasks dùng single-shot form với smart pre-fill:
+        # - McKinsey Gate đã thu thập industry/product/target/goal → chỉ hỏi fields còn thiếu
+        # - "full" được thêm vào đây để tránh hỏi lại fields đã có từ gate
+        SINGLE_SHOT_STRATEGIC = {"market", "competitor", "customer", "pricing", "full", "strategy"}
         if task_type in SINGLE_SHOT_STRATEGIC:
             task = get_task(task_type)
-            if task and task.intake_fields:  # Phase 3: nếu task có template form
+            if task and task.intake_fields:
                 await query.edit_message_reply_markup(reply_markup=None)
                 await _send_single_shot_form(query.message, session, task_type)
                 return
 
-        # Profile chưa đủ + không phải single-shot → multi-turn intake (full / strategy)
+        # Fallback: multi-turn intake (task không có intake_fields khai báo)
         session.stage = PipelineStage.INTAKE
         await save_session(session)
 
@@ -2598,13 +2598,11 @@ async def _handle_ops_intake_reply(update: Update, context: ContextTypes.DEFAULT
     # Strategic single-shot: also merge parsed values into session.profile
     # (so future skills can reuse via profile reuse logic)
     SINGLE_SHOT_STRATEGIC = {"market", "competitor", "customer", "pricing"}
-    if task_name in SINGLE_SHOT_STRATEGIC:
-        # Map intake keys → BusinessProfile attributes
+    if task_name in SINGLE_SHOT_STRATEGIC or task_name == "full":
         profile = session.profile
         for k, v in parsed.items():
             if v and hasattr(profile, k):
                 setattr(profile, k, v)
-        # Try to infer industry from product_service if not set
         if not profile.industry and parsed.get("product_service"):
             inferred = _infer_industry(parsed["product_service"], parsed.get("target_customer", ""))
             if inferred:
@@ -2615,6 +2613,15 @@ async def _handle_ops_intake_reply(update: Update, context: ContextTypes.DEFAULT
         session.pending_intake[k] = v
 
     session.pending_intake.pop(OPS_INTAKE_AWAITING, None)
+
+    # "full" task: sau khi collect missing fields → show confirm card → pipeline
+    if task_name == "full":
+        session.selected_task = "full"
+        session.stage = PipelineStage.CONFIRMED
+        await save_session(session)
+        await _show_profile_reuse_confirm(update.message, session, "full")
+        return
+
     await save_session(session)
 
     await context.bot.send_chat_action(
@@ -2644,8 +2651,6 @@ async def _handle_ops_intake_reply(update: Update, context: ContextTypes.DEFAULT
                 timeout=AGENT_TIMEOUT,
             )
             await save_session(session)
-            # Strategic single-skill render via existing pipeline-sequentially logic
-            # but for 1 stage only — reuse _send_ops_result for uniform UX
             await _send_ops_result(update.message, session, task_name, result)
         else:
             result = await asyncio.wait_for(

@@ -54,27 +54,35 @@ class TaskConfig:
 STRATEGIC_TASKS: dict[str, TaskConfig] = {
     "full": TaskConfig(
         name="full",
-        label="Trọn Bộ",
+        label="Trọn Bộ A→Z",
         button_emoji="🔍",
         category="full",
-        description="Chạy phân tích chiến lược tuần tự (A → Z) — Market + Competitor + Customer + Pricing + USP + Retention + Winback + Synthesis",
+        description="Phân tích chiến lược toàn diện — Market + Competitor + Customer + Pricing + USP + Retention + Synthesis",
         skill_class_name="",  # Composite
-        # Sprint 2 + 3 — pipeline mở rộng từ 5 → 8 stage
-        # USP_DEFINITION conditional (skip nếu usp_confidence='clear')
-        # RETENTION_STRATEGY + WINBACK_CAMPAIGN — luôn chạy (A2 decision)
         pipeline_stages=[
             "market_research",
             "competitor",
             "customer_insight",
             "psychology_pricing",
-            "usp_definition",         # Sprint 2
-            "retention_strategy",     # Sprint 3
-            "winback_campaign",       # Sprint 3
+            "usp_definition",
+            "retention_strategy",
+            "winback_campaign",
             "synthesis",
         ],
         intake_required_fields=[
             "industry", "product_service", "target_customer",
             "monthly_revenue", "primary_goal", "main_challenge",
+        ],
+        # intake_fields khai báo đủ để smart pre-fill hoạt động:
+        # Fields đã có từ McKinsey Gate (industry/product/target/goal) sẽ tự pre-fill,
+        # bot chỉ hỏi những gì còn thiếu (monthly_revenue, main_challenge).
+        intake_fields=[
+            {"key": "product_service",  "label": "Sản phẩm/dịch vụ chính", "example": "Spa laser trị mụn, combo 3 buổi 1.2M", "required": True},
+            {"key": "target_customer",  "label": "Khách hàng mục tiêu",     "example": "Phụ nữ 25-35 đi làm văn phòng HCM", "required": True},
+            {"key": "monthly_revenue",  "label": "Doanh thu tháng hiện tại","example": "80-120 triệu/tháng (hoặc 'mới mở chưa có')", "required": True},
+            {"key": "primary_goal",     "label": "Mục tiêu 90 ngày tới",   "example": "Tăng doanh thu 30%, mở thêm kênh TikTok", "required": True},
+            {"key": "main_challenge",   "label": "Khó khăn lớn nhất hiện tại", "example": "Chi phí ads cao, khách không quay lại", "required": True},
+            {"key": "industry",         "label": "Ngành (tự map nếu không nhập)", "example": "health_beauty", "required": False},
         ],
     ),
     "market": TaskConfig(
