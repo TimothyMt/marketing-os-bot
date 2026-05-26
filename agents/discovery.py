@@ -253,6 +253,52 @@ async def run_discovery_research(
     }
 
 
+def assemble_research_from_deepdives(session: Session) -> dict:
+    """Gom kết quả DEEP-DIVE đã chạy (session.results) thành research dict cho brief.
+
+    Dùng khi flow chạy full deep-dive (tái dùng strategic skills cũ) thay vì
+    research concise. Map các domain → market/competitor/customer + extra.
+    """
+    g = session.get_latest_result
+    market = g("market_research") or ""
+    competitor = g("competitor") or ""
+    customer = g("customer_insight") or ""
+
+    extra_parts = []
+    for key, label in [
+        ("psychology_pricing", "Psychology & Pricing"),
+        ("usp_definition", "USP"),
+        ("retention_strategy", "Retention Strategy"),
+        ("winback_campaign", "Winback"),
+    ]:
+        val = g(key)
+        if val:
+            extra_parts.append(f"## {label}\n{val}")
+
+    # Grounded detection — market deep-dive chạy qua Gemini grounded?
+    from tools.token_tracker import get_latest_skill_entry
+    grounded = False
+    for label in ("market_research", "dc_market"):
+        entry = get_latest_skill_entry(session, label)
+        if entry and entry.get("provider") == "gemini_pro_grounded":
+            grounded = True
+            break
+
+    confidence_note = None if grounded else (
+        "⚠️ Số liệu thị trường là ƯỚC LƯỢNG (không có web realtime). "
+        "Cần kiểm chứng trước khi quyết định lớn."
+    )
+
+    return {
+        "market":          market,
+        "competitor":      competitor,
+        "customer":        customer,
+        "extra":           "\n\n".join(extra_parts),
+        "grounded":        grounded,
+        "confidence_note": confidence_note,
+    }
+
+
 # ═════════════════════════════════════════════════════════════════
 # 3. DIAGNOSTIC BRIEF
 # ═════════════════════════════════════════════════════════════════
@@ -306,6 +352,7 @@ async def generate_diagnostic_brief(session: Session, research: dict) -> dict:
         competitor_note=research.get("competitor", ""),
         customer_note=research.get("customer", ""),
         grounded=grounded,
+        extra_notes=research.get("extra", ""),
     )
 
     tokens_used = 0

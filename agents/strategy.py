@@ -173,29 +173,34 @@ async def get_existing_strategy(user_id: int) -> Optional[dict]:
 
 
 def render_strategy_card(strategy: dict) -> str:
-    """Format Marketing Plan thành Telegram card (Markdown). Pure."""
-    lines = ["🚀 *Marketing Plan* — Kế hoạch 90 ngày", ""]
+    """Format khuyến nghị thành Telegram card (Markdown). Pure.
+
+    Đóng khung TƯ VẤN: lời khuyên dựa trên nghiên cứu, sếp giữ quyền quyết.
+    """
+    lines = ["💡 *Khuyến nghị của Max* — dựa trên nghiên cứu, sếp cân nhắc & quyết", ""]
 
     pos = strategy.get("positioning") or {}
     if pos.get("statement"):
-        lines += [f"🎯 *Định vị:* {pos['statement']}", ""]
+        lines += [f"🎯 *Định vị đề xuất:* {pos['statement']}", ""]
 
     wedge = strategy.get("wedge") or {}
     if wedge:
         chans = ", ".join(wedge.get("channels", []) or [])
-        lines.append("⚔️ *Mũi nhọn:*")
+        lines.append("⚔️ *Mũi nhọn nên đánh trước:*")
         if wedge.get("audience"):
             lines.append(f"• Tệp khách: {wedge['audience']}")
         if chans:
             lines.append(f"• Kênh: {chans}")
         nots = wedge.get("not_doing", []) or []
         if nots:
-            lines.append(f"• KHÔNG làm: {'; '.join(nots)}")
+            lines.append(f"• Nên tạm gác: {'; '.join(nots)}")
+        if wedge.get("rationale"):
+            lines.append(f"• _Lý do: {wedge['rationale']}_")
         lines.append("")
 
     roadmap = strategy.get("roadmap_90d") or []
     if roadmap:
-        lines.append("🗺 *Roadmap:*")
+        lines.append("🗺 *Lộ trình gợi ý 90 ngày:*")
         for ph in roadmap[:3]:
             goals = "; ".join(ph.get("smart_goals", []) or [])
             lines.append(f"• *{ph.get('phase', '')}* ({ph.get('window', '')}): {goals}")
@@ -203,14 +208,14 @@ def render_strategy_card(strategy: dict) -> str:
 
     kpis = strategy.get("kpi_dashboard") or []
     if kpis:
-        lines.append("📊 *KPI theo dõi:*")
+        lines.append("📊 *KPI nên theo dõi:*")
         for k in kpis[:5]:
             lines.append(f"• {k.get('metric', '')} → {k.get('target', '')}")
         lines.append("")
 
     kills = strategy.get("kill_criteria") or []
     if kills:
-        lines.append("🛑 *Điều kiện pivot:*")
+        lines.append("🚦 *Dấu hiệu nên đổi hướng:*")
         for kc in kills[:3]:
             lines.append(f"• {kc.get('condition', '')} → {kc.get('action', '')}")
         lines.append("")
@@ -218,4 +223,51 @@ def render_strategy_card(strategy: dict) -> str:
     if strategy.get("summary"):
         lines += ["—", strategy["summary"]]
 
+    lines += ["", "_Đây là góc nhìn tư vấn của em dựa trên dữ liệu nghiên cứu — quyết định cuối vẫn là của sếp ạ._"]
     return "\n".join(lines).strip()
+
+
+async def run_advisor(session: Session, engagement_id: Optional[str] = None) -> dict:
+    """Bước kết luận (thay synthesis cũ): deep-dive → brief xếp hạng → CMO advisory.
+
+    Giả định các deep-dive đã chạy xong và nằm trong session.results.
+    Returns {brief, advisory, card} — handler render card + ghép vào HTML report.
+    Nếu có engagement_id → persist brief + strategy vào v2.
+    """
+    from agents.discovery import (
+        assemble_research_from_deepdives, generate_diagnostic_brief,
+        persist_discovery, render_brief_card,
+    )
+
+    # 1. Gom deep-dive → research → brief xếp hạng giả thuyết
+    research = assemble_research_from_deepdives(session)
+    brief = await generate_diagnostic_brief(session, research)
+
+    # 2. CMO advisory (tấn công rank 1, ≤2 kênh, not_doing, kill_criteria)
+    advisory = await generate_strategy(session, brief)
+
+    # 3. Persist (nếu có engagement)
+    brief_id = None
+    if engagement_id:
+        try:
+            from storage import v2
+            brief_row = await v2.insert_brief(
+                engagement_id=engagement_id, user_id=session.user_id,
+                facts=brief.get("facts"), hypotheses=brief.get("hypotheses"),
+                gaps=brief.get("gaps"), sources=brief.get("sources"),
+                grounded=brief.get("grounded", False), confidence_note=brief.get("confidence_note"),
+                content=brief.get("content"), model_used=brief.get("model_used"),
+                tokens_used=brief.get("tokens_used"),
+            )
+            brief_id = brief_row["id"] if brief_row else None
+            await v2.update_engagement(engagement_id, brief_id=brief_id)
+            await persist_strategy(session, engagement_id, brief_id, advisory)
+        except Exception as e:
+            logger.warning("run_advisor persist failed: %s", e)
+
+    return {
+        "brief":         brief,
+        "advisory":      advisory,
+        "brief_card":    render_brief_card(brief),
+        "advisory_card": render_strategy_card(advisory),
+    }

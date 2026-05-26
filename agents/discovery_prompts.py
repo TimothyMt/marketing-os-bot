@@ -155,15 +155,20 @@ def build_brief_user(
     competitor_note: str,
     customer_note: str,
     grounded: bool,
+    extra_notes: str = "",
 ) -> str:
-    """User message cho brief generator — gộp toàn bộ input."""
+    """User message cho brief generator — gộp toàn bộ input.
+
+    extra_notes: các deep-dive bổ sung (psychology/pricing/USP/retention/winback)
+    khi brief được dựng từ deep-dive thay vì research concise.
+    """
     provenance = (
         "Research dùng dữ liệu web thật (grounded search)."
         if grounded
         else "⚠️ Research KHÔNG có web realtime — dựa trên kiến thức mô hình, "
              "số liệu mang tính ƯỚC LƯỢNG. Đánh confidence thận trọng (medium/low)."
     )
-    return "\n".join([
+    parts = [
         "# THÔNG TIN FOUNDER CUNG CẤP",
         profile_ctx,
         "",
@@ -178,9 +183,14 @@ def build_brief_user(
         "",
         "# RESEARCH NOTE — KHÁCH HÀNG",
         customer_note or "(không có)",
+    ]
+    if extra_notes:
+        parts += ["", "# PHÂN TÍCH SÂU BỔ SUNG (psychology/pricing/USP/retention/winback)", extra_notes]
+    parts += [
         "",
         "---",
         f"# LƯU Ý NGUỒN: {provenance}",
         "",
         "Dựng Diagnostic Brief theo đúng format JSON ở system prompt.",
-    ])
+    ]
+    return "\n".join(parts)
