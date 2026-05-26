@@ -2305,38 +2305,90 @@ async def _send_single_shot_form(message: Message, session, task_name: str):
     """Send a paste-template form for ops skill intake.
     User fills in template, replies once with all fields.
 
-    Sprint UX: Basic Business Context Gate.
-    Trước khi ANY skill chạy, đảm bảo có 5 fields cơ bản (industry, product,
-    target_customer, stage, primary_goal). Nếu thiếu → show discovery form
-    trước, lưu pending task → chain lại skill sau khi extract xong.
+    Sprint UX: Basic Business Context Gate + Smart Pre-fill.
+    1. Trước khi ANY skill chạy, đảm bảo có 5 fields cơ bản
+       (industry, product, target_customer, stage, primary_goal).
+    2. Pre-fill các fields đã có trong profile vào pending_intake →
+       form chỉ hiện những câu CHƯA biết (loại bỏ duplicate question).
+    3. Nếu profile đã đủ → SKIP form, chạy skill luôn.
     """
     task = get_task(task_name)
     if not task:
         await message.reply_text(f"⚠️ Skill {task_name} không tồn tại.")
         return
 
-    # McKinsey discovery gate — KHÔNG cho skill chạy nếu thiếu context cơ bản
+    # ── McKinsey discovery gate — basic context required ──────
     if not session.profile.is_basic_business_context_ready():
         await _send_basic_business_form(message, session, task_name)
         return
 
+    # ── Smart Pre-fill: map task field keys → profile attributes
+    _PROFILE_KEY_MAP = {
+        "industry":          "industry",
+        "product_service":   "product_service",
+        "product":           "product_service",       # ads_generator alias
+        "target_customer":   "target_customer",
+        "primary_goal":      "primary_goal",
+        "campaign_goal":     "primary_goal",          # heuristic fallback
+        "location":          "location",
+        "monthly_revenue":   "monthly_revenue",
+        "main_challenge":    "main_challenge",
+        "competitors":       "competitors",
+        "current_channels":  "current_channels",
+        "team_size":         "team_size",
+    }
+
+    prefilled: dict[str, str] = {}
+    for f in task.intake_fields:
+        key = f["key"]
+        profile_attr = _PROFILE_KEY_MAP.get(key)
+        if not profile_attr:
+            continue
+        val = getattr(session.profile, profile_attr, None)
+        if val and isinstance(val, str) and val.strip():
+            prefilled[key] = val.strip()
+
+    # Inject vào pending_intake để skill dùng được
+    for k, v in prefilled.items():
+        session.pending_intake[k] = v
+
+    # Fields còn lại cần hỏi user
+    remaining_fields = [f for f in task.intake_fields if f["key"] not in prefilled]
+
+    # ── Build form ────────────────────────────────────────────
     lines = [
         f"✅ *{task.button_emoji} {task.label}*",
         "",
         f"_{task.description}_",
         "",
-        "─────────────────────────",
-        "*Copy template dưới, điền vào (hoặc thay example), gửi lại 1 lần:*",
-        "",
     ]
-    for f in task.intake_fields:
+
+    if prefilled:
+        lines.append("*Em đã có sẵn từ business profile của sếp:*")
+        for k, v in prefilled.items():
+            label = next((f["label"] for f in task.intake_fields if f["key"] == k), k)
+            lines.append(f"• *{label}:* {v[:120]}")
+        lines.append("")
+        if remaining_fields:
+            lines.append("─────────────────────────")
+            lines.append(f"*Em chỉ cần thêm {len(remaining_fields)} ý nữa — gõ tự do, em parse:*")
+        else:
+            lines.append("─────────────────────────")
+            lines.append("*Em không cần hỏi thêm gì — gõ `ok` để em chạy luôn.*")
+    else:
+        lines.append("─────────────────────────")
+        lines.append("*Copy template dưới, điền vào (hoặc thay example), gửi lại 1 lần:*")
+
+    lines.append("")
+    for f in remaining_fields:
         required_mark = "" if f.get("required", True) else " _(không bắt buộc)_"
         lines.append(f"*{f['label']}*{required_mark}:")
         lines.append(f"_Vd: {f.get('example', '...')}_")
         lines.append("")
 
-    lines.append("─────────────────────────")
-    lines.append("💬 *Gửi tin trả lời theo format trên — Max sẽ tự parse và chạy.*")
+    if remaining_fields:
+        lines.append("─────────────────────────")
+        lines.append("💬 *Gửi tin trả lời theo format trên — Max sẽ tự parse và chạy.*")
 
     # Mark session as waiting for ops intake
     session.pending_intake[OPS_INTAKE_AWAITING] = task_name
