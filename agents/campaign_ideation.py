@@ -300,31 +300,182 @@ def format_refined_card(refined_data: dict) -> str:
     return "\n".join(lines)
 
 
-# ─── Finalize Form — 4 trường USER QUYẾT ────────────────────────
+# ─── OFFER LEVERS — AI đề xuất 4 cơ chế offer specific cho campaign ──
 
-FINALIZE_FIELDS = [
-    {"key": "budget",        "label": "Budget tổng",                  "example": "150 triệu / 80tr / 500M VND"},
-    {"key": "team_size",     "label": "Capacity team chạy campaign",  "example": "3 người: 1 content, 1 ads, 1 sales"},
-    {"key": "start_date",    "label": "Ngày bắt đầu",                 "example": "15/01/2026 / Thứ 2 tuần sau"},
-    {"key": "discount_pct",  "label": "% giảm giá tối đa chấp nhận",  "example": "20% / 0% (không giảm) / Tặng quà thay vì giảm"},
+PROPOSE_LEVERS_SYSTEM = """Bạn là Max — CMO AI giúp founder VN chọn OFFER LEVER cho campaign vừa chốt.
+
+Bối cảnh: User đã chốt 1 campaign cụ thể. Giờ cần chọn CƠ CHẾ OFFER phù hợp — KHÔNG phải lúc nào cũng là discount %.
+
+🔴 NGUYÊN TẮC CỐT LÕI:
+- KHÔNG mặc định discount % — đó là lever YẾU NHẤT cho margin
+- Đề xuất 4 levers KHÁC NHAU theo ngành + goal + target của campaign
+- VD ngành Beauty/Spa thường dùng: Trial / Bundle liệu trình / GWP / Loyalty
+- VD ngành F&B thường dùng: Combo / BOGO / Happy hour / Loyalty card
+- VD ngành SaaS thường dùng: Free trial / Annual discount / Freemium / Money-back
+- VD ngành Ecom thường dùng: Free shipping / Flash sale / Bundle / Cashback
+- VD ngành Education thường dùng: Early bird / Group discount / Free preview / Trả góp
+- VD ngành B2B Service thường dùng: Free audit / Pilot project / Performance-based pricing
+- VD ngành Real Estate thường dùng: Early commit / Payment plan / Furniture package
+- VD ngành Health/Clinic thường dùng: Free consultation / Package / Family plan
+
+Theo Goal:
+- Acquisition (khách mới) → Trial, GWP, Sample, Free consultation, Early bird
+- Retention (khách cũ) → Loyalty tier, Bundle VIP, Early access, Members-only
+- Winback (khách bỏ) → Personal discount, Free upgrade, "We miss you" gift
+- Brand awareness → KOL collab, UGC contest (không cần price lever)
+
+Discount % chỉ nên là 1/4 nếu CỰC HỢP — không thì BỎ HẲN.
+
+OUTPUT BẮT BUỘC dạng JSON (KHÔNG có text khác bên ngoài JSON):
+
+```json
+{
+  "levers": [
+    {
+      "name": "Tên lever ngắn gọn tiếng Việt (vd: 'Trial buổi đầu', 'Combo 3-buổi', 'GWP tặng kèm', 'Loyalty VIP')",
+      "mechanism": "1-2 câu mô tả cơ chế cụ thể",
+      "why_fit": "1-2 câu: tại sao lever này hợp với campaign + ngành + target",
+      "parameters": [
+        {"label": "Tên trường user phải điền (ngắn gọn)", "example": "Ví dụ giá trị cụ thể", "required": true},
+        {"label": "Trường 2 (nếu cần)", "example": "...", "required": false}
+      ]
+    },
+    { ... 3 levers còn lại ... }
+  ]
+}
+```
+
+QUY TẮC PARAMETERS:
+- Mỗi lever có 1-3 parameters TỐI ĐA
+- Parameters là số liệu / điều kiện cụ thể user phải nhập (vd: "Giá trial", "Mức tiết kiệm so giá lẻ", "Điều kiện áp dụng")
+- KHÔNG hỏi budget / team / ngày (đã có form chung)
+- example phải SPECIFIC theo lever đó
+
+QUY TẮC LEVERS:
+- 4 levers PHẢI khác nhau về cơ chế (không trùng 2 levers cùng kiểu discount)
+- Match đúng ngành (đừng đề Trial cho ngành F&B, đừng đề BOGO cho Beauty)
+- Match đúng goal (Acquisition campaign → đừng đề Loyalty cho khách mới)
+- Output CHỈ JSON trong ```json``` block
+"""
+
+
+# Common fields — chỉ giữ 2 fields THỜI GIAN cho Content Calendar
+COMMON_FINALIZE_FIELDS = [
+    {"label": "Ngày bắt đầu",  "example": "15/01/2026 / Thứ 2 tuần sau"},
+    {"label": "Ngày kết thúc", "example": "28/02/2026 / Sau 6 tuần"},
 ]
 
 
-def format_finalize_form(campaign: dict) -> str:
-    """Form cho user fill 4 trường QUYẾT ĐỊNH trước khi launch Brief.
+async def propose_offer_levers(session: Session, campaign: dict) -> Optional[list[dict]]:
+    """Mode propose levers: AI đề xuất 4 offer levers SPECIFIC cho campaign vừa chốt.
 
-    AI proposal đã có trong card trước; form này CHỈ hỏi 4 trường còn thiếu.
+    Returns list[dict] 4 levers hoặc None nếu fail.
     """
+    context = _build_ideation_context(session)
+    campaign_summary = (
+        f"**Campaign đã chốt:**\n"
+        f"- Tên: {campaign.get('name', '?')}\n"
+        f"- Mục tiêu: {campaign.get('goal', '?')}\n"
+        f"- Target: {campaign.get('target_segment', '?')}\n"
+        f"- Cơ chế offer (định hướng AI gen trước): {campaign.get('key_offer', '?')}\n"
+    )
+
+    user_msg = (
+        f"{context}\n\n---\n\n"
+        f"{campaign_summary}\n\n"
+        "Đề xuất 4 OFFER LEVERS specific cho campaign này, hợp với ngành + goal + target. "
+        "Mỗi lever có parameters cụ thể user phải điền (giá, %, điều kiện...)."
+    )
+
+    try:
+        response = await client.messages.create(
+            model=CLAUDE_SONNET_MODEL,
+            max_tokens=2500,
+            system=[{"type": "text", "text": PROPOSE_LEVERS_SYSTEM, "cache_control": {"type": "ephemeral"}}],
+            messages=[{"role": "user", "content": user_msg}],
+        )
+    except Exception as e:
+        logger.exception("Propose levers API call failed: %s", e)
+        return None
+
+    try:
+        from tools.token_tracker import track_usage
+        track_usage(session, response, label="campaign_levers")
+    except Exception:
+        pass
+
+    raw = response.content[0].text
+    data = _extract_json(raw)
+    if not data or "levers" not in data:
+        logger.error("Levers proposal returned invalid JSON: %s", raw[:200])
+        return None
+
+    levers = data.get("levers", [])
+    if not isinstance(levers, list) or len(levers) < 1:
+        return None
+    return levers[:4]  # cap 4
+
+
+def format_levers_card(campaign: dict, levers: list[dict]) -> str:
+    """Format 4 offer lever options để user pick."""
     lines = [
-        f"✅ *Đã chốt campaign: \"{campaign.get('name', '?')}\"*",
+        f"🎯 *Em đề xuất 4 OFFER LEVERS cho campaign \"{campaign.get('name', '?')}\":*",
         "",
-        "━━━━━━━━━━━━━━━━━━━━",
-        "*🔧 4 thông tin cuối — do sếp quyết:*",
+        "_(Lever = cơ chế ưu đãi. KHÔNG mặc định là discount %. Mỗi lever phù hợp với 1 chiến thuật khác nhau.)_",
         "",
     ]
-    for f in FINALIZE_FIELDS:
+
+    emoji_num = ["1️⃣", "2️⃣", "3️⃣", "4️⃣"]
+    for i, lever in enumerate(levers):
+        num = emoji_num[i] if i < 4 else f"{i+1}."
+        lines.append("━━━━━━━━━━━━━━━━━━━━")
+        lines.append(f"*{num} {lever.get('name', '?')}*")
+        lines.append(f"🔧 *Cơ chế:* {lever.get('mechanism', '?')}")
+        lines.append(f"💡 *Vì sao hợp:* {lever.get('why_fit', '?')}")
+        params = lever.get("parameters", [])
+        if params:
+            param_labels = [p.get("label", "?") for p in params]
+            lines.append(f"📝 *Sếp sẽ điền:* {', '.join(param_labels)}")
+        lines.append("")
+
+    lines.append("━━━━━━━━━━━━━━━━━━━━")
+    lines.append("\n👇 *Sếp chọn lever nào?*")
+    return "\n".join(lines)
+
+
+def get_finalize_fields(lever: dict) -> list[dict]:
+    """Build full finalize field list = lever params + 2 common date fields."""
+    fields = list(lever.get("parameters", []) or [])
+    fields.extend(COMMON_FINALIZE_FIELDS)
+    return fields
+
+
+def format_dynamic_finalize_form(campaign: dict, lever: dict) -> str:
+    """Form động dựa trên lever đã chọn: lever params + Ngày bắt đầu + Ngày kết thúc."""
+    fields = get_finalize_fields(lever)
+
+    lines = [
+        f"✅ *Đã chốt: \"{campaign.get('name', '?')}\"*",
+        f"🎟 *Lever:* {lever.get('name', '?')}",
+        "",
+        "━━━━━━━━━━━━━━━━━━━━",
+        "*🔧 Sếp điền chi tiết:*",
+        "",
+    ]
+
+    # Lever-specific parameters
+    for f in (lever.get("parameters", []) or []):
+        required_mark = "" if f.get("required", True) else " _(không bắt buộc)_"
+        lines.append(f"*{f['label']}*{required_mark}:")
+        lines.append(f"_Vd: {f.get('example', '...')}_")
+        lines.append("")
+
+    lines.append("━━━━━━━━━━━━━━━━━━━━")
+    lines.append("*📅 Timeline (cần cho Content Calendar):*")
+    lines.append("")
+    for f in COMMON_FINALIZE_FIELDS:
         lines.append(f"*{f['label']}:*")
-        lines.append(f"_Vd: {f['example']}_")
+        lines.append(f"_Vd: {f.get('example', '...')}_")
         lines.append("")
 
     lines.append("━━━━━━━━━━━━━━━━━━━━")
@@ -335,27 +486,27 @@ def format_finalize_form(campaign: dict) -> str:
     return "\n".join(lines)
 
 
-def parse_finalize_form(text: str) -> tuple[dict, list[str]]:
-    """Parse user reply theo FINALIZE_FIELDS.
-    Returns (parsed_dict, missing_keys).
+def parse_dynamic_finalize_form(text: str, fields: list[dict]) -> tuple[dict, list[str]]:
+    """Parse user reply theo fields list (label-based matching).
+    Returns (parsed_dict keyed by label, missing_labels).
     """
     parsed = {}
-    label_to_key = {f["label"].lower().strip(): f["key"] for f in FINALIZE_FIELDS}
+    label_set = {f["label"].lower().strip(): f["label"] for f in fields}
 
     text_lines = text.split("\n")
-    current_key = None
+    current_label = None
     current_parts: list[str] = []
 
     def _flush():
-        nonlocal current_key, current_parts
-        if current_key and current_parts:
+        nonlocal current_label, current_parts
+        if current_label and current_parts:
             val = " ".join(current_parts).strip()
             # Loại bỏ italic "Vd: ..." nếu user paste cả example
             if val.lower().startswith("vd:") or val.lower().startswith("_vd:"):
                 val = ""
             if val:
-                parsed[current_key] = val
-        current_key = None
+                parsed[current_label] = val
+        current_label = None
         current_parts = []
 
     for line in text_lines:
@@ -366,17 +517,17 @@ def parse_finalize_form(text: str) -> tuple[dict, list[str]]:
         # Match "Label: value"
         m = re.match(r"^([^:]+?)\s*:\s*(.*)$", line_stripped)
         if m:
-            label = m.group(1).strip().lower()
+            label_input = m.group(1).strip().lower()
             value = m.group(2).strip()
-            # Tìm key khớp với label (substring match cho linh hoạt)
-            matched_key = None
-            for lbl, key in label_to_key.items():
-                if lbl in label or label in lbl:
-                    matched_key = key
+            # Tìm label khớp (substring match)
+            matched_label = None
+            for lbl_lower, lbl_orig in label_set.items():
+                if lbl_lower in label_input or label_input in lbl_lower:
+                    matched_label = lbl_orig
                     break
-            if matched_key:
+            if matched_label:
                 _flush()
-                current_key = matched_key
+                current_label = matched_label
                 if value:
                     current_parts = [value]
                 else:
@@ -384,50 +535,68 @@ def parse_finalize_form(text: str) -> tuple[dict, list[str]]:
                 continue
 
         # Continuation line
-        if current_key:
+        if current_label:
             current_parts.append(line_stripped)
 
     _flush()
 
-    # Validate required
-    missing = [f["key"] for f in FINALIZE_FIELDS if not parsed.get(f["key"])]
+    # Validate required only
+    missing = [
+        f["label"] for f in fields
+        if f.get("required", True) and not parsed.get(f["label"])
+    ]
     return parsed, missing
 
 
-def merge_to_brief_fields(campaign: dict, user_inputs: dict) -> dict:
-    """Merge AI proposal + user constraints → fields cho campaign_brief skill.
+def merge_to_brief_fields(
+    campaign: dict,
+    lever: dict,
+    user_inputs: dict,
+) -> dict:
+    """Merge AI proposal + lever choice + user params → fields cho campaign_brief.
 
     campaign_brief consume 4 keys: campaign_name, campaign_goal, duration, key_offer
     """
-    budget = user_inputs.get("budget", "")
-    team_size = user_inputs.get("team_size", "")
-    start_date = user_inputs.get("start_date", "")
-    discount_pct = user_inputs.get("discount_pct", "")
+    start_date = user_inputs.get("Ngày bắt đầu", "chưa rõ")
+    end_date = user_inputs.get("Ngày kết thúc", "chưa rõ")
 
-    ai_duration = campaign.get("duration_suggestion") or campaign.get("duration", "")
+    # Lever parameters (loại 2 common fields)
+    lever_params = {
+        k: v for k, v in user_inputs.items()
+        if k not in {"Ngày bắt đầu", "Ngày kết thúc"}
+    }
+
+    lever_params_text = "\n".join(
+        f"- {label}: {value}" for label, value in lever_params.items()
+    ) if lever_params else "(không có)"
 
     return {
         "campaign_name": campaign.get("name", ""),
         "campaign_goal": (
             f"{campaign.get('goal', '')}\n\n"
-            f"**Constraints sếp quyết:**\n"
-            f"- Budget: {budget}\n"
-            f"- Team chạy campaign: {team_size}\n"
-            f"- Target segment: {campaign.get('target_segment', 'chưa rõ')}"
+            f"**Target segment:** {campaign.get('target_segment', 'chưa rõ')}"
         ),
-        "duration": f"Bắt đầu {start_date}. Gợi ý độ dài: {ai_duration}",
+        "duration": (
+            f"**Ngày bắt đầu:** {start_date}\n"
+            f"**Ngày kết thúc:** {end_date}\n"
+            f"_(Gợi ý từ AI: {campaign.get('duration_suggestion') or campaign.get('duration', 'N/A')})_"
+        ),
         "key_offer": (
-            f"{campaign.get('key_offer', '')}\n\n"
-            f"**Mức giảm giá tối đa sếp chấp nhận:** {discount_pct}"
+            f"**Offer Lever:** {lever.get('name', '?')}\n"
+            f"**Cơ chế:** {lever.get('mechanism', '?')}\n\n"
+            f"**Parameters sếp đã quyết:**\n{lever_params_text}"
         ),
     }
 
 
-# Backward-compat alias (cũ chỉ dùng AI, không inject user constraint)
+# Backward-compat — không còn dùng nhưng giữ để khỏi break import nếu có
 def campaign_to_brief_fields(campaign: dict) -> dict:
-    return merge_to_brief_fields(campaign, {
-        "budget": "chưa xác định",
-        "team_size": "chưa xác định",
-        "start_date": "chưa xác định",
-        "discount_pct": "chưa xác định",
+    fake_lever = {
+        "name": "Chưa chọn lever",
+        "mechanism": campaign.get("key_offer", ""),
+        "parameters": [],
+    }
+    return merge_to_brief_fields(campaign, fake_lever, {
+        "Ngày bắt đầu": "chưa rõ",
+        "Ngày kết thúc": "chưa rõ",
     })

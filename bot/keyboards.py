@@ -300,9 +300,21 @@ CAMPAIGN_OPTION_KEYBOARD = InlineKeyboardMarkup([
 
 # Sau khi refine idea của user — confirm proceed hay sửa lại
 CAMPAIGN_IDEA_CONFIRM_KEYBOARD = InlineKeyboardMarkup([
-    [InlineKeyboardButton("✅ OK, làm Brief Campaign luôn", callback_data="campaign_idea_confirm")],
+    [InlineKeyboardButton("✅ OK, chọn Offer Lever",        callback_data="campaign_idea_confirm")],
     [InlineKeyboardButton("✏️ Sửa lại idea",                callback_data="campaign_idea_redo")],
     [InlineKeyboardButton("⏭️ Hủy, quay lại đánh giá",     callback_data="az_skip_campaign")],
+])
+
+# Sau khi chốt campaign → AI gen 4 offer levers → user pick 1
+OFFER_LEVER_KEYBOARD = InlineKeyboardMarkup([
+    [
+        InlineKeyboardButton("1️⃣", callback_data="lever_pick_0"),
+        InlineKeyboardButton("2️⃣", callback_data="lever_pick_1"),
+        InlineKeyboardButton("3️⃣", callback_data="lever_pick_2"),
+        InlineKeyboardButton("4️⃣", callback_data="lever_pick_3"),
+    ],
+    [InlineKeyboardButton("🔄 Đề xuất 4 levers khác", callback_data="lever_propose_again")],
+    [InlineKeyboardButton("⏭️ Hủy, quay lại đánh giá", callback_data="az_skip_campaign")],
 ])
 
 

@@ -47,6 +47,7 @@ from bot.keyboards import (
     POST_AZ_CAMPAIGN_KEYBOARD,
     CAMPAIGN_OPTION_KEYBOARD,
     CAMPAIGN_IDEA_CONFIRM_KEYBOARD,
+    OFFER_LEVER_KEYBOARD,
 )
 
 logger = logging.getLogger(__name__)
@@ -856,7 +857,7 @@ async def _handle_callback_inner(update, context, query, session, data, user_id)
             return
 
         chosen = options[pick_idx]
-        await _show_campaign_finalize_form(query.message, session, chosen)
+        await _show_offer_lever_selection(query.message, session, chosen)
         return
 
     # User confirm refined idea → show finalize form
@@ -874,7 +875,7 @@ async def _handle_callback_inner(update, context, query, session, data, user_id)
             await query.message.reply_text("⚠️ Idea đã hết hạn. Sếp gõ lại idea nhé.")
             return
 
-        await _show_campaign_finalize_form(query.message, session, chosen)
+        await _show_offer_lever_selection(query.message, session, chosen)
         return
 
     # User muốn sửa lại idea
@@ -888,11 +889,55 @@ async def _handle_callback_inner(update, context, query, session, data, user_id)
         )
         return
 
+    # User pick offer lever 1/2/3/4 → show dynamic finalize form
+    if data.startswith("lever_pick_"):
+        await query.edit_message_reply_markup(reply_markup=None)
+        try:
+            lever_idx = int(data.split("_")[-1])
+        except ValueError:
+            await query.message.reply_text("⚠️ Lever pick không hợp lệ.")
+            return
+
+        import json as _json
+        raw_levers = session.pending_intake.get("_offer_levers", "[]")
+        raw_campaign = session.pending_intake.get("_chosen_campaign", "{}")
+        try:
+            levers = _json.loads(raw_levers)
+            campaign = _json.loads(raw_campaign)
+        except _json.JSONDecodeError:
+            levers, campaign = [], {}
+
+        if lever_idx < 0 or lever_idx >= len(levers) or not campaign:
+            await query.message.reply_text("⚠️ Lever đã hết hạn. Sếp đề xuất lại nhé.")
+            return
+
+        chosen_lever = levers[lever_idx]
+        await _show_dynamic_finalize_form(query.message, session, campaign, chosen_lever)
+        return
+
+    # User muốn AI đề xuất 4 levers khác
+    if data == "lever_propose_again":
+        await query.edit_message_reply_markup(reply_markup=None)
+        import json as _json
+        raw_campaign = session.pending_intake.get("_chosen_campaign", "{}")
+        try:
+            campaign = _json.loads(raw_campaign)
+        except _json.JSONDecodeError:
+            campaign = {}
+
+        if not campaign:
+            await query.message.reply_text("⚠️ Campaign đã hết hạn. Sếp /start lại nhé.")
+            return
+
+        await _show_offer_lever_selection(query.message, session, campaign)
+        return
+
     if data == "az_skip_campaign":
         await query.edit_message_reply_markup(reply_markup=None)
-        # Cleanup full ideation + finalize state
+        # Cleanup full ideation + lever + finalize state
         for k in (
             "_awaiting_campaign_idea", "_proposed_campaigns", "_refined_campaign",
+            "_chosen_campaign", "_offer_levers", "_chosen_lever",
             "_awaiting_campaign_finalize", "_finalize_campaign",
         ):
             session.pending_intake.pop(k, None)
@@ -3221,64 +3266,126 @@ async def _handle_campaign_idea_text(update, context, session, text: str):
         )
 
 
-async def _show_campaign_finalize_form(message: Message, session, campaign: dict):
-    """Show form 4 trường USER QUYẾT (budget, team, start_date, discount).
-    Lưu campaign đã chọn vào pending_intake._finalize_campaign để text handler dùng lại.
+async def _show_offer_lever_selection(message: Message, session, campaign: dict):
+    """Sau khi chốt campaign, AI propose 4 offer levers SPECIFIC cho campaign này.
+    Save campaign + levers vào pending_intake để lever_pick_X dùng lại.
     """
-    from agents.campaign_ideation import format_finalize_form
+    from agents.campaign_ideation import propose_offer_levers, format_levers_card
     import json as _json
 
-    # Cleanup các ideation state khác, chỉ giữ _finalize_campaign
-    for k in ("_awaiting_campaign_idea", "_proposed_campaigns", "_refined_campaign"):
+    # Cleanup ideation state, prepare for lever selection
+    for k in ("_awaiting_campaign_idea", "_proposed_campaigns", "_refined_campaign",
+              "_awaiting_campaign_finalize", "_finalize_campaign", "_chosen_lever"):
         session.pending_intake.pop(k, None)
     session.pending_intake.pop(OPS_INTAKE_AWAITING, None)
 
-    session.pending_intake["_finalize_campaign"] = _json.dumps(campaign, ensure_ascii=False)
+    session.pending_intake["_chosen_campaign"] = _json.dumps(campaign, ensure_ascii=False)
+    await save_session(session)
+
+    await message.reply_text(
+        "🎯 *Em đang đề xuất 4 offer levers phù hợp với campaign vừa chốt...*\n"
+        "_Khoảng 15-25 giây ạ._",
+        parse_mode=ParseMode.MARKDOWN,
+    )
+
+    try:
+        levers = await propose_offer_levers(session, campaign)
+        if not levers:
+            await message.reply_text(
+                "⚠️ Em đề xuất lever bị lỗi. Sếp thử lại hoặc /start lại nhé.",
+                reply_markup=POST_AZ_CAMPAIGN_KEYBOARD,
+            )
+            return
+
+        # Save levers vào pending_intake
+        session.pending_intake["_offer_levers"] = _json.dumps(levers, ensure_ascii=False)
+        await save_session(session)
+
+        # Build keyboard động — chỉ show số nút tương ứng số levers
+        if len(levers) == 4:
+            kb = OFFER_LEVER_KEYBOARD
+        else:
+            # Fallback: build keyboard với đúng số levers thực tế
+            from telegram import InlineKeyboardButton as _Btn, InlineKeyboardMarkup as _Mkup
+            emoji_num = ["1️⃣", "2️⃣", "3️⃣", "4️⃣"]
+            row = [
+                _Btn(emoji_num[i], callback_data=f"lever_pick_{i}")
+                for i in range(len(levers))
+            ]
+            kb = _Mkup([
+                row,
+                [_Btn("🔄 Đề xuất 4 levers khác", callback_data="lever_propose_again")],
+                [_Btn("⏭️ Hủy, quay lại đánh giá", callback_data="az_skip_campaign")],
+            ])
+
+        card = format_levers_card(campaign, levers)
+        await send_long_message(
+            message, card,
+            parse_mode=ParseMode.MARKDOWN,
+            reply_markup=kb,
+        )
+    except Exception as e:
+        logger.exception("Show offer levers failed: %s", e)
+        await message.reply_text(
+            f"⚠️ Lỗi khi đề xuất lever: {str(e)[:200]}",
+            reply_markup=POST_AZ_CAMPAIGN_KEYBOARD,
+        )
+
+
+async def _show_dynamic_finalize_form(message: Message, session, campaign: dict, lever: dict):
+    """Show form động: lever params + Ngày bắt đầu + Ngày kết thúc."""
+    from agents.campaign_ideation import format_dynamic_finalize_form
+    import json as _json
+
+    session.pending_intake["_chosen_lever"] = _json.dumps(lever, ensure_ascii=False)
     session.pending_intake["_awaiting_campaign_finalize"] = "1"
     session.stage = PipelineStage.INTAKE
     await save_session(session)
 
-    form_text = format_finalize_form(campaign)
+    form_text = format_dynamic_finalize_form(campaign, lever)
     await send_long_message(message, form_text, parse_mode=ParseMode.MARKDOWN)
 
 
 async def _handle_campaign_finalize_text(update, context, session, text: str):
-    """Parse user reply (4 trường) → merge với AI proposal → run campaign_brief."""
-    from agents.campaign_ideation import parse_finalize_form, merge_to_brief_fields, FINALIZE_FIELDS
+    """Parse user reply (dynamic theo lever) → merge với campaign + lever → run campaign_brief."""
+    from agents.campaign_ideation import (
+        parse_dynamic_finalize_form, merge_to_brief_fields, get_finalize_fields,
+    )
     import json as _json
 
-    parsed, missing = parse_finalize_form(text)
+    raw_campaign = session.pending_intake.get("_chosen_campaign", "{}")
+    raw_lever = session.pending_intake.get("_chosen_lever", "{}")
+    try:
+        campaign = _json.loads(raw_campaign)
+        lever = _json.loads(raw_lever)
+    except _json.JSONDecodeError:
+        campaign, lever = {}, {}
+
+    if not campaign or not lever:
+        await update.message.reply_text(
+            "⚠️ Campaign hoặc lever đã hết hạn. Sếp /start lại nhé.",
+        )
+        return
+
+    fields = get_finalize_fields(lever)
+    parsed, missing = parse_dynamic_finalize_form(text, fields)
 
     if missing:
-        missing_labels = [
-            f["label"] for f in FINALIZE_FIELDS if f["key"] in missing
-        ]
         await update.message.reply_text(
             "⚠️ *Còn thiếu thông tin:*\n"
-            + "\n".join(f"• {lbl}" for lbl in missing_labels)
+            + "\n".join(f"• {lbl}" for lbl in missing)
             + "\n\nSếp gửi lại form đầy đủ giúp em ạ.",
             parse_mode=ParseMode.MARKDOWN,
         )
         return
 
-    raw = session.pending_intake.get("_finalize_campaign", "{}")
-    try:
-        campaign = _json.loads(raw)
-    except _json.JSONDecodeError:
-        campaign = {}
-
-    if not campaign:
-        await update.message.reply_text(
-            "⚠️ Campaign data đã hết hạn. Sếp /start lại nhé.",
-        )
-        return
-
-    # Cleanup finalize state
-    for k in ("_awaiting_campaign_finalize", "_finalize_campaign"):
+    # Cleanup ideation states
+    for k in ("_awaiting_campaign_finalize", "_chosen_campaign", "_chosen_lever",
+              "_offer_levers"):
         session.pending_intake.pop(k, None)
 
-    # Merge AI + user → 4 fields cho campaign_brief
-    brief_fields = merge_to_brief_fields(campaign, parsed)
+    # Merge campaign + lever + user inputs → 4 fields cho campaign_brief
+    brief_fields = merge_to_brief_fields(campaign, lever, parsed)
     for key, val in brief_fields.items():
         session.pending_intake[key] = val or "(chưa rõ)"
 
@@ -3287,7 +3394,8 @@ async def _handle_campaign_finalize_text(update, context, session, text: str):
 
     await update.message.reply_text(
         f"✅ *Đã nhận đủ thông tin!*\n\n"
-        f"📋 Em làm Brief Campaign cho \"{campaign.get('name', '?')}\"...\n"
+        f"📋 Em làm Brief Campaign cho \"{campaign.get('name', '?')}\" "
+        f"(lever: {lever.get('name', '?')})...\n"
         f"_Khoảng 60-90 giây ạ._",
         parse_mode=ParseMode.MARKDOWN,
     )
