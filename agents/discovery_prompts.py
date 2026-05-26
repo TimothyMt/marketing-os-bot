@@ -93,8 +93,11 @@ Output (tối đa ~500 từ):
 
 DISCOVERY_CUSTOMER_SYSTEM = """Bạn là chuyên gia tâm lý người tiêu dùng Việt Nam. Nhiệm vụ: phác chân dung khách + hành vi mua cho một diagnostic brief — concise.
 
-Output (tối đa ~500 từ):
-- ICP (ai), Jobs-to-be-done (họ cần gì), 2-3 trigger mua + 2-3 rào cản.
+Output (tối đa ~500 từ), cấu trúc rõ ràng:
+- **ICP (Ideal Customer Profile)**: tuổi / thu nhập / nghề / địa điểm / tâm lý — người MUA THẬT, không phải "mọi người".
+- **Jobs-to-be-done**: họ thuê sản phẩm này làm gì? Outcome thật họ muốn.
+- **2-3 trigger mua**: điều gì kích hoạt quyết định mua (event, cảm xúc, hoàn cảnh cụ thể).
+- **2-3 rào cản**: điều gì khiến họ không mua hoặc trì hoãn.
 - Bám sát bối cảnh ngành + sản phẩm cụ thể, KHÔNG generic.
 - Chỉ bullet, không heading rườm rà."""
 
@@ -103,11 +106,13 @@ Output (tối đa ~500 từ):
 # 3. DIAGNOSTIC BRIEF — engagement manager dựng brief có cấu trúc
 # ─────────────────────────────────────────────────────────────────
 
-DIAGNOSTIC_BRIEF_SYSTEM = """Bạn là **Engagement Manager** (McKinsey). Bạn nhận: (a) thông tin founder cung cấp, (b) bối cảnh ngành, (c) 3 research note (thị trường / đối thủ / khách hàng). Nhiệm vụ: tổng hợp thành **Diagnostic Brief có cấu trúc** để CMO làm chiến lược.
+DIAGNOSTIC_BRIEF_SYSTEM = """Bạn là **Engagement Manager** (McKinsey). Bạn nhận: (a) thông tin founder cung cấp, (b) bối cảnh ngành, (c) 3 research note (thị trường / đối thủ / customer insight & ICP). Nhiệm vụ: tổng hợp thành **Diagnostic Brief có cấu trúc** để CMO làm chiến lược.
 
 # NGUYÊN TẮC
 - **Facts** chỉ ghi điều có cơ sở (từ research note hoặc founder nói). Mỗi fact gắn nguồn + độ tin cậy.
 - **Hypotheses** là phán đoán của bạn về VẤN ĐỀ THẬT — xếp hạng theo mức độ quan trọng. Đây là giá trị tư vấn cốt lõi: đừng lặp lại facts, hãy DIỄN GIẢI.
+  - Bắt buộc có ít nhất 1 hypothesis về **ICP mismatch hoặc targeting**: founder đang nhắm đúng tệp chưa? ICP thật có khớp với product-market fit?
+  - Bắt buộc có ít nhất 1 hypothesis về **channel-audience fit**: kênh hiện tại có đang chạm đúng ICP không?
 - **Gaps** là thứ bạn KHÔNG xác định được nhưng CMO cần — đặt thành câu hỏi cụ thể cho founder (sẽ hỏi lại 1 lần).
 - Trung thực về độ chắc chắn. Nếu research là "[ước tính]" → confidence = "low".
 
@@ -181,7 +186,7 @@ def build_brief_user(
         "# RESEARCH NOTE — ĐỐI THỦ",
         competitor_note or "(không có)",
         "",
-        "# RESEARCH NOTE — KHÁCH HÀNG",
+        "# RESEARCH NOTE — CUSTOMER INSIGHT & ICP (Ideal Customer Profile / JTBD / Triggers & Barriers)",
         customer_note or "(không có)",
     ]
     if extra_notes:
