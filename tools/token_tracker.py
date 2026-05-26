@@ -6,11 +6,81 @@ Mỗi user mặc định có quota 1,000,000 tokens (free tier).
 Khi gần hết, hiển thị cảnh báo qua /settings hoặc khi chạy skill.
 """
 import logging
+from datetime import datetime, timezone
 from typing import Optional
 
 logger = logging.getLogger(__name__)
 
 DEFAULT_QUOTA = 1_000_000  # 1M tokens/user/month
+_TOKEN_LOG_KEY = "_token_log"
+_TOKEN_LOG_MAX = 50  # số entries tối đa giữ lại
+
+
+def _append_log(prefs: dict, entry: dict):
+    """Thêm entry vào _token_log, cắt bớt nếu vượt giới hạn."""
+    log: list = prefs.get(_TOKEN_LOG_KEY, [])
+    if not isinstance(log, list):
+        log = []
+    log.append(entry)
+    if len(log) > _TOKEN_LOG_MAX:
+        log = log[-_TOKEN_LOG_MAX:]
+    prefs[_TOKEN_LOG_KEY] = log
+
+
+def track_skill(
+    session,
+    skill_name: str,
+    provider: str,
+    input_tok: int,
+    output_tok: int,
+    cache_read: int = 0,
+    cache_create: int = 0,
+    latency_sec: float = 0.0,
+) -> int:
+    """Track per-skill token usage với đầy đủ metadata (provider, latency).
+
+    Cập nhật đồng thời:
+    - session.preferences["token_used"]  — cumulative counter
+    - session.preferences["_token_log"]  — per-call log (capped _TOKEN_LOG_MAX)
+
+    Returns: tổng tokens call này.
+    """
+    if session is None:
+        return 0
+
+    total = max(0, input_tok) + max(0, output_tok) + max(0, cache_read) + max(0, cache_create)
+    if total <= 0:
+        return 0
+
+    prefs = session.preferences or {}
+    try:
+        current = int(str(prefs.get("token_used", "0")).replace(",", "").replace(".", ""))
+    except (ValueError, TypeError):
+        current = 0
+    new_total = current + total
+    prefs["token_used"] = str(new_total)
+
+    _append_log(prefs, {
+        "skill":        skill_name,
+        "provider":     provider,
+        "input_tok":    max(0, input_tok),
+        "output_tok":   max(0, output_tok),
+        "cache_read":   max(0, cache_read),
+        "cache_create": max(0, cache_create),
+        "total":        total,
+        "latency_sec":  round(latency_sec, 1),
+        "ts":           datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S"),
+    })
+
+    session.preferences = prefs
+
+    logger.info(
+        "[token] user=%s skill=%s provider=%s in=%d out=%d cache_r=%d cache_c=%d total=%d latency=%.1fs cumulative=%d",
+        session.user_id, skill_name, provider,
+        input_tok, output_tok, cache_read, cache_create,
+        total, latency_sec, new_total,
+    )
+    return total
 
 
 def track_usage(session, response, label: str = "") -> int:
@@ -50,6 +120,19 @@ def track_usage(session, response, label: str = "") -> int:
         current = 0
     new_total = current + total
     prefs["token_used"] = str(new_total)
+
+    _append_log(prefs, {
+        "skill":        label,
+        "provider":     "claude-sonnet-4-6",
+        "input_tok":    input_tok,
+        "output_tok":   output_tok,
+        "cache_read":   cache_read,
+        "cache_create": cache_create,
+        "total":        total,
+        "latency_sec":  0.0,
+        "ts":           datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S"),
+    })
+
     session.preferences = prefs
 
     logger.info(
@@ -79,6 +162,19 @@ def track_usage_raw(session, input_tokens: int, output_tokens: int, label: str =
         current = 0
     new_total = current + total
     prefs["token_used"] = str(new_total)
+
+    _append_log(prefs, {
+        "skill":        label,
+        "provider":     "unknown",
+        "input_tok":    max(0, int(input_tokens)),
+        "output_tok":   max(0, int(output_tokens)),
+        "cache_read":   0,
+        "cache_create": 0,
+        "total":        total,
+        "latency_sec":  0.0,
+        "ts":           datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S"),
+    })
+
     session.preferences = prefs
 
     logger.info(
@@ -86,6 +182,21 @@ def track_usage_raw(session, input_tokens: int, output_tokens: int, label: str =
         session.user_id, label, input_tokens, output_tokens, total, new_total,
     )
     return total
+
+
+def get_token_log(session) -> list[dict]:
+    """Trả về danh sách per-call log entries (mới nhất cuối list)."""
+    prefs = session.preferences or {}
+    log = prefs.get(_TOKEN_LOG_KEY, [])
+    return log if isinstance(log, list) else []
+
+
+def get_latest_skill_entry(session, skill_name: str) -> Optional[dict]:
+    """Lấy entry gần nhất của skill_name từ log, hoặc None nếu chưa có."""
+    for entry in reversed(get_token_log(session)):
+        if entry.get("skill") == skill_name:
+            return entry
+    return None
 
 
 def get_quota(session) -> int:

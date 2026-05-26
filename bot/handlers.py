@@ -1286,7 +1286,7 @@ async def _handle_callback_inner(update, context, query, session, data, user_id)
     if data == "settings_tokens":
         await query.edit_message_reply_markup(reply_markup=None)
         from tools.token_tracker import (
-            get_used, get_remaining, get_quota, fmt, is_low, is_exhausted,
+            get_used, get_remaining, get_quota, fmt, is_low, is_exhausted, get_token_log,
         )
         used = get_used(session)
         remaining = get_remaining(session)
@@ -1310,6 +1310,28 @@ async def _handle_callback_inner(update, context, query, session, data, user_id)
             msg += "\n🔴 *Hết quota!* Sếp liên hệ admin để nạp thêm hoặc chờ reset hàng tháng."
         elif is_low(session):
             msg += "\n⚠️ Sếp còn dưới 10% quota — cân nhắc dùng tiết kiệm."
+
+        # Per-skill breakdown — 15 lần chạy gần nhất
+        log = get_token_log(session)
+        skill_entries = [e for e in log if e.get("skill") and e.get("total", 0) > 0]
+        if skill_entries:
+            rows = skill_entries[-15:]
+            msg += "\n\n📋 *Lịch sử gần nhất:*\n"
+            for e in reversed(rows):
+                skill    = e.get("skill", "?")
+                provider = e.get("provider", "?")
+                inp      = e.get("input_tok", 0)
+                out      = e.get("output_tok", 0)
+                total_e  = e.get("total", inp + out)
+                lat      = e.get("latency_sec", 0.0)
+                cache_r  = e.get("cache_read", 0)
+                cache_s  = f" cache:{fmt(cache_r)}" if cache_r else ""
+                ts       = e.get("ts", "")[:16].replace("T", " ")
+                msg += (
+                    f"• `{skill}` — {fmt(inp)}↑ {fmt(out)}↓{cache_s}"
+                    f" = *{fmt(total_e)}* · `{provider}` · {lat:.0f}s"
+                    f" _{ts}_\n"
+                )
 
         await query.message.reply_text(msg, parse_mode=ParseMode.MARKDOWN)
         return
@@ -2033,7 +2055,7 @@ async def _handle_callback_inner(update, context, query, session, data, user_id)
 
 # ─── Pipeline runner ─────────────────────────────────────────────
 
-def _format_card(stage_key: str, parsed: dict) -> str:
+def _format_card(stage_key: str, parsed: dict, token_entry: dict | None = None) -> str:
     """Build Format-B Telegram card from parsed agent output."""
     header = STAGE_HEADERS.get(stage_key, stage_key.upper())
     parts = [f"*{header}*", "━" * 25, ""]
@@ -2060,6 +2082,21 @@ def _format_card(stage_key: str, parsed: dict) -> str:
         parts.append(detail)
 
     parts.append("📎 _Xem full analysis trong file HTML cuối pipeline_")
+
+    if token_entry:
+        from tools.token_tracker import fmt as _fmt
+        provider  = token_entry.get("provider", "?")
+        inp       = token_entry.get("input_tok", 0)
+        out       = token_entry.get("output_tok", 0)
+        total_tok = token_entry.get("total", inp + out)
+        latency   = token_entry.get("latency_sec", 0.0)
+        cache_r   = token_entry.get("cache_read", 0)
+        cache_txt = f" · cache {_fmt(cache_r)}" if cache_r else ""
+        parts.append(
+            f"\n`⚡ {provider}` · {_fmt(inp)} in + {_fmt(out)} out"
+            f"{cache_txt} = *{_fmt(total_tok)}* tokens · {latency:.1f}s"
+        )
+
     return "\n".join(parts)
 
 
@@ -3006,7 +3043,9 @@ async def _run_pipeline_sequentially(message: Message, session):
         parsed = parse_agent_output(result)
         parsed_stages.append((stage_key, parsed))
 
-        card_text = _format_card(stage_key, parsed)
+        from tools.token_tracker import get_latest_skill_entry
+        token_entry = get_latest_skill_entry(session, stage_key)
+        card_text = _format_card(stage_key, parsed, token_entry=token_entry)
         await send_long_message(
             message,
             card_text,

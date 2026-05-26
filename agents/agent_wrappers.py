@@ -101,13 +101,16 @@ async def _run_skill_via_router(skill: AgentSkill, session: Session, task_type) 
         result.get("latency_sec", 0),
     )
 
-    # Token tracking
+    # Token tracking — per-skill với actual provider + latency
     try:
-        track_usage_raw(
+        from tools.token_tracker import track_skill
+        track_skill(
             session,
-            input_tokens=result.get("tokens_in", 0),
-            output_tokens=result.get("tokens_out", 0),
-            label=f"{skill.name}_{provider}",
+            skill_name=skill.name,
+            provider=provider,
+            input_tok=result.get("tokens_in", 0),
+            output_tok=result.get("tokens_out", 0),
+            latency_sec=result.get("latency_sec", 0.0),
         )
     except Exception as e:
         logger.warning("Token tracking failed (%s via router): %s", skill.name, e)
@@ -333,17 +336,19 @@ async def synthesizer_agent(session: Session) -> str:
             f"latency={result.get('latency_sec', 0):.1f}s"
         )
 
-        # Track tokens vào session (cho /settings hiển thị)
+        # Track tokens — per-skill với actual provider + latency
         try:
-            from tools.token_tracker import track_usage_raw
-            track_usage_raw(
+            from tools.token_tracker import track_skill
+            track_skill(
                 session,
-                input_tokens=result.get("tokens_in", 0),
-                output_tokens=result.get("tokens_out", 0),
-                label=f"synthesis_{provider}",
+                skill_name="synthesis",
+                provider=provider,
+                input_tok=result.get("tokens_in", 0),
+                output_tok=result.get("tokens_out", 0),
+                latency_sec=result.get("latency_sec", 0.0),
             )
-        except (ImportError, AttributeError):
-            pass  # token_tracker không support raw — skip
+        except Exception:
+            pass
 
     except AllProvidersFailedError as e:
         logger.error(f"Synthesizer: all providers failed, fallback _run_skill: {e}")

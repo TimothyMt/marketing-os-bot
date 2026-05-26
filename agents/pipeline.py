@@ -435,10 +435,20 @@ async def _run_skill(skill: AgentSkill, session: Session) -> str:
         getattr(response.usage, "output_tokens", "?"),
     )
 
-    # Token tracking
+    # Token tracking — per-skill với provider + latency
     try:
-        from tools.token_tracker import track_usage
-        track_usage(session, response, label=skill.name)
+        from tools.token_tracker import track_skill
+        usage = response.usage
+        track_skill(
+            session,
+            skill_name=skill.name,
+            provider=CLAUDE_SONNET_MODEL,
+            input_tok=getattr(usage, "input_tokens", 0) or 0,
+            output_tok=getattr(usage, "output_tokens", 0) or 0,
+            cache_read=getattr(usage, "cache_read_input_tokens", 0) or 0,
+            cache_create=getattr(usage, "cache_creation_input_tokens", 0) or 0,
+            latency_sec=_time.monotonic() - _t0,
+        )
     except Exception as e:
         logger.warning("Token tracking failed (%s): %s", skill.name, e)
 
