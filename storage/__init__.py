@@ -6,3 +6,9 @@ from .brand_voice import (
     has_brand_voice,
     deactivate_brand_voice,
 )
+from .campaign_history import (
+    save_campaign_history,
+    search_similar_campaigns,
+    list_campaigns,
+)
+from .embeddings import embed_text

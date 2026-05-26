@@ -25,6 +25,7 @@ from bot.handlers import (
     cmd_admin_setquota,
     cmd_admin_resetusage,
     cmd_admin_userinfo,
+    cmd_history,
 )
 
 logging.basicConfig(
@@ -68,6 +69,9 @@ def main():
     app.add_handler(CommandHandler("setquota",   cmd_admin_setquota))
     app.add_handler(CommandHandler("resetusage", cmd_admin_resetusage))
     app.add_handler(CommandHandler("userinfo",   cmd_admin_userinfo))
+
+    # Sprint 8 — Campaign History + Semantic Search
+    app.add_handler(CommandHandler("history", cmd_history))
 
     # Inline keyboard callbacks
     app.add_handler(CallbackQueryHandler(handle_callback))

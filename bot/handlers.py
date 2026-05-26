@@ -3790,3 +3790,58 @@ async def cmd_admin_userinfo(update: Update, context: ContextTypes.DEFAULT_TYPE)
         f"📌 Trạng thái: {status}",
         parse_mode=ParseMode.MARKDOWN,
     )
+
+
+# ─────────────────────────────────────────────────────────────────
+# /history — Campaign History + Semantic Search  (Sprint 8)
+# ─────────────────────────────────────────────────────────────────
+
+async def cmd_history(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """
+    /history [query] — Xem hoặc tìm kiếm lịch sử campaigns.
+
+    - /history          → Liệt kê 10 campaigns gần nhất
+    - /history <query>  → Semantic search (tìm campaign tương tự)
+
+    Mỗi entry hiển thị: business, ngành, mục tiêu, ngày chạy.
+    """
+    user_id = update.effective_user.id
+    query = " ".join(context.args).strip() if context.args else ""
+
+    from storage.campaign_history import list_campaigns, search_similar_campaigns
+
+    await update.message.reply_text("🔍 Đang tìm...", parse_mode=ParseMode.MARKDOWN)
+
+    if query:
+        campaigns = await search_similar_campaigns(user_id, query, top_k=5)
+        header = f"🔍 *Kết quả tìm kiếm:* _{query}_\n\n"
+    else:
+        campaigns = await list_campaigns(user_id, limit=10)
+        header = "📚 *Lịch sử Campaigns của bạn*\n\n"
+
+    if not campaigns:
+        msg = (
+            header +
+            "_(Chưa có campaign nào được lưu)_\n\n"
+            "💡 Chạy phân tích A→Z để bắt đầu tích lũy lịch sử."
+        )
+        await update.message.reply_text(msg, parse_mode=ParseMode.MARKDOWN)
+        return
+
+    lines = [header]
+    for i, c in enumerate(campaigns, start=1):
+        biz  = c.get("business_name") or "_(chưa đặt tên)_"
+        ind  = c.get("industry") or "—"
+        goal = c.get("primary_goal") or "—"
+        date = (c.get("created_at") or "")[:10]  # YYYY-MM-DD
+        sim  = c.get("similarity")
+
+        sim_tag = f" · {sim*100:.0f}% match" if sim is not None else ""
+        lines.append(
+            f"*{i}.* {biz}\n"
+            f"   📌 {ind} · {goal}\n"
+            f"   🗓 {date}{sim_tag}\n"
+        )
+
+    lines.append("\n💡 _Dùng `/history <từ khoá>` để tìm campaign tương tự_")
+    await update.message.reply_text("\n".join(lines), parse_mode=ParseMode.MARKDOWN)

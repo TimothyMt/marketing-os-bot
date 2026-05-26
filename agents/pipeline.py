@@ -18,6 +18,16 @@ from config import (
     ANTHROPIC_API_KEY,
     AGENT_TIMEOUT,
 )
+
+
+async def _auto_save_history(session) -> None:
+    """Background task: save pipeline run to campaign history after COMPLETE.
+    Non-fatal — any error is logged and swallowed."""
+    try:
+        from storage.campaign_history import save_campaign_history
+        await save_campaign_history(session)
+    except Exception as e:
+        logger.warning("_auto_save_history failed (user=%s): %s", getattr(session, "user_id", "?"), e)
 from storage.models import Session, BusinessProfile, PipelineStage
 from agents.prompts import (
     INTAKE_SYSTEM,
@@ -636,6 +646,7 @@ async def run_full_pipeline(  # kept for backwards compatibility — use run_tar
             yield stage_key, error_msg
 
     session.stage = PipelineStage.COMPLETE
+    asyncio.ensure_future(_auto_save_history(session))  # S8: fire-and-forget
 
 
 # ─────────────────────────────────────────────────────────────────
@@ -682,6 +693,7 @@ async def run_targeted_pipeline(
             yield stage_key, f"⚠️ Lỗi ở bước {stage_key}: {str(e)[:200]}"
 
     session.stage = PipelineStage.COMPLETE
+    asyncio.ensure_future(_auto_save_history(session))  # S8: fire-and-forget
 
 
 # ─────────────────────────────────────────────────────────────────
@@ -764,3 +776,4 @@ async def run_multi_agent_targeted(
                 yield stage_key, output
 
     session.stage = PipelineStage.COMPLETE
+    asyncio.ensure_future(_auto_save_history(session))  # S8: fire-and-forget
