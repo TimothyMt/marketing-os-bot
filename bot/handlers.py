@@ -44,6 +44,9 @@ from bot.keyboards import (
     MONITOR_PROMPT_KEYBOARD,
     MONITOR_INTERVAL_KEYBOARD,
     CONTENT_SUITE_KEYBOARD,
+    POST_AZ_CAMPAIGN_KEYBOARD,
+    CAMPAIGN_OPTION_KEYBOARD,
+    CAMPAIGN_IDEA_CONFIRM_KEYBOARD,
 )
 
 logger = logging.getLogger(__name__)
@@ -393,6 +396,11 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Sprint 5 v2: Image edit text reply
     if session.pending_intake.get("_awaiting_image_edit"):
         await _handle_image_edit_text(update, context, session, text)
+        return
+
+    # Post A→Z: User mô tả idea campaign → refine với customer + market
+    if session.pending_intake.get("_awaiting_campaign_idea"):
+        await _handle_campaign_idea_text(update, context, session, text)
         return
 
     # Sprint 2: Q&A follow-up (stage COMPLETE + awaiting_followup_for OR stage COMPLETE)
@@ -757,6 +765,132 @@ async def _handle_callback_inner(update, context, query, session, data, user_id)
         await save_session(session)
         await query.message.reply_text(
             "OK ạ! Sếp đánh giá Lịch Nội Dung em vừa làm thế nào ạ?",
+            reply_markup=RATING_KEYBOARD,
+        )
+        return
+
+    # ── Post A→Z: Campaign Ideation flow ─────────────────────────
+    # Branch A: User đã có idea → ask user gõ idea → refine
+    if data == "az_have_idea":
+        await query.edit_message_reply_markup(reply_markup=None)
+        session.pending_intake["_awaiting_campaign_idea"] = "1"
+        session.pending_intake.pop("_awaiting_rating_for", None)
+        await save_session(session)
+        addr = _addr(session)
+        await query.message.reply_text(
+            f"💡 *OK {addr}!* Sếp mô tả ngắn campaign muốn chạy ạ.\n\n"
+            f"_Vd: \"Combo Tết giảm giá cho khách cũ\", \"Launch sản phẩm mới cho gen Z\", "
+            f"\"Tăng repeat rate sau khi khách mua lần đầu\"..._\n\n"
+            f"Em sẽ đối chiếu với Customer Insight + Market Research để validate và refine cho sếp.",
+            parse_mode=ParseMode.MARKDOWN,
+        )
+        return
+
+    # Branch B: User chưa biết → Max propose 3 options
+    if data == "az_propose_campaign" or data == "campaign_propose_again":
+        await query.edit_message_reply_markup(reply_markup=None)
+        session.pending_intake.pop("_awaiting_rating_for", None)
+        await save_session(session)
+
+        await query.message.reply_text(
+            "🔍 *Em đang phân tích Strategy + Customer + Market để đề xuất campaign...*\n"
+            "_Khoảng 20-40 giây ạ._",
+            parse_mode=ParseMode.MARKDOWN,
+        )
+        await context.bot.send_chat_action(
+            chat_id=update.effective_chat.id, action=ChatAction.TYPING,
+        )
+
+        try:
+            from agents.campaign_ideation import propose_campaigns, format_options_card
+            options = await propose_campaigns(session)
+            if not options:
+                await query.message.reply_text(
+                    "⚠️ Em đề xuất bị lỗi. Sếp thử lại hoặc gõ idea trực tiếp nhé.",
+                    reply_markup=POST_AZ_CAMPAIGN_KEYBOARD,
+                )
+                return
+
+            # Store options vào pending_intake để pick_X dùng lại
+            import json as _json
+            session.pending_intake["_proposed_campaigns"] = _json.dumps(options, ensure_ascii=False)
+            await save_session(session)
+
+            card = format_options_card(options)
+            await send_long_message(
+                query.message, card,
+                parse_mode=ParseMode.MARKDOWN,
+                reply_markup=CAMPAIGN_OPTION_KEYBOARD,
+            )
+        except Exception as e:
+            logger.exception("Campaign propose failed: %s", e)
+            await query.message.reply_text(
+                f"⚠️ Lỗi khi đề xuất: {str(e)[:200]}",
+                reply_markup=POST_AZ_CAMPAIGN_KEYBOARD,
+            )
+        return
+
+    # User picks 1/2/3 từ proposed options
+    if data.startswith("campaign_pick_"):
+        await query.edit_message_reply_markup(reply_markup=None)
+        try:
+            pick_idx = int(data.split("_")[-1]) - 1  # 1 → 0, 2 → 1, 3 → 2
+        except ValueError:
+            await query.message.reply_text("⚠️ Pick không hợp lệ.")
+            return
+
+        import json as _json
+        raw = session.pending_intake.get("_proposed_campaigns", "[]")
+        try:
+            options = _json.loads(raw)
+        except _json.JSONDecodeError:
+            options = []
+
+        if pick_idx < 0 or pick_idx >= len(options):
+            await query.message.reply_text("⚠️ Option đã hết hạn. Sếp đề xuất lại nhé.")
+            return
+
+        chosen = options[pick_idx]
+        await _launch_campaign_brief_with_data(query.message, session, chosen)
+        return
+
+    # User confirm refined idea → vào campaign_brief
+    if data == "campaign_idea_confirm":
+        await query.edit_message_reply_markup(reply_markup=None)
+        import json as _json
+        raw = session.pending_intake.get("_refined_campaign", "{}")
+        try:
+            refined_data = _json.loads(raw)
+            chosen = refined_data.get("refined", {})
+        except _json.JSONDecodeError:
+            chosen = {}
+
+        if not chosen:
+            await query.message.reply_text("⚠️ Idea đã hết hạn. Sếp gõ lại idea nhé.")
+            return
+
+        await _launch_campaign_brief_with_data(query.message, session, chosen)
+        return
+
+    # User muốn sửa lại idea
+    if data == "campaign_idea_redo":
+        await query.edit_message_reply_markup(reply_markup=None)
+        session.pending_intake["_awaiting_campaign_idea"] = "1"
+        session.pending_intake.pop("_refined_campaign", None)
+        await save_session(session)
+        await query.message.reply_text(
+            "✏️ OK, sếp mô tả lại idea campaign mới ạ.",
+        )
+        return
+
+    if data == "az_skip_campaign":
+        await query.edit_message_reply_markup(reply_markup=None)
+        # Cleanup ideation state
+        for k in ("_awaiting_campaign_idea", "_proposed_campaigns", "_refined_campaign"):
+            session.pending_intake.pop(k, None)
+        await save_session(session)
+        await query.message.reply_text(
+            "Sếp đánh giá output A→Z em vừa làm thế nào ạ?",
             reply_markup=RATING_KEYBOARD,
         )
         return
@@ -2562,10 +2696,18 @@ async def _run_pipeline_sequentially(message: Message, session):
         await save_session(session)
 
         if total_stages > 1:
+            # A→Z xong — hỏi xác định campaign để triển khai
+            addr = _addr(session)
             await message.reply_text(
-                "✅ *Hoàn thành phân tích!*\n\nMở file HTML để xem báo cáo đầy đủ.\n\nSếp đánh giá output em vừa làm thế nào ạ?",
+                f"✅ *Hoàn thành A→Z!* Mở file HTML để xem báo cáo đầy đủ.\n\n"
+                f"─────────────────────\n"
+                f"🚀 *Bước tiếp theo: triển khai campaign cụ thể*\n\n"
+                f"Strategy đã sẵn sàng. Giờ {addr} muốn chạy campaign gì?\n\n"
+                f"💡 *Đã có ý tưởng* → em validate + refine với Customer + Market\n"
+                f"🔍 *Chưa biết chạy gì* → em đề xuất 3 options phù hợp\n\n"
+                f"_Sau khi xác định campaign → Brief Campaign → Lịch Nội Dung._",
                 parse_mode=ParseMode.MARKDOWN,
-                reply_markup=RATING_KEYBOARD,
+                reply_markup=POST_AZ_CAMPAIGN_KEYBOARD,
             )
         else:
             await message.reply_text(
@@ -3016,6 +3158,99 @@ async def _send_html_report(message: Message, html_str: str, session):
         caption="📄 *Báo cáo đầy đủ* — mở để xem full analysis với layout đẹp.",
         parse_mode=ParseMode.MARKDOWN,
     )
+
+
+# ─── Campaign Ideation Helpers ────────────────────────────────────
+
+async def _handle_campaign_idea_text(update, context, session, text: str):
+    """Refine user's campaign idea với customer_insight + market_research, rồi show confirm card."""
+    text = (text or "").strip()
+    if len(text) < 5:
+        await update.message.reply_text(
+            "⚠️ Idea hơi ngắn. Sếp mô tả thêm 1-2 câu để em refine chính xác ạ.",
+        )
+        return
+
+    # Clear flag
+    session.pending_intake.pop("_awaiting_campaign_idea", None)
+    await save_session(session)
+
+    await update.message.reply_text(
+        "✨ *Em đang đối chiếu idea với Customer Insight + Market Research...*\n"
+        "_Khoảng 20-40 giây ạ._",
+        parse_mode=ParseMode.MARKDOWN,
+    )
+    await context.bot.send_chat_action(
+        chat_id=update.effective_chat.id, action=ChatAction.TYPING,
+    )
+
+    try:
+        from agents.campaign_ideation import refine_user_idea, format_refined_card
+        refined_data = await refine_user_idea(session, text)
+        if not refined_data:
+            await update.message.reply_text(
+                "⚠️ Em refine bị lỗi. Sếp thử lại nhé.",
+                reply_markup=POST_AZ_CAMPAIGN_KEYBOARD,
+            )
+            return
+
+        # Save refined data để confirm_callback dùng lại
+        import json as _json
+        session.pending_intake["_refined_campaign"] = _json.dumps(refined_data, ensure_ascii=False)
+        await save_session(session)
+
+        card = format_refined_card(refined_data)
+        await send_long_message(
+            update.message, card,
+            parse_mode=ParseMode.MARKDOWN,
+            reply_markup=CAMPAIGN_IDEA_CONFIRM_KEYBOARD,
+        )
+    except Exception as e:
+        logger.exception("Campaign refine failed: %s", e)
+        await update.message.reply_text(
+            f"⚠️ Lỗi khi refine: {str(e)[:200]}",
+            reply_markup=POST_AZ_CAMPAIGN_KEYBOARD,
+        )
+
+
+async def _launch_campaign_brief_with_data(message: Message, session, campaign: dict):
+    """Pre-fill pending_intake với campaign data → chạy campaign_brief skill ngay (skip form)."""
+    from agents.campaign_ideation import campaign_to_brief_fields
+
+    # Cleanup ideation state
+    for k in ("_awaiting_campaign_idea", "_proposed_campaigns", "_refined_campaign"):
+        session.pending_intake.pop(k, None)
+    session.pending_intake.pop(OPS_INTAKE_AWAITING, None)
+
+    # Pre-fill 4 campaign_brief fields
+    brief_fields = campaign_to_brief_fields(campaign)
+    for key, val in brief_fields.items():
+        session.pending_intake[key] = val or "(chưa rõ)"
+
+    session.selected_task = "campaign_brief"
+    session.stage = PipelineStage.INTAKE
+    await save_session(session)
+
+    campaign_name = campaign.get("name", "Campaign")
+    await message.reply_text(
+        f"📋 *Em làm Brief Campaign cho \"{campaign_name}\"...*\n"
+        f"_Khoảng 60-90 giây ạ._",
+        parse_mode=ParseMode.MARKDOWN,
+    )
+
+    try:
+        from config import AGENT_TIMEOUT
+        result = await asyncio.wait_for(
+            run_operational_skill("campaign_brief", session),
+            timeout=AGENT_TIMEOUT,
+        )
+        await save_session(session)
+        await _send_ops_result(message, session, "campaign_brief", result)
+    except asyncio.TimeoutError:
+        await message.reply_text("⚠️ Brief Campaign timeout. Sếp thử lại nhé.")
+    except Exception as e:
+        logger.exception("Campaign brief auto-run failed: %s", e)
+        await message.reply_text(f"⚠️ Lỗi khi chạy Brief: {str(e)[:200]}")
 
 
 # ─── Admin Commands ───────────────────────────────────────────────

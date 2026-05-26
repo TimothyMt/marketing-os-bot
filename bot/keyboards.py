@@ -280,6 +280,31 @@ NEEDS_STRATEGY_KEYBOARD = InlineKeyboardMarkup([
     [InlineKeyboardButton("⏭️ Quay lại menu",                  callback_data="menu_main")],
 ])
 
+# Sau khi A→Z xong — hỏi có muốn triển khai campaign ngay không
+POST_AZ_CAMPAIGN_KEYBOARD = InlineKeyboardMarkup([
+    [InlineKeyboardButton("💡 Tôi đã có ý tưởng campaign",      callback_data="az_have_idea")],
+    [InlineKeyboardButton("🔍 Max đề xuất campaign phù hợp",   callback_data="az_propose_campaign")],
+    [InlineKeyboardButton("⏭️ Đánh giá output trước, làm sau", callback_data="az_skip_campaign")],
+])
+
+# Sau khi Max đề xuất 3 options — user chọn 1 trong 3
+CAMPAIGN_OPTION_KEYBOARD = InlineKeyboardMarkup([
+    [
+        InlineKeyboardButton("1️⃣", callback_data="campaign_pick_1"),
+        InlineKeyboardButton("2️⃣", callback_data="campaign_pick_2"),
+        InlineKeyboardButton("3️⃣", callback_data="campaign_pick_3"),
+    ],
+    [InlineKeyboardButton("🔄 Đề xuất 3 options khác", callback_data="campaign_propose_again")],
+    [InlineKeyboardButton("⏭️ Quay lại, đánh giá A→Z", callback_data="az_skip_campaign")],
+])
+
+# Sau khi refine idea của user — confirm proceed hay sửa lại
+CAMPAIGN_IDEA_CONFIRM_KEYBOARD = InlineKeyboardMarkup([
+    [InlineKeyboardButton("✅ OK, làm Brief Campaign luôn", callback_data="campaign_idea_confirm")],
+    [InlineKeyboardButton("✏️ Sửa lại idea",                callback_data="campaign_idea_redo")],
+    [InlineKeyboardButton("⏭️ Hủy, quay lại đánh giá",     callback_data="az_skip_campaign")],
+])
+
 
 # ─────────────────────────────────────────────────────────────────
 # Auto monitor — interval picker
