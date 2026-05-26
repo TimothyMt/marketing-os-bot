@@ -8,6 +8,9 @@ Modules:
 - skill_runs  : Immutable versioned skill outputs
 - campaigns   : Campaign entity with embeddings
 - posts       : POST-XXX with adapt/variant linkage
+- engagements : Discovery→Strategy→Execution spine (Migration 007)
+- briefs      : Diagnostic briefs — McKinsey Discovery output (Migration 007)
+- strategies  : CMO marketing plans (Migration 007)
 
 Coexists with v1 (storage/session.py) during Phase 1-2 migration.
 """
@@ -32,4 +35,15 @@ from .campaigns_v2 import (
 from .posts import (
     insert_post, get_post, update_post,
     list_posts_by_campaign, list_posts_by_user, soft_delete_post,
+)
+from .engagements import (
+    create_engagement, get_engagement, get_active_engagement,
+    get_latest_with_strategy, update_engagement, list_engagements,
+)
+from .briefs import (
+    insert_brief, get_brief, get_latest_brief,
+)
+from .strategies import (
+    insert_strategy, get_strategy, get_latest_strategy,
+    update_rating as update_strategy_rating,
 )
