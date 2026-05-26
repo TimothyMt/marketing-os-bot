@@ -96,7 +96,7 @@ DISCOVERY_COMPETITOR_SYSTEM = """Bạn là analyst tình báo cạnh tranh Việ
 
 Nếu có công cụ tìm kiếm: tìm đối thủ/thương hiệu thật trong ngành + khu vực, kèm nguồn.
 
-Output (tối đa ~700 từ), bám framework sau:
+Output (tối đa ~1000 từ), bám framework sau:
 
 **Phân loại đối thủ**
 - Tier 1 (trực tiếp): cùng phân khúc, giá, tệp khách
