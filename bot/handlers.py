@@ -403,6 +403,11 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await _handle_campaign_idea_text(update, context, session, text)
         return
 
+    # Post A→Z: User fill 4 trường quyết định (budget, team, start_date, discount)
+    if session.pending_intake.get("_awaiting_campaign_finalize"):
+        await _handle_campaign_finalize_text(update, context, session, text)
+        return
+
     # Sprint 2: Q&A follow-up (stage COMPLETE + awaiting_followup_for OR stage COMPLETE)
     if session.pending_intake.get("_awaiting_followup_for") or session.stage == PipelineStage.COMPLETE:
         await _handle_followup(update, context, session, text)
@@ -830,7 +835,7 @@ async def _handle_callback_inner(update, context, query, session, data, user_id)
             )
         return
 
-    # User picks 1/2/3 từ proposed options
+    # User picks 1/2/3 từ proposed options → show finalize form
     if data.startswith("campaign_pick_"):
         await query.edit_message_reply_markup(reply_markup=None)
         try:
@@ -851,10 +856,10 @@ async def _handle_callback_inner(update, context, query, session, data, user_id)
             return
 
         chosen = options[pick_idx]
-        await _launch_campaign_brief_with_data(query.message, session, chosen)
+        await _show_campaign_finalize_form(query.message, session, chosen)
         return
 
-    # User confirm refined idea → vào campaign_brief
+    # User confirm refined idea → show finalize form
     if data == "campaign_idea_confirm":
         await query.edit_message_reply_markup(reply_markup=None)
         import json as _json
@@ -869,7 +874,7 @@ async def _handle_callback_inner(update, context, query, session, data, user_id)
             await query.message.reply_text("⚠️ Idea đã hết hạn. Sếp gõ lại idea nhé.")
             return
 
-        await _launch_campaign_brief_with_data(query.message, session, chosen)
+        await _show_campaign_finalize_form(query.message, session, chosen)
         return
 
     # User muốn sửa lại idea
@@ -885,8 +890,11 @@ async def _handle_callback_inner(update, context, query, session, data, user_id)
 
     if data == "az_skip_campaign":
         await query.edit_message_reply_markup(reply_markup=None)
-        # Cleanup ideation state
-        for k in ("_awaiting_campaign_idea", "_proposed_campaigns", "_refined_campaign"):
+        # Cleanup full ideation + finalize state
+        for k in (
+            "_awaiting_campaign_idea", "_proposed_campaigns", "_refined_campaign",
+            "_awaiting_campaign_finalize", "_finalize_campaign",
+        ):
             session.pending_intake.pop(k, None)
         await save_session(session)
         await query.message.reply_text(
@@ -3213,29 +3221,78 @@ async def _handle_campaign_idea_text(update, context, session, text: str):
         )
 
 
-async def _launch_campaign_brief_with_data(message: Message, session, campaign: dict):
-    """Pre-fill pending_intake với campaign data → chạy campaign_brief skill ngay (skip form)."""
-    from agents.campaign_ideation import campaign_to_brief_fields
+async def _show_campaign_finalize_form(message: Message, session, campaign: dict):
+    """Show form 4 trường USER QUYẾT (budget, team, start_date, discount).
+    Lưu campaign đã chọn vào pending_intake._finalize_campaign để text handler dùng lại.
+    """
+    from agents.campaign_ideation import format_finalize_form
+    import json as _json
 
-    # Cleanup ideation state
+    # Cleanup các ideation state khác, chỉ giữ _finalize_campaign
     for k in ("_awaiting_campaign_idea", "_proposed_campaigns", "_refined_campaign"):
         session.pending_intake.pop(k, None)
     session.pending_intake.pop(OPS_INTAKE_AWAITING, None)
 
-    # Pre-fill 4 campaign_brief fields
-    brief_fields = campaign_to_brief_fields(campaign)
+    session.pending_intake["_finalize_campaign"] = _json.dumps(campaign, ensure_ascii=False)
+    session.pending_intake["_awaiting_campaign_finalize"] = "1"
+    session.stage = PipelineStage.INTAKE
+    await save_session(session)
+
+    form_text = format_finalize_form(campaign)
+    await send_long_message(message, form_text, parse_mode=ParseMode.MARKDOWN)
+
+
+async def _handle_campaign_finalize_text(update, context, session, text: str):
+    """Parse user reply (4 trường) → merge với AI proposal → run campaign_brief."""
+    from agents.campaign_ideation import parse_finalize_form, merge_to_brief_fields, FINALIZE_FIELDS
+    import json as _json
+
+    parsed, missing = parse_finalize_form(text)
+
+    if missing:
+        missing_labels = [
+            f["label"] for f in FINALIZE_FIELDS if f["key"] in missing
+        ]
+        await update.message.reply_text(
+            "⚠️ *Còn thiếu thông tin:*\n"
+            + "\n".join(f"• {lbl}" for lbl in missing_labels)
+            + "\n\nSếp gửi lại form đầy đủ giúp em ạ.",
+            parse_mode=ParseMode.MARKDOWN,
+        )
+        return
+
+    raw = session.pending_intake.get("_finalize_campaign", "{}")
+    try:
+        campaign = _json.loads(raw)
+    except _json.JSONDecodeError:
+        campaign = {}
+
+    if not campaign:
+        await update.message.reply_text(
+            "⚠️ Campaign data đã hết hạn. Sếp /start lại nhé.",
+        )
+        return
+
+    # Cleanup finalize state
+    for k in ("_awaiting_campaign_finalize", "_finalize_campaign"):
+        session.pending_intake.pop(k, None)
+
+    # Merge AI + user → 4 fields cho campaign_brief
+    brief_fields = merge_to_brief_fields(campaign, parsed)
     for key, val in brief_fields.items():
         session.pending_intake[key] = val or "(chưa rõ)"
 
     session.selected_task = "campaign_brief"
-    session.stage = PipelineStage.INTAKE
     await save_session(session)
 
-    campaign_name = campaign.get("name", "Campaign")
-    await message.reply_text(
-        f"📋 *Em làm Brief Campaign cho \"{campaign_name}\"...*\n"
+    await update.message.reply_text(
+        f"✅ *Đã nhận đủ thông tin!*\n\n"
+        f"📋 Em làm Brief Campaign cho \"{campaign.get('name', '?')}\"...\n"
         f"_Khoảng 60-90 giây ạ._",
         parse_mode=ParseMode.MARKDOWN,
+    )
+    await context.bot.send_chat_action(
+        chat_id=update.effective_chat.id, action=ChatAction.TYPING,
     )
 
     try:
@@ -3245,12 +3302,12 @@ async def _launch_campaign_brief_with_data(message: Message, session, campaign: 
             timeout=AGENT_TIMEOUT,
         )
         await save_session(session)
-        await _send_ops_result(message, session, "campaign_brief", result)
+        await _send_ops_result(update.message, session, "campaign_brief", result)
     except asyncio.TimeoutError:
-        await message.reply_text("⚠️ Brief Campaign timeout. Sếp thử lại nhé.")
+        await update.message.reply_text("⚠️ Brief Campaign timeout. Sếp thử lại nhé.")
     except Exception as e:
         logger.exception("Campaign brief auto-run failed: %s", e)
-        await message.reply_text(f"⚠️ Lỗi khi chạy Brief: {str(e)[:200]}")
+        await update.message.reply_text(f"⚠️ Lỗi khi chạy Brief: {str(e)[:200]}")
 
 
 # ─── Admin Commands ───────────────────────────────────────────────

@@ -29,7 +29,7 @@ client = anthropic.AsyncAnthropic(
 
 PROPOSE_SYSTEM = """Bạn là Max — CMO AI giúp founder VN xác định campaign tiếp theo dựa trên Marketing Strategy đã có.
 
-Dựa vào Strategy synthesis + Customer Insight + Market Research, đề xuất 3 campaign options KHẢ THI nhất cho 1-3 tháng tới.
+Dựa vào Strategy synthesis + Customer Insight + Market Research, đề xuất 3 campaign options KHẢ THI nhất.
 
 Mỗi option phải:
 - Bám sát SAVE Framework + SMART Goals trong synthesis
@@ -40,6 +40,17 @@ Mỗi option phải:
   Option 2: Retention / upsell / tăng AOV
   Option 3: Brand / awareness / positioning
 
+🔴 QUY TẮC TUYỆT ĐỐI — 4 trường SAU DO USER QUYẾT, KHÔNG ĐỀ XUẤT:
+- ❌ KHÔNG đề xuất **Budget** (số tiền VND cụ thể)
+- ❌ KHÔNG đề xuất **Team size** (số người)
+- ❌ KHÔNG đề xuất **Start date** (ngày bắt đầu)
+- ❌ KHÔNG đề xuất **% giảm giá** cụ thể trong offer
+
+→ Trong `goal`, `duration`, `key_offer` chỉ đưa BENCHMARK định tính + range gợi ý:
+- Goal: "Thu lead mới + chốt booking" (KHÔNG nói "500 booking, doanh thu 350tr" vì chưa biết budget)
+- Duration: gợi ý số tuần (vd "4-6 tuần") — KHÔNG ngày cụ thể vì user chọn start date
+- Key offer: mô tả CƠ CHẾ offer (combo / bundle / sample / quà tặng) — KHÔNG % giảm cụ thể
+
 OUTPUT BẮT BUỘC dạng JSON (KHÔNG có text khác bên ngoài JSON):
 
 ```json
@@ -47,10 +58,10 @@ OUTPUT BẮT BUỘC dạng JSON (KHÔNG có text khác bên ngoài JSON):
   "options": [
     {
       "name": "Tên campaign tiếng Việt, hook-y, ngắn (vd: 'Tặng Mình Trước', 'Cuối Năm Đẹp Hơn')",
-      "goal": "Mục tiêu cụ thể CÓ SỐ (vd: 'Thu 3000 mess + chốt 500 booking, doanh thu 350tr')",
-      "key_offer": "Offer chính cụ thể (vd: 'Combo 680K giảm 20% từ 850K, tặng 1 buổi mask')",
-      "duration": "Thời lượng + ngày (vd: '6 tuần — 15/01/2026 → 28/02/2026')",
-      "target_segment": "Tệp target cụ thể (vd: 'Phụ nữ 28-40 đã từng inbox chưa book')",
+      "goal": "Mục tiêu QUALITATIVE (vd: 'Acquisition khách mới ở segment phụ nữ 28-40 chưa từng dùng spa, build initial trust')",
+      "key_offer": "MÔ TẢ cơ chế offer KHÔNG có % giảm cụ thể (vd: 'Combo trial 2-buổi + tặng kèm 1 sản phẩm sample. % giảm do sếp quyết')",
+      "duration_suggestion": "Gợi ý độ dài (vd: '4-6 tuần để build awareness + chuyển đổi đợt đầu')",
+      "target_segment": "Tệp target cụ thể (vd: 'Phụ nữ 28-40 sống Q1/Q3 HCM, đã follow page chưa book')",
       "why_fit": "2-3 câu: tại sao campaign này hợp với business sếp ở thời điểm này — CITE cụ thể từ synthesis/customer/market"
     },
     { ... option 2 ... },
@@ -71,8 +82,16 @@ REFINE_SYSTEM = """Bạn là Max — CMO AI validate idea campaign của founder
 
 User đã có ý tưởng campaign. Dựa vào Customer Insight + Market Research, hãy:
 1. **Validate idea**: idea có hợp với customer pain point + market timing không?
-2. **Refine**: đưa ra tên/goal/offer/duration cụ thể hơn nếu user nói chung chung
+2. **Refine**: đưa ra tên/goal/offer cụ thể hơn nếu user nói chung chung
 3. **Cảnh báo risks** (nếu có): timing sai, segment không match, offer yếu, v.v.
+
+🔴 QUY TẮC TUYỆT ĐỐI — 4 trường SAU DO USER QUYẾT, KHÔNG ĐỀ XUẤT:
+- ❌ KHÔNG đề xuất **Budget** (số tiền VND cụ thể)
+- ❌ KHÔNG đề xuất **Team size** (số người)
+- ❌ KHÔNG đề xuất **Start date** (ngày bắt đầu)
+- ❌ KHÔNG đề xuất **% giảm giá** cụ thể trong offer
+
+→ Goal/duration/key_offer chỉ benchmark định tính + range gợi ý.
 
 OUTPUT BẮT BUỘC dạng JSON (KHÔNG có text khác bên ngoài JSON):
 
@@ -80,9 +99,9 @@ OUTPUT BẮT BUỘC dạng JSON (KHÔNG có text khác bên ngoài JSON):
 {
   "refined": {
     "name": "Tên campaign hoàn chỉnh (giữ ý user, refine wording)",
-    "goal": "Mục tiêu CÓ SỐ (suy ra từ goal user nói)",
-    "key_offer": "Offer chính cụ thể",
-    "duration": "Thời lượng + ngày cụ thể",
+    "goal": "Mục tiêu QUALITATIVE (vd: 'Acquisition khách mới + build initial trust')",
+    "key_offer": "MÔ TẢ cơ chế offer KHÔNG có % giảm cụ thể",
+    "duration_suggestion": "Gợi ý độ dài (vd: '4-6 tuần')",
     "target_segment": "Tệp target cụ thể"
   },
   "validation": {
@@ -225,13 +244,14 @@ def format_options_card(options: list[dict]) -> str:
         lines.append(f"━━━━━━━━━━━━━━━━━━━━")
         lines.append(f"*OPTION {i}: {opt.get('name', '?')}*\n")
         lines.append(f"🎯 *Mục tiêu:* {opt.get('goal', '?')}")
-        lines.append(f"🎁 *Offer chính:* {opt.get('key_offer', '?')}")
-        lines.append(f"📅 *Thời lượng:* {opt.get('duration', '?')}")
+        lines.append(f"🎁 *Cơ chế offer:* {opt.get('key_offer', '?')}")
+        lines.append(f"📅 *Gợi ý độ dài:* {opt.get('duration_suggestion', '?')}")
         lines.append(f"👥 *Target:* {opt.get('target_segment', '?')}")
         lines.append(f"💭 *Vì sao phù hợp:* {opt.get('why_fit', '?')}\n")
 
     lines.append(f"━━━━━━━━━━━━━━━━━━━━")
-    lines.append("\n👇 *Sếp chọn option nào để em làm Brief Campaign?*")
+    lines.append("\n_💰 Budget / 👥 Team / 📆 Ngày bắt đầu / 🎟 % giảm — sếp sẽ quyết ở bước sau._\n")
+    lines.append("👇 *Sếp chọn option nào để em làm Brief Campaign?*")
     return "\n".join(lines)
 
 
@@ -252,8 +272,8 @@ def format_refined_card(refined_data: dict) -> str:
         "*📋 CAMPAIGN REFINED*\n",
         f"🏷️ *Tên:* {refined.get('name', '?')}",
         f"🎯 *Mục tiêu:* {refined.get('goal', '?')}",
-        f"🎁 *Offer:* {refined.get('key_offer', '?')}",
-        f"📅 *Thời lượng:* {refined.get('duration', '?')}",
+        f"🎁 *Cơ chế offer:* {refined.get('key_offer', '?')}",
+        f"📅 *Gợi ý độ dài:* {refined.get('duration_suggestion', '?')}",
         f"👥 *Target:* {refined.get('target_segment', '?')}\n",
         "━━━━━━━━━━━━━━━━━━━━",
         f"*📊 VALIDATION* — Mức phù hợp: {score_emoji}\n",
@@ -275,18 +295,139 @@ def format_refined_card(refined_data: dict) -> str:
         lines.append("")
 
     lines.append("━━━━━━━━━━━━━━━━━━━━")
-    lines.append("\n👇 *Sếp OK với campaign này không?*")
+    lines.append("\n_💰 Budget / 👥 Team / 📆 Ngày bắt đầu / 🎟 % giảm — sếp sẽ quyết ở bước sau._\n")
+    lines.append("👇 *Sếp OK với campaign này không?*")
     return "\n".join(lines)
 
 
-def campaign_to_brief_fields(campaign: dict) -> dict:
-    """Convert proposed/refined campaign → fields cho campaign_brief skill.
+# ─── Finalize Form — 4 trường USER QUYẾT ────────────────────────
 
-    campaign_brief expects: campaign_name, campaign_goal, duration, key_offer
+FINALIZE_FIELDS = [
+    {"key": "budget",        "label": "Budget tổng",                  "example": "150 triệu / 80tr / 500M VND"},
+    {"key": "team_size",     "label": "Capacity team chạy campaign",  "example": "3 người: 1 content, 1 ads, 1 sales"},
+    {"key": "start_date",    "label": "Ngày bắt đầu",                 "example": "15/01/2026 / Thứ 2 tuần sau"},
+    {"key": "discount_pct",  "label": "% giảm giá tối đa chấp nhận",  "example": "20% / 0% (không giảm) / Tặng quà thay vì giảm"},
+]
+
+
+def format_finalize_form(campaign: dict) -> str:
+    """Form cho user fill 4 trường QUYẾT ĐỊNH trước khi launch Brief.
+
+    AI proposal đã có trong card trước; form này CHỈ hỏi 4 trường còn thiếu.
     """
+    lines = [
+        f"✅ *Đã chốt campaign: \"{campaign.get('name', '?')}\"*",
+        "",
+        "━━━━━━━━━━━━━━━━━━━━",
+        "*🔧 4 thông tin cuối — do sếp quyết:*",
+        "",
+    ]
+    for f in FINALIZE_FIELDS:
+        lines.append(f"*{f['label']}:*")
+        lines.append(f"_Vd: {f['example']}_")
+        lines.append("")
+
+    lines.append("━━━━━━━━━━━━━━━━━━━━")
+    lines.append(
+        "💬 *Copy form trên, điền vào, gửi lại 1 lần.*\n"
+        "Em parse xong sẽ chạy Brief Campaign luôn ạ."
+    )
+    return "\n".join(lines)
+
+
+def parse_finalize_form(text: str) -> tuple[dict, list[str]]:
+    """Parse user reply theo FINALIZE_FIELDS.
+    Returns (parsed_dict, missing_keys).
+    """
+    parsed = {}
+    label_to_key = {f["label"].lower().strip(): f["key"] for f in FINALIZE_FIELDS}
+
+    text_lines = text.split("\n")
+    current_key = None
+    current_parts: list[str] = []
+
+    def _flush():
+        nonlocal current_key, current_parts
+        if current_key and current_parts:
+            val = " ".join(current_parts).strip()
+            # Loại bỏ italic "Vd: ..." nếu user paste cả example
+            if val.lower().startswith("vd:") or val.lower().startswith("_vd:"):
+                val = ""
+            if val:
+                parsed[current_key] = val
+        current_key = None
+        current_parts = []
+
+    for line in text_lines:
+        line_stripped = line.strip().lstrip("*_").rstrip("*_")
+        if not line_stripped:
+            continue
+
+        # Match "Label: value"
+        m = re.match(r"^([^:]+?)\s*:\s*(.*)$", line_stripped)
+        if m:
+            label = m.group(1).strip().lower()
+            value = m.group(2).strip()
+            # Tìm key khớp với label (substring match cho linh hoạt)
+            matched_key = None
+            for lbl, key in label_to_key.items():
+                if lbl in label or label in lbl:
+                    matched_key = key
+                    break
+            if matched_key:
+                _flush()
+                current_key = matched_key
+                if value:
+                    current_parts = [value]
+                else:
+                    current_parts = []
+                continue
+
+        # Continuation line
+        if current_key:
+            current_parts.append(line_stripped)
+
+    _flush()
+
+    # Validate required
+    missing = [f["key"] for f in FINALIZE_FIELDS if not parsed.get(f["key"])]
+    return parsed, missing
+
+
+def merge_to_brief_fields(campaign: dict, user_inputs: dict) -> dict:
+    """Merge AI proposal + user constraints → fields cho campaign_brief skill.
+
+    campaign_brief consume 4 keys: campaign_name, campaign_goal, duration, key_offer
+    """
+    budget = user_inputs.get("budget", "")
+    team_size = user_inputs.get("team_size", "")
+    start_date = user_inputs.get("start_date", "")
+    discount_pct = user_inputs.get("discount_pct", "")
+
+    ai_duration = campaign.get("duration_suggestion") or campaign.get("duration", "")
+
     return {
         "campaign_name": campaign.get("name", ""),
-        "campaign_goal": campaign.get("goal", ""),
-        "duration":      campaign.get("duration", ""),
-        "key_offer":     campaign.get("key_offer", ""),
+        "campaign_goal": (
+            f"{campaign.get('goal', '')}\n\n"
+            f"**Constraints sếp quyết:**\n"
+            f"- Budget: {budget}\n"
+            f"- Team chạy campaign: {team_size}\n"
+            f"- Target segment: {campaign.get('target_segment', 'chưa rõ')}"
+        ),
+        "duration": f"Bắt đầu {start_date}. Gợi ý độ dài: {ai_duration}",
+        "key_offer": (
+            f"{campaign.get('key_offer', '')}\n\n"
+            f"**Mức giảm giá tối đa sếp chấp nhận:** {discount_pct}"
+        ),
     }
+
+
+# Backward-compat alias (cũ chỉ dùng AI, không inject user constraint)
+def campaign_to_brief_fields(campaign: dict) -> dict:
+    return merge_to_brief_fields(campaign, {
+        "budget": "chưa xác định",
+        "team_size": "chưa xác định",
+        "start_date": "chưa xác định",
+        "discount_pct": "chưa xác định",
+    })
