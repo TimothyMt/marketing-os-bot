@@ -455,8 +455,33 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     if session.stage in (PipelineStage.IDLE, PipelineStage.TASK_SELECT):
-        # User typed free-form text instead of using keyboard
-        # → Fallback: Sonnet advisor with full context
+        # Greeting detection — nếu user chỉ chào/nhắn ngắn → show menu trực tiếp
+        # Không gọi LLM để tránh bot hỏi lại business info khi đã có trong DB
+        _GREETING_KEYWORDS = (
+            "max ơi", "ơi", "hello", "hi ", "chào", "hey", "xin chào",
+            "helo", "hii", "alo", "yo ", "sup", "hola",
+        )
+        _is_greeting = (
+            len(text.strip()) <= 25
+            or any(text.lower().strip().startswith(kw) or text.lower().strip() == kw.strip()
+                   for kw in _GREETING_KEYWORDS)
+        )
+        if _is_greeting:
+            addr = _addr(session)
+            biz = session.profile.business_name
+            if session.profile.is_intake_complete():
+                msg = f"Em chào {addr}! Hôm nay tiếp tục phần nào ạ? 👇"
+            elif biz:
+                msg = f"Em chào {addr}! Mình tiếp tục từ đây nhé 👇"
+            else:
+                msg = f"Em chào {addr}! Sếp muốn bắt đầu từ đâu ạ? 👇"
+            await update.message.reply_text(
+                msg,
+                parse_mode=ParseMode.MARKDOWN,
+                reply_markup=MAIN_MENU_KEYBOARD,
+            )
+            return
+        # Câu hỏi / yêu cầu thực → Sonnet advisor với full context
         await _claude_advisor_fallback(update, context, session, text)
         return
 
