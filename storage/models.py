@@ -78,6 +78,32 @@ class BusinessProfile:
         required = [self.industry, self.product_service, self.target_customer]
         return all(f for f in required)
 
+    def is_basic_business_context_ready(self) -> bool:
+        """McKinsey discovery minimum — 5 fields BẮT BUỘC cho bất kỳ skill nào.
+
+        Trước khi ANY skill chạy → phải có context này để output không generic.
+        Khác với is_intake_complete() (8 fields, dùng cho A→Z) ở chỗ
+        đây là MINIMUM phải có để bot tư vấn không sai ngành/audience.
+
+        5 fields:
+        1. industry        — ngành (playbook khác nhau cho FnB/SaaS/Retail)
+        2. product_service — sản phẩm cụ thể
+        3. target_customer — khách hàng mục tiêu
+        4. stage           — startup/growth/mature
+        5. primary_goal    — mục tiêu trọng tâm hiện tại
+        """
+        must_have = [
+            self.industry,
+            self.product_service,
+            self.target_customer,
+            self.stage,
+            self.primary_goal,
+        ]
+        for f in must_have:
+            if not f or (isinstance(f, str) and not f.strip()):
+                return False
+        return True
+
     def is_intake_complete(self) -> bool:
         """Stricter check — intake bị "exit early" bug khi user trả lời mơ hồ
         thì LLM extract JSON sớm với chỉ 3 fields. Production cần đủ 8 fields

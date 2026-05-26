@@ -424,7 +424,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
     )
     # Chỉ intercept nếu user đã có business_name (returning user thật sự)
-    # và không đang dở các flow đặc biệt (tone, post edit, campaign idea, image edit)
+    # và không đang dở các flow đặc biệt (tone, post edit, campaign idea, image edit, biz context)
     _in_special_flow = (
         session.tone_calibration.get("stage") in ("checking_tone", "waiting_feedback")
         or session.pending_intake.get("_post_editing")
@@ -432,6 +432,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         or session.pending_intake.get("_awaiting_campaign_idea")
         or session.pending_intake.get("_awaiting_campaign_finalize")
         or session.pending_intake.get("_awaiting_image_reference")
+        or session.pending_intake.get(BIZ_CONTEXT_AWAITING)
     )
     # Returning user heuristic: bất kỳ field profile nào có data → coi như đã có context
     _p = session.profile
@@ -472,6 +473,11 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             parse_mode=ParseMode.MARKDOWN,
             reply_markup=MAIN_MENU_KEYBOARD,
         )
+        return
+
+    # McKinsey Discovery Gate — user submitted basic business form
+    if session.pending_intake.get(BIZ_CONTEXT_AWAITING):
+        await _handle_basic_business_text(update, context, session, text)
         return
 
     # Sprint 6: Tone calibration feedback
@@ -2061,6 +2067,10 @@ def _format_card(stage_key: str, parsed: dict) -> str:
 
 OPS_INTAKE_AWAITING = "ops_intake_awaiting"  # marker stored in pending_intake
 
+# McKinsey Discovery Gate — basic business context bắt buộc trước mọi skill
+BIZ_CONTEXT_AWAITING       = "_awaiting_basic_biz_context"
+BIZ_CONTEXT_PENDING_SKILL  = "_biz_pending_skill"
+
 async def _show_profile_reuse_confirm(message: Message, session, task_name: str):
     """Phase 1.3: Strategic task có profile đầy đủ → show confirm card với data cũ,
     user pick confirm → chạy luôn pipeline, không multi-turn intake."""
@@ -2171,6 +2181,11 @@ async def _send_strategy_aware_form(message: Message, session, task_name: str):
     task = get_task(task_name)
     if not task:
         await _send_single_shot_form(message, session, task_name)
+        return
+
+    # McKinsey discovery gate — fallback nếu strategy chưa có business context cơ bản
+    if not session.profile.is_basic_business_context_ready():
+        await _send_basic_business_form(message, session, task_name)
         return
 
     # ── Content Calendar — form siêu gọn, KHÔNG hỏi campaign ──
@@ -2288,10 +2303,21 @@ def _extract_campaigns_from_strategy(synthesis_text: str) -> list[str]:
 
 async def _send_single_shot_form(message: Message, session, task_name: str):
     """Send a paste-template form for ops skill intake.
-    User fills in template, replies once with all fields."""
+    User fills in template, replies once with all fields.
+
+    Sprint UX: Basic Business Context Gate.
+    Trước khi ANY skill chạy, đảm bảo có 5 fields cơ bản (industry, product,
+    target_customer, stage, primary_goal). Nếu thiếu → show discovery form
+    trước, lưu pending task → chain lại skill sau khi extract xong.
+    """
     task = get_task(task_name)
     if not task:
         await message.reply_text(f"⚠️ Skill {task_name} không tồn tại.")
+        return
+
+    # McKinsey discovery gate — KHÔNG cho skill chạy nếu thiếu context cơ bản
+    if not session.profile.is_basic_business_context_ready():
+        await _send_basic_business_form(message, session, task_name)
         return
 
     lines = [
@@ -4296,3 +4322,169 @@ async def _handle_adapt_channel_callback(query, session) -> None:
         parse_mode=ParseMode.MARKDOWN,
         reply_markup=post_action_keyboard(adapted_id),
     )
+
+
+# ═════════════════════════════════════════════════════════════════
+# McKinsey Discovery Gate — Basic Business Context (universal)
+# Trước khi ANY skill chạy → bắt buộc có 5 fields:
+#   industry, product_service, target_customer, stage, primary_goal
+# ═════════════════════════════════════════════════════════════════
+
+async def _send_basic_business_form(message: Message, session, pending_skill: str):
+    """
+    Show McKinsey discovery form khi user thiếu context cơ bản.
+    Sau khi user trả lời → extract + save profile + chain lại pending_skill.
+    """
+    task = get_task(pending_skill)
+    skill_label = task.label if task else pending_skill
+
+    session.pending_intake[BIZ_CONTEXT_AWAITING]      = "1"
+    session.pending_intake[BIZ_CONTEXT_PENDING_SKILL] = pending_skill
+    session.stage = PipelineStage.INTAKE
+    await save_session(session)
+
+    # Pre-fill placeholders nếu profile có sẵn vài field
+    p = session.profile
+    pre = {
+        "industry":         p.industry         or "_(chưa có)_",
+        "product":          p.product_service  or "_(chưa có)_",
+        "target":           p.target_customer  or "_(chưa có)_",
+        "stage":            p.stage            or "_(chưa có)_",
+        "goal":             p.primary_goal     or "_(chưa có)_",
+    }
+
+    msg = (
+        f"🎯 *Trước khi chạy {skill_label}, em cần nắm 5 ý cơ bản về business của sếp*\n\n"
+        f"_Output sẽ generic nếu em không biết ngành/khách/giai đoạn của sếp. "
+        f"Em hỏi 1 lần — lưu vĩnh viễn, lần sau không cần khai lại._\n\n"
+        f"━━━━━━━━━━━━━━━━━━━━━━━\n"
+        f"*Sếp trả lời 5 câu (gõ tự do, em parse được):*\n\n"
+        f"*1️⃣ Ngành kinh doanh:*\n"
+        f"   _Vd: F&B / SaaS / Spa-Beauty / Bán lẻ online / Đào tạo / BĐS / B2B service_\n"
+        f"   _Hiện tại: {pre['industry']}_\n\n"
+        f"*2️⃣ Sản phẩm/Dịch vụ chính:*\n"
+        f"   _Vd: 'Combo skincare 5 sản phẩm' / 'App quản lý đơn online' / 'Khoá học marketing'_\n"
+        f"   _Hiện tại: {pre['product']}_\n\n"
+        f"*3️⃣ Khách hàng mục tiêu (ai mua):*\n"
+        f"   _Vd: 'Phụ nữ 25-35t TP HCM' / 'SME 10-50 nhân viên' / 'Mẹ bỉm có con < 3t'_\n"
+        f"   _Hiện tại: {pre['target']}_\n\n"
+        f"*4️⃣ Stage hiện tại:*\n"
+        f"   _Mới mở (<6 tháng) / Đang tăng trưởng / Ổn định scale / Maturity_\n"
+        f"   _Hiện tại: {pre['stage']}_\n\n"
+        f"*5️⃣ Mục tiêu chính 3 tháng tới:*\n"
+        f"   _Vd: 'Tăng doanh thu 30%' / 'Mở thêm kênh TikTok' / 'Giữ chân khách cũ' / 'Tăng AOV'_\n"
+        f"   _Hiện tại: {pre['goal']}_\n\n"
+        f"━━━━━━━━━━━━━━━━━━━━━━━\n"
+        f"💬 *Gửi 1 tin theo format trên — em parse và chạy {skill_label} ngay.*"
+    )
+    await message.reply_text(msg, parse_mode=ParseMode.MARKDOWN)
+
+
+async def _haiku_extract_basic_business(text: str, session) -> dict:
+    """Extract 5 basic business fields từ free-form text via Haiku.
+    Returns dict {industry, product_service, target_customer, stage, primary_goal}.
+    """
+    import anthropic, json as _json
+    from config import CLAUDE_HAIKU_MODEL, ANTHROPIC_API_KEY
+
+    system = """Extract 5 basic business fields từ user message thành JSON.
+
+Fields BẮT BUỘC extract (nếu user có nhắc):
+- industry         : ngành kinh doanh, NORMALIZE thành 1 trong: fnb, tech_saas, ecommerce, education, health_beauty, retail, b2b_service, real_estate. Nếu không match exact, chọn gần nhất.
+- product_service  : sản phẩm/dịch vụ chính (1 câu ngắn)
+- target_customer  : khách hàng mục tiêu (1 câu ngắn, kèm demographic nếu user có)
+- stage            : NORMALIZE thành 1 trong: idea, mvp, growth, scale. Mapping: "mới mở/dưới 6 tháng"→idea/mvp, "tăng trưởng"→growth, "ổn định/scale/maturity"→scale.
+- primary_goal     : mục tiêu chính (1 câu ngắn)
+
+QUY TẮC:
+- Field nào không có trong message → bỏ qua, KHÔNG put null/empty.
+- KHÔNG thêm field nào ngoài 5 fields trên.
+- Output CHỈ JSON object, không markdown, không giải thích."""
+
+    client = anthropic.AsyncAnthropic(api_key=ANTHROPIC_API_KEY)
+    try:
+        resp = await client.messages.create(
+            model=CLAUDE_HAIKU_MODEL,
+            max_tokens=400,
+            system=system,
+            messages=[{"role": "user", "content": text}],
+        )
+        try:
+            from tools.token_tracker import track_usage
+            track_usage(session, resp, label="biz_context_extract")
+        except Exception:
+            pass
+
+        raw = resp.content[0].text.strip()
+        raw = re.sub(r"^```json\s*|^```\s*|```$", "", raw, flags=re.MULTILINE).strip()
+        data = _json.loads(raw)
+
+        valid = {"industry", "product_service", "target_customer", "stage", "primary_goal"}
+        return {k: str(v).strip() for k, v in data.items() if k in valid and v}
+    except Exception as e:
+        logger.warning("Haiku extract basic business failed: %s — text=%s", e, text[:100])
+        return {}
+
+
+async def _handle_basic_business_text(update, context, session, text: str):
+    """User submitted basic business form → extract, save, chain to pending skill."""
+    pending_skill = session.pending_intake.get(BIZ_CONTEXT_PENDING_SKILL)
+    if not pending_skill:
+        # Edge case: marker present nhưng pending skill missing → clear + show menu
+        session.pending_intake.pop(BIZ_CONTEXT_AWAITING, None)
+        await save_session(session)
+        await update.message.reply_text(
+            "⚠️ Em mất context skill đang chạy. Sếp chọn lại từ menu nhé:",
+            reply_markup=MAIN_MENU_KEYBOARD,
+        )
+        return
+
+    await update.message.reply_text("🔍 _Em đang ghi nhớ business của sếp..._", parse_mode=ParseMode.MARKDOWN)
+
+    extracted = await _haiku_extract_basic_business(text, session)
+
+    # Save to profile
+    p = session.profile
+    if extracted.get("industry"):         p.industry         = extracted["industry"]
+    if extracted.get("product_service"):  p.product_service  = extracted["product_service"]
+    if extracted.get("target_customer"):  p.target_customer  = extracted["target_customer"]
+    if extracted.get("stage"):            p.stage            = extracted["stage"]
+    if extracted.get("primary_goal"):     p.primary_goal     = extracted["primary_goal"]
+
+    # Clear gate markers
+    session.pending_intake.pop(BIZ_CONTEXT_AWAITING, None)
+    session.pending_intake.pop(BIZ_CONTEXT_PENDING_SKILL, None)
+    await save_session(session)
+
+    # Check: extract đủ 5 fields chưa?
+    if not p.is_basic_business_context_ready():
+        # Vẫn thiếu — re-show form với fields đã có
+        await update.message.reply_text(
+            "⚠️ *Em chưa parse được đủ 5 ý.* Sếp gửi lại theo format trên giúp em nhé.\n\n"
+            "_Em cần đủ 5 ý mới chạy chuẩn được, không bị output chung chung._",
+            parse_mode=ParseMode.MARKDOWN,
+        )
+        # Re-trigger form với pending_skill cũ
+        session.pending_intake[BIZ_CONTEXT_AWAITING] = "1"
+        session.pending_intake[BIZ_CONTEXT_PENDING_SKILL] = pending_skill
+        await save_session(session)
+        return
+
+    # Confirm + chain
+    task = get_task(pending_skill)
+    skill_label = task.label if task else pending_skill
+    await update.message.reply_text(
+        f"✅ *Em đã ghi nhớ:*\n\n"
+        f"• *Ngành:* {p.industry}\n"
+        f"• *Sản phẩm:* {p.product_service}\n"
+        f"• *Khách hàng:* {p.target_customer}\n"
+        f"• *Stage:* {p.stage}\n"
+        f"• *Mục tiêu:* {p.primary_goal}\n\n"
+        f"_Lần sau dùng skill khác em không cần hỏi lại nữa._\n\n"
+        f"━━━━━━━━━━━━━━━\n"
+        f"Giờ em chạy *{skill_label}* ngay 👇",
+        parse_mode=ParseMode.MARKDOWN,
+    )
+
+    # Chain to pending skill
+    await _send_single_shot_form(update.message, session, pending_skill)
