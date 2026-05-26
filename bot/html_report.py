@@ -175,7 +175,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Marketing Report — {business_name}</title>
+<title>{report_title} — {business_name}</title>
 <style>{css}
 {tab_rules}</style>
 </head>
@@ -185,7 +185,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
   {radio_inputs}
 
   <div class="header">
-    <h1>📊 Marketing Strategy Report</h1>
+    <h1>{report_title}</h1>
     <div class="meta">
       🏢 <strong>{business_name}</strong> · {industry} · Stage: {stage}<br>
       📅 {date}
@@ -377,6 +377,7 @@ def build_single_skill_report(
     )
 
     return HTML_TEMPLATE.format(
+        report_title=f"{meta['icon']} {meta['title']}",
         business_name=business_name or "Business",
         industry=industry or "—",
         stage=stage or "—",
@@ -422,7 +423,22 @@ def build_report(
         render_stage_html(k, p, i) for i, (k, p) in enumerate(parsed_stages)
     )
 
+    # Dynamic title: nhiều skill = full report; 1 skill = tên skill cụ thể
+    if n == 1:
+        single_meta = STAGE_META.get(parsed_stages[0][0], {"title": parsed_stages[0][0], "icon": "📄"})
+        report_title = f"{single_meta['icon']} {single_meta['title']}"
+    elif n >= 5:  # full A→Z pipeline (5+ stages)
+        report_title = "📊 Marketing Strategy Report"
+    else:
+        # 2-4 skills → liệt kê
+        titles = []
+        for k, _ in parsed_stages[:3]:
+            m = STAGE_META.get(k, {"title": k})
+            titles.append(m["title"])
+        report_title = "📊 " + " · ".join(titles) + (f" + {n-3}" if n > 3 else "")
+
     return HTML_TEMPLATE.format(
+        report_title=report_title,
         business_name=business_name or "Business",
         industry=industry or "—",
         stage=stage or "—",
