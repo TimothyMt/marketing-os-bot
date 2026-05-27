@@ -131,6 +131,8 @@ class OperationalSkill(AgentSkill):
         user_correction = intake.pop("_user_correction", None)
         # FB live data (competitor spy / performance audit) — injected by handlers
         fb_data = intake.pop("_fb_data", None)
+        # Workflow context — injected by workflow_runner (brand_direction from Linh)
+        workflow_context = intake.pop("_workflow_context", None)
         # Remove all internal markers (start with _) before formatting
         intake = {k: v for k, v in intake.items() if not k.startswith("_")}
 
