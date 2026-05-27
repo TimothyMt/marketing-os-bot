@@ -818,26 +818,36 @@ async def _handle_followup(update, context, session, text):
 
 # ─── Callback (inline keyboard) ──────────────────────────────────
 
-@with_user_lock
 async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
+    # ACK Telegram BEFORE acquiring the user lock.
+    # If we answer inside the lock and another handler holds it for >5s,
+    # Telegram retries the callback, delivering it twice.  Both deliveries
+    # then queue behind the lock; the second one fails with
+    # "Message is not modified" and the user sees a spurious error card.
     await query.answer()
 
     user_id = query.from_user.id
-    session = await get_session(user_id)
     data = query.data
 
-    try:
-        return await _handle_callback_inner(update, context, query, session, data, user_id)
-    except Exception as e:
-        # Fallback for unhandled callback errors — at least tell user something
-        logger.exception("Callback handler error (data=%s): %s", data, e)
+    async with _get_user_lock(user_id):
+        session = await get_session(user_id)
         try:
-            await query.message.reply_text(
-                "⚠️ Có lỗi xảy ra. Gõ /start để bắt đầu lại nhé."
-            )
-        except Exception:
-            pass
+            return await _handle_callback_inner(update, context, query, session, data, user_id)
+        except Exception as e:
+            err_str = str(e).lower()
+            # "Message is not modified" = duplicate delivery — ACKed already, safe to ignore
+            if "not modified" in err_str or "message is not modified" in err_str:
+                logger.debug("Duplicate callback ignored (data=%s): %s", data, e)
+                return
+            # Fallback for genuine unhandled callback errors
+            logger.exception("Callback handler error (data=%s): %s", data, e)
+            try:
+                await query.message.reply_text(
+                    "⚠️ Có lỗi xảy ra. Gõ /start để bắt đầu lại nhé."
+                )
+            except Exception:
+                pass
 
 
 async def _handle_callback_inner(update, context, query, session, data, user_id):
