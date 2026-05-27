@@ -35,24 +35,66 @@ def _get_client() -> anthropic.AsyncAnthropic:
 def parse_first_post(calendar_text: str) -> Optional[dict]:
     """
     Extract bài đăng đầu tiên từ content calendar text.
-    Trả về dict {hook, body, channel, day} hoặc None nếu không parse được.
+    Trả về dict {preview, full_block} hoặc None nếu không parse được.
+
+    Hỗ trợ cả 2 format:
+    1. Markdown table: | Ngày | Kênh | ... | Topic | Format | Owner | Giờ | (11 cột)
+    2. Block format: "Tuần 1 — ... Hook: ..."
     """
-    # Tìm block đầu tiên có dấu hiệu là 1 post
+    # ── Format 1: Markdown table row ─────────────────────────────────
+    # Tìm header row để lấy column index của Topic + Hook angle
+    header_match = re.search(r"\|([^\n]+)\|\s*\n\|[-| ]+\|\s*\n(\|[^\n]+\|)", calendar_text)
+    if header_match:
+        header_cells = [c.strip() for c in header_match.group(1).split("|") if c.strip()]
+        first_data_row = [c.strip() for c in header_match.group(2).split("|") if c.strip()]
+        if first_data_row and len(first_data_row) >= 4:
+            # Tìm index của các cột quan trọng
+            topic_idx = next(
+                (i for i, h in enumerate(header_cells)
+                 if any(k in h.lower() for k in ["topic", "chủ đề", "nội dung", "content"])),
+                min(7, len(first_data_row) - 1),
+            )
+            hook_idx = next(
+                (i for i, h in enumerate(header_cells)
+                 if any(k in h.lower() for k in ["hook", "angle"])),
+                min(6, len(first_data_row) - 1),
+            )
+            day_idx = 0
+            channel_idx = next(
+                (i for i, h in enumerate(header_cells)
+                 if any(k in h.lower() for k in ["kênh", "channel", "nền tảng"])),
+                1,
+            )
+
+            topic = first_data_row[topic_idx] if topic_idx < len(first_data_row) else ""
+            hook = first_data_row[hook_idx] if hook_idx < len(first_data_row) else ""
+            day = first_data_row[day_idx] if day_idx < len(first_data_row) else ""
+            channel = first_data_row[channel_idx] if channel_idx < len(first_data_row) else ""
+
+            if topic and len(topic) > 10:
+                preview = f"📅 {day} | {channel}\n🎯 Hook: {hook}\n📝 Topic: {topic}"
+                full_block = "\n".join(f"| {c}" for c in first_data_row)
+                return {"preview": preview, "full_block": full_block}
+
+    # ── Format 2: Block / labelled sections ──────────────────────────
     patterns = [
-        # Pattern: "Tuần 1 | Thứ X | ..."
         r"(?:Tuần\s*1|Week\s*1).*?(?:Hook|Caption|Nội dung|Content)[:\s]+(.{50,500}?)(?=\n\n|\nTuần|\nWeek|\Z)",
-        # Pattern: "POST-001" hoặc "Bài 1"
         r"(?:POST-001|Bài\s*1|Day\s*1|Ngày\s*1).*?(?:Hook|Caption|Nội dung)[:\s]+(.{50,500}?)(?=\n\n|\nBài|\nPost|\Z)",
     ]
-
     for pat in patterns:
         m = re.search(pat, calendar_text, re.DOTALL | re.IGNORECASE)
         if m:
             content = m.group(1).strip()[:800]
             return {"preview": content, "full_block": m.group(0)[:1000]}
 
-    # Fallback: lấy đoạn văn đầu tiên đủ dài
-    paragraphs = [p.strip() for p in calendar_text.split("\n\n") if len(p.strip()) > 100]
+    # ── Fallback: first paragraph that looks like content, not metadata ──
+    # Skip paragraphs that are metadata/instructions (contain "Lưu ý", "Owner", "Giờ đăng" etc.)
+    skip_keywords = ["lưu ý", "owner", "giờ đăng", "hook angle", "tổng kế hoạch", "tổng số bài"]
+    paragraphs = [
+        p.strip() for p in calendar_text.split("\n\n")
+        if len(p.strip()) > 100
+        and not any(kw in p.strip().lower() for kw in skip_keywords)
+    ]
     if paragraphs:
         first = paragraphs[0][:800]
         return {"preview": first, "full_block": first}

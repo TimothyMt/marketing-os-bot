@@ -133,17 +133,21 @@ body {
 .content li { margin-bottom: 6px; }
 .content strong { font-weight: 700; color: var(--text); }
 .content em { color: var(--muted); }
+.content .table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; margin: 16px 0; }
 .content table {
-  width: 100%; border-collapse: collapse; margin: 16px 0; font-size: 14px;
+  width: 100%; border-collapse: collapse; font-size: 14px;
   background: white; border-radius: 8px; overflow: hidden;
-  box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+  box-shadow: 0 1px 3px rgba(0,0,0,0.04); min-width: 480px;
 }
 .content th, .content td {
   padding: 12px 16px; text-align: left; border-bottom: 1px solid var(--border);
+  white-space: nowrap;
 }
+.content td { white-space: normal; min-width: 80px; }
 .content th {
   background: #f1f5f9; font-weight: 600; font-size: 12px;
   text-transform: uppercase; color: var(--muted); letter-spacing: 0.5px;
+  white-space: nowrap;
 }
 .content tr:last-child td { border-bottom: none; }
 .content tr:hover { background: #f8fafc; }
@@ -215,7 +219,11 @@ def _md_to_html(text: str) -> str:
     if not text:
         return ""
     if HAS_MARKDOWN:
-        return _md.markdown(text, extensions=["tables", "fenced_code", "nl2br", "sane_lists"])
+        html = _md.markdown(text, extensions=["tables", "fenced_code", "nl2br", "sane_lists"])
+        # Wrap <table> in scroll container so wide tables (e.g. 11-col calendar) scroll on mobile
+        html = re.sub(r"<table>", '<div class="table-wrap"><table>', html)
+        html = re.sub(r"</table>", "</table></div>", html)
+        return html
     # Fallback: basic conversion
     out = text
     out = re.sub(r"\*\*(.+?)\*\*", r"<strong>\1</strong>", out)

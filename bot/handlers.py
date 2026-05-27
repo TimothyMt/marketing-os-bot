@@ -3065,15 +3065,9 @@ async def _send_ops_result(message: Message, session, task_name: str, result: st
         )
         return
 
-    # NEW: Sau Lịch Nội Dung → hỏi sản xuất content luôn không
+    # content_calendar: no upsell here — _start_tone_calibration fires in main flow,
+    # and the content-gen upsell is shown AFTER tone is locked/skipped.
     if task_name == "content_calendar":
-        await message.reply_text(
-            "✅ *Lịch Nội Dung xong rồi sếp!*\n\n"
-            "Sếp muốn em *sản xuất nội dung chi tiết* từ lịch này luôn không ạ?\n"
-            "_(Mỗi bài: Hook + Body 200-300 chữ + CTA + Hashtags + Visual hint)_",
-            parse_mode=ParseMode.MARKDOWN,
-            reply_markup=CALENDAR_TO_CONTENT_GEN_KEYBOARD,
-        )
         return
 
     # Sprint 2: Default — send RATING_KEYBOARD
@@ -4600,6 +4594,15 @@ async def _tone_lock_and_apply(message, session) -> None:
             parse_mode=ParseMode.MARKDOWN,
         )
 
+    # Show content-gen upsell AFTER tone is locked
+    await message.reply_text(
+        "✅ *Lịch Nội Dung xong rồi sếp!*\n\n"
+        "Sếp muốn em *sản xuất nội dung chi tiết* từ lịch này luôn không ạ?\n"
+        "_(Mỗi bài: Hook + Body 200-300 chữ + CTA + Hashtags + Visual hint)_",
+        parse_mode=ParseMode.MARKDOWN,
+        reply_markup=CALENDAR_TO_CONTENT_GEN_KEYBOARD,
+    )
+
 
 # ─── Tone calibration callbacks ───────────────────────────────────────────────
 
@@ -4635,6 +4638,13 @@ async def _handle_tone_callback(query, session) -> None:
         await query.message.reply_text(
             f"⏭ _Bỏ qua tone calibration. Calendar đã lưu với {len(posts)} bài._",
             parse_mode=ParseMode.MARKDOWN,
+        )
+        await query.message.reply_text(
+            "✅ *Lịch Nội Dung xong rồi sếp!*\n\n"
+            "Sếp muốn em *sản xuất nội dung chi tiết* từ lịch này luôn không ạ?\n"
+            "_(Mỗi bài: Hook + Body 200-300 chữ + CTA + Hashtags + Visual hint)_",
+            parse_mode=ParseMode.MARKDOWN,
+            reply_markup=CALENDAR_TO_CONTENT_GEN_KEYBOARD,
         )
 
 
