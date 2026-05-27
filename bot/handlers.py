@@ -3680,13 +3680,16 @@ async def _prefetch_performance_data(message: Message, session):
             parse_mode=ParseMode.MARKDOWN,
         )
 
+        level_raw = session.pending_intake.get("level", "campaign").lower()
+        level = level_raw if level_raw in ("campaign", "adset", "ad") else "campaign"
+
         insights = await get_account_insights(
             date_preset=date_preset,
-            level="campaign",
+            level=level,
         )
         fb_data = format_insights_for_analysis(insights, period_raw)
         session.pending_intake["_fb_data"] = fb_data
-        logger.info("FB Marketing API: fetched %d rows | preset=%s", len(insights), date_preset)
+        logger.info("FB Marketing API: fetched %d rows | preset=%s | level=%s", len(insights), date_preset, level)
 
     except Exception as e:
         logger.warning("FB Marketing pre-fetch failed (non-blocking): %s", e)

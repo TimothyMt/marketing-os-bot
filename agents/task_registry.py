@@ -476,9 +476,10 @@ OPERATIONAL_TASKS: dict[str, TaskConfig] = {
         description="Pull live data FB Ad Account → phân tích portfolio: winners/losers, creative fatigue, budget efficiency",
         skill_class_name="AdsAnalyticsSkill",
         intake_fields=[
-            {"key": "date_range",   "label": "Khoảng thời gian",       "example": "30 ngày / 7 ngày / tháng trước / tháng này", "required": True},
-            {"key": "focus_area",   "label": "Muốn focus vào gì",       "example": "tổng quan / creative performance / budget allocation / audience saturation", "required": False},
-            {"key": "campaign_filter", "label": "Lọc theo campaign cụ thể (nếu muốn)", "example": "Tết 2026 / bỏ trống để xem toàn bộ account", "required": False},
+            {"key": "date_range",      "label": "Khoảng thời gian",                    "example": "30 ngày / 7 ngày / tháng trước / tháng này", "required": True},
+            {"key": "level",           "label": "Mức độ phân tích",                     "example": "campaign (mặc định) / adset / ad", "required": False},
+            {"key": "focus_area",      "label": "Muốn focus vào gì",                    "example": "tổng quan / frequency radar / winners / budget reallocation", "required": False},
+            {"key": "campaign_filter", "label": "Lọc campaign cụ thể (bỏ trống = toàn account)", "example": "FT09 / Tết 2026", "required": False},
         ],
     ),
 }
