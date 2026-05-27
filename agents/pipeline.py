@@ -402,57 +402,52 @@ async def _run_skill(skill: AgentSkill, session: Session) -> str:
 
     augmented_system = skill.system_prompt + format_instruction + "\n\n---\n\n" + lang_instruction + name_directive
 
+    from tools.llm_router import route, TaskType, OPS_SKILL_TASK_TYPES
+    task_type = OPS_SKILL_TASK_TYPES.get(skill.name, TaskType.GENERIC_CREATIVE)
+
     import time as _time
     _t0 = _time.monotonic()
+    full_user_content = f"{context}\n\n---\n\n{user_msg}"
     logger.info(
-        "Skill %s: calling Anthropic (max_tokens=%d, ctx_chars=%d)",
-        skill.name, skill.max_tokens, len(context) + len(user_msg),
+        "Skill %s: routing via %s (max_tokens=%d, ctx_chars=%d)",
+        skill.name, task_type.value, skill.max_tokens, len(full_user_content),
     )
     try:
-        response = await client.messages.create(
-            model=CLAUDE_SONNET_MODEL,
+        result = await route(
+            task_type=task_type,
+            system=augmented_system,
+            user=full_user_content,
             max_tokens=skill.max_tokens,
-            system=[
-                {
-                    "type": "text",
-                    "text": augmented_system,
-                    "cache_control": {"type": "ephemeral"},
-                }
-            ],
-            messages=[
-                {"role": "user", "content": f"{context}\n\n---\n\n{user_msg}"}
-            ],
         )
     except Exception as e:
         logger.exception(
-            "Skill %s: Anthropic call FAILED after %.1fs: %s",
+            "Skill %s: route() FAILED after %.1fs: %s",
             skill.name, _time.monotonic() - _t0, e,
         )
         raise
     logger.info(
-        "Skill %s: response received in %.1fs (out_tok=%s)",
+        "Skill %s: done in %.1fs (provider=%s, out_tok=%s)",
         skill.name, _time.monotonic() - _t0,
-        getattr(response.usage, "output_tokens", "?"),
+        result.get("provider", "?"), result.get("tokens_out", "?"),
     )
 
     # Token tracking — per-skill với provider + latency
     try:
         from tools.token_tracker import track_skill
-        usage = response.usage
         track_skill(
             session,
             skill_name=skill.name,
-            provider=CLAUDE_SONNET_MODEL,
-            input_tok=getattr(usage, "input_tokens", 0) or 0,
-            output_tok=getattr(usage, "output_tokens", 0) or 0,
-            cache_read=getattr(usage, "cache_read_input_tokens", 0) or 0,
-            cache_create=getattr(usage, "cache_creation_input_tokens", 0) or 0,
-            latency_sec=_time.monotonic() - _t0,
+            provider=result.get("provider", "unknown"),
+            input_tok=result.get("tokens_in", 0),
+            output_tok=result.get("tokens_out", 0),
+            cache_read=0,
+            cache_create=0,
+            latency_sec=result.get("latency_sec", _time.monotonic() - _t0),
         )
     except Exception as e:
         logger.warning("Token tracking failed (%s): %s", skill.name, e)
 
-    raw_output = response.content[0].text
+    raw_output = result["output"]
 
     if skill.enable_critic:
         return await run_critic(raw_output, agent_name=skill.name)
