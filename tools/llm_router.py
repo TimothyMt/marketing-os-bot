@@ -742,6 +742,10 @@ def availability_report() -> str:
     return "\n".join(lines)
 
 
+# Alias so callers can `from tools.llm_router import route`
+route = call
+
+
 # ─────────────────────────────────────────────────────────────────
 # Operational skill → TaskType mapping
 # Single source of truth: thêm skill mới → thêm entry ở đây
