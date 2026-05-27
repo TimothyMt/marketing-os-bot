@@ -175,11 +175,15 @@ async def _call_anthropic_sonnet(
 ) -> dict:
     """Call Anthropic Sonnet 4.6. Returns {output, tokens_in, tokens_out, provider}."""
     client = _get_anthropic_client()
+    extra_headers = {}
+    if max_tokens > 8192:
+        extra_headers["anthropic-beta"] = "output-128k-2025-02-19"
     response = await client.messages.create(
         model=CLAUDE_SONNET_MODEL,
         max_tokens=max_tokens,
         system=[{"type": "text", "text": system, "cache_control": {"type": "ephemeral"}}],
         messages=[{"role": "user", "content": user}],
+        extra_headers=extra_headers,
     )
     return {
         "output": response.content[0].text,

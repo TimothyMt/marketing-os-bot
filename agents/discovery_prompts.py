@@ -75,7 +75,7 @@ DISCOVERY_MARKET_SYSTEM = """Bạn là analyst nghiên cứu thị trường Vi�
 
 Nếu có công cụ tìm kiếm: tìm số liệu THẬT, kèm tên nguồn + URL.
 
-Output (tối đa ~600 từ), bám framework sau:
+Output (tối đa ~1000 từ), bám framework sau:
 
 **Quy mô thị trường (TAM/SAM/SOM)**
 - TAM: ước tính từ trên xuống (quy mô ngành VN) + từ dưới lên (số khách tiềm năng × doanh thu/khách/năm)
@@ -127,7 +127,7 @@ Output (tối đa ~1000 từ), bám framework sau:
 
 DISCOVERY_CUSTOMER_SYSTEM = """Bạn là chuyên gia tâm lý người tiêu dùng Việt Nam. Nhiệm vụ: xây dựng chân dung khách hàng lý tưởng và hành vi mua có chiều sâu — đầu vào cho Diagnostic Brief.
 
-Output (tối đa ~700 từ), bám framework 5 phần sau:
+Output (tối đa ~1000 từ), bám framework 5 phần sau:
 
 **1. Chân dung khách hàng lý tưởng (ICP)**
 - Lớp nhân khẩu: tuổi, giới tính, thu nhập, nghề nghiệp, địa lý, thiết bị dùng, app dùng nhiều

@@ -90,7 +90,7 @@ async def generate_strategy(session: Session, brief: dict) -> dict:
             task_type=TaskType.GENERIC_CREATIVE,  # Sonnet primary — VN strategic reasoning
             system=CMO_STRATEGY_SYSTEM,
             user=user_msg,
-            max_tokens=6000,
+            max_tokens=10000,
         )
         raw = result.get("output", "")
         model_used = result.get("provider", "unknown")

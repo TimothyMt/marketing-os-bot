@@ -183,7 +183,7 @@ async def _run_one_research(session: Session, system: str, task_type, seed_key: 
         session.profile.to_context_string(), industry_brief, search_hint,
     )
     try:
-        result = await router_call(task_type=task_type, system=system, user=user_msg, max_tokens=3000)
+        result = await router_call(task_type=task_type, system=system, user=user_msg, max_tokens=10000)
     except AllProvidersFailedError as e:
         logger.error("research %s failed: %s", label, e)
         return ""
@@ -363,7 +363,7 @@ async def generate_diagnostic_brief(session: Session, research: dict) -> dict:
             task_type=TaskType.GENERIC_CREATIVE,
             system=DIAGNOSTIC_BRIEF_SYSTEM,
             user=user_msg,
-            max_tokens=4000,
+            max_tokens=10000,
         )
         raw = result.get("output", "")
         model_used = result.get("provider", "unknown")
