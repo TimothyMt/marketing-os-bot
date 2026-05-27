@@ -1259,6 +1259,7 @@ async def _handle_callback_inner(update, context, query, session, data, user_id)
 
             # Clear correction marker sau khi dùng
             session.pending_intake.pop("_user_correction", None)
+            session.stage = PipelineStage.TASK_SELECT
             await save_session(session)
             await _send_ops_result(query.message, session, skill_name, result)
         except Exception as e:
@@ -2724,6 +2725,7 @@ async def _handle_ops_intake_reply(update: Update, context: ContextTypes.DEFAULT
                 run_strategic_single_skill(task_name, session),
                 timeout=AGENT_TIMEOUT,
             )
+            session.stage = PipelineStage.TASK_SELECT
             await save_session(session)
             await _send_ops_result(update.message, session, task_name, result)
         else:
@@ -2731,6 +2733,8 @@ async def _handle_ops_intake_reply(update: Update, context: ContextTypes.DEFAULT
                 run_operational_skill(task_name, session),
                 timeout=AGENT_TIMEOUT,
             )
+            # Skill done — reset stage so next message goes to menu/advisor, not intake handler
+            session.stage = PipelineStage.TASK_SELECT
             await save_session(session)
 
             # Ads Optimizer: clean display text (strip markers), then show confirmation separately
