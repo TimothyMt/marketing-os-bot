@@ -3270,6 +3270,13 @@ def _personalize(text: str, session) -> str:
 
 # ─── Claude advisor fallback ────────────────────────────────────
 
+def _escape_md(val) -> str:
+    """Escape markdown-sensitive characters in user-provided values for legacy Markdown mode."""
+    if not val:
+        return str(val) if val is not None else ""
+    return str(val).replace("\\", "\\\\").replace("*", "\\*").replace("_", "\\_").replace("`", "\\`").replace("[", "\\[")
+
+
 def _sanitize_telegram_md(text: str) -> str:
     """Lớp an toàn: chuyển markdown nặng (heading/blockquote) về dạng Telegram
     legacy render được. LLM đôi khi vẫn xuất `#`, `>` dù prompt đã cấm.
@@ -4954,15 +4961,15 @@ async def _handle_basic_business_text(update, context, session, text: str):
     skill_label = task.label if task else pending_skill
 
     summary_lines = [
-        f"• *Ngành:* {p.industry}",
-        f"• *Sản phẩm:* {p.product_service}",
-        f"• *Khách hàng:* {p.target_customer}",
+        f"• *Ngành:* {_escape_md(p.industry)}",
+        f"• *Sản phẩm:* {_escape_md(p.product_service)}",
+        f"• *Khách hàng:* {_escape_md(p.target_customer)}",
     ]
     if p.location:
-        summary_lines.append(f"• *Địa bàn:* {p.location}")
+        summary_lines.append(f"• *Địa bàn:* {_escape_md(p.location)}")
     summary_lines.extend([
-        f"• *Stage:* {p.stage}",
-        f"• *Mục tiêu:* {p.primary_goal}",
+        f"• *Stage:* {_escape_md(p.stage)}",
+        f"• *Mục tiêu:* {_escape_md(p.primary_goal)}",
     ])
 
     await update.message.reply_text(
@@ -4970,7 +4977,7 @@ async def _handle_basic_business_text(update, context, session, text: str):
         + "\n".join(summary_lines)
         + "\n\n_Lần sau dùng skill khác em không cần hỏi lại nữa._\n\n"
         + "━━━━━━━━━━━━━━━\n"
-        + f"Giờ em chạy *{skill_label}* ngay 👇",
+        + f"Giờ em chạy *{_escape_md(skill_label)}* ngay 👇",
         parse_mode=ParseMode.MARKDOWN,
     )
 
