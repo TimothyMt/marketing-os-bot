@@ -90,6 +90,38 @@ async def check_one(bot: Bot, tracked: dict) -> None:
     await update_after_check(tracked["id"], list(current_ids))
 
 
+async def run_once_with_bot(bot: Bot) -> None:
+    """Run 1 pass với một Bot instance đã có sẵn (dùng cho in-process scheduler)."""
+    if not is_available():
+        logger.debug("FB Access token chưa setup — monitor skipped")
+        return
+    due = await get_due_tracked()
+    if not due:
+        return
+    logger.info("Monitor: %d tracked entries due", len(due))
+    for tracked in due:
+        try:
+            await check_one(bot, tracked)
+            await asyncio.sleep(2)
+        except Exception as e:
+            logger.exception("check_one failed for tracked %s: %s", tracked.get("id"), e)
+
+
+async def start_background_monitor(bot: Bot, interval_seconds: int = 3600) -> None:
+    """Chạy monitor loop liên tục trong background (asyncio task).
+
+    Gọi trong Application.post_init — không block main loop.
+    Check mỗi interval_seconds (default 1h), tự skip nếu không có gì due.
+    """
+    logger.info("Background monitor started (interval=%ds)", interval_seconds)
+    while True:
+        try:
+            await run_once_with_bot(bot)
+        except Exception as e:
+            logger.exception("Background monitor error: %s", e)
+        await asyncio.sleep(interval_seconds)
+
+
 async def run_once():
     """Run 1 pass — check tất cả tracked entries due."""
     if not is_available():

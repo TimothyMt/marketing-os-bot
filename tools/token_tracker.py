@@ -60,6 +60,14 @@ def track_skill(
     new_total = current + total
     prefs["token_used"] = str(new_total)
 
+    # Calculate cost and accumulate
+    try:
+        from tools.token_billing import calc_cost_usd, accumulate_cost
+        cost_usd = calc_cost_usd(provider, max(0, input_tok), max(0, output_tok), max(0, cache_read), max(0, cache_create))
+        accumulate_cost(session, cost_usd)
+    except Exception:
+        cost_usd = 0.0
+
     _append_log(prefs, {
         "skill":        skill_name,
         "provider":     provider,
@@ -68,6 +76,7 @@ def track_skill(
         "cache_read":   max(0, cache_read),
         "cache_create": max(0, cache_create),
         "total":        total,
+        "cost_usd":     round(cost_usd, 6),
         "latency_sec":  round(latency_sec, 1),
         "ts":           datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S"),
     })
@@ -75,10 +84,9 @@ def track_skill(
     session.preferences = prefs
 
     logger.info(
-        "[token] user=%s skill=%s provider=%s in=%d out=%d cache_r=%d cache_c=%d total=%d latency=%.1fs cumulative=%d",
+        "[token] user=%s skill=%s provider=%s in=%d out=%d total=%d cost=$%.6f latency=%.1fs cumulative=%d",
         session.user_id, skill_name, provider,
-        input_tok, output_tok, cache_read, cache_create,
-        total, latency_sec, new_total,
+        input_tok, output_tok, total, cost_usd, latency_sec, new_total,
     )
     return total
 

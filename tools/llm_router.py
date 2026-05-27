@@ -103,20 +103,20 @@ ROUTING_TABLE: dict[TaskType, list[Provider]] = {
     TaskType.MARKET_RESEARCH_NARRATIVE:  [Provider.ANTHROPIC_HAIKU, Provider.OPENAI_GPT5_MINI],
     TaskType.COMPETITOR_RESEARCH:        [Provider.GEMINI_PRO_GROUNDED, Provider.GEMINI_PRO, Provider.ANTHROPIC_SONNET],
 
-    # Structured matrix — GPT-5 primary (em mạnh nhất cho tables)
-    TaskType.COMPETITOR_MATRIX:          [Provider.OPENAI_GPT5, Provider.ANTHROPIC_SONNET, Provider.OPENAI_GPT5_MINI],
+    # Structured matrix — GPT-5 primary, Gemini Pro fallback (strong at tables)
+    TaskType.COMPETITOR_MATRIX:          [Provider.OPENAI_GPT5, Provider.GEMINI_PRO, Provider.ANTHROPIC_SONNET],
 
-    # VN-critical creative — Sonnet primary, GPT-5 fallback (diff provider)
+    # VN-critical creative — Sonnet primary, GPT-5 fallback, Gemini Pro last
     TaskType.CUSTOMER_INSIGHT:           [Provider.ANTHROPIC_SONNET, Provider.OPENAI_GPT5, Provider.GEMINI_PRO],
-    TaskType.PSYCHOLOGY:                 [Provider.ANTHROPIC_SONNET, Provider.OPENAI_GPT5, Provider.OPENAI_GPT5_MINI],
-    TaskType.USP_CREATIVE:               [Provider.ANTHROPIC_SONNET, Provider.OPENAI_GPT5, Provider.OPENAI_GPT5_MINI],
+    TaskType.PSYCHOLOGY:                 [Provider.ANTHROPIC_SONNET, Provider.OPENAI_GPT5, Provider.GEMINI_PRO],
+    TaskType.USP_CREATIVE:               [Provider.ANTHROPIC_SONNET, Provider.OPENAI_GPT5, Provider.GEMINI_PRO],
     TaskType.CONTENT_HERO:               [Provider.ANTHROPIC_SONNET, Provider.OPENAI_GPT5_MINI],
 
-    # Math/structured — GPT-5 mini sweet spot
+    # Math/structured — GPT-5 mini primary, Gemini Flash before Sonnet (cost)
     TaskType.PRICING_MATH:               [Provider.OPENAI_GPT5, Provider.ANTHROPIC_SONNET, Provider.OPENAI_GPT5_MINI],
-    TaskType.RETENTION_MATRIX:           [Provider.OPENAI_GPT5_MINI, Provider.ANTHROPIC_SONNET, Provider.OPENAI_GPT_4_1_MINI],
-    TaskType.WINBACK_STRATEGY:           [Provider.OPENAI_GPT5_MINI, Provider.ANTHROPIC_SONNET, Provider.GEMINI_FLASH],
-    TaskType.CONTENT_TABLE:              [Provider.OPENAI_GPT5_MINI, Provider.ANTHROPIC_SONNET, Provider.OPENAI_GPT_4_1_MINI],
+    TaskType.RETENTION_MATRIX:           [Provider.OPENAI_GPT5_MINI, Provider.GEMINI_FLASH, Provider.ANTHROPIC_SONNET],
+    TaskType.WINBACK_STRATEGY:           [Provider.OPENAI_GPT5_MINI, Provider.GEMINI_FLASH, Provider.ANTHROPIC_SONNET],
+    TaskType.CONTENT_TABLE:              [Provider.OPENAI_GPT5_MINI, Provider.GEMINI_FLASH, Provider.ANTHROPIC_SONNET],
 
     # Synthesis — Gemini Pro 1M ctx primary (CEO-locked: avoid Sonnet rate-limit)
     TaskType.SYNTHESIS_LONG_CONTEXT:     [Provider.GEMINI_PRO, Provider.OPENAI_GPT5_MINI, Provider.ANTHROPIC_SONNET],
@@ -144,8 +144,8 @@ ROUTING_TABLE: dict[TaskType, list[Provider]] = {
     TaskType.OPS_CRITICAL:          [Provider.ANTHROPIC_SONNET, Provider.OPENAI_GPT5, Provider.GEMINI_PRO],
     # Long briefs: GPT-5 handles structured long-form well
     TaskType.OPS_BRIEF:             [Provider.OPENAI_GPT5, Provider.ANTHROPIC_SONNET, Provider.GEMINI_PRO],
-    # Data analysis: GPT-5 strong on numbers, Sonnet fallback for nuance
-    TaskType.OPS_ANALYSIS:          [Provider.OPENAI_GPT5, Provider.ANTHROPIC_SONNET, Provider.OPENAI_GPT5_MINI],
+    # Data analysis: GPT-5 primary, Gemini Pro thinking for complex fallback, Sonnet last
+    TaskType.OPS_ANALYSIS:          [Provider.OPENAI_GPT5, Provider.GEMINI_PRO, Provider.ANTHROPIC_SONNET],
     # Creative copy: GPT-5 capable, Sonnet fallback
     TaskType.OPS_CONTENT_CREATIVE:  [Provider.OPENAI_GPT5, Provider.ANTHROPIC_SONNET, Provider.OPENAI_GPT5_MINI],
     # Bulk/structured content: GPT-5-mini cost-efficient

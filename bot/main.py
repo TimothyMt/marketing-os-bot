@@ -42,6 +42,11 @@ async def post_init(application: Application):
     await init_db()
     logger.info("DB pool ready.")
 
+    # Start competitor monitor as background asyncio task (checks every hour)
+    import asyncio
+    from workers.monitor_competitors import start_background_monitor
+    asyncio.create_task(start_background_monitor(application.bot, interval_seconds=3600))
+
 
 def main():
     if not TELEGRAM_BOT_TOKEN:
