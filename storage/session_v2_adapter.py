@@ -50,6 +50,16 @@ async def get_session_v2(user_id: int) -> Session:
         if user.get("en_level"):    preferences["en_level"]    = user["en_level"]
         preferences["token_quota"] = str(user.get("token_quota", 500000))
         preferences["token_used"]  = str(user.get("token_used",  0))
+        # Bug 5 fix — load cost_used_usd from users table
+        cost_val = user.get("cost_used_usd")
+        if cost_val is not None:
+            try:
+                preferences["cost_used_usd"] = float(cost_val)
+            except (TypeError, ValueError):
+                pass
+
+    # Bug 3 fix — load token_log from slim
+    preferences["_token_log"] = slim.get("token_log") or []
 
     # ── Build results dict (skill_name → [VersionedResult]) ─
     results: dict[str, list[VersionedResult]] = {}
@@ -69,6 +79,8 @@ async def get_session_v2(user_id: int) -> Session:
         user_id=user_id,
         stage=PipelineStage(slim.get("stage", "idle")),
         selected_task=slim.get("selected_task"),
+        # Bug 1 fix — load pending_followup_skill from slim
+        pending_followup_skill=slim.get("pending_followup_skill"),
         profile=profile,
         intake_history=slim.get("intake_history") or [],
         results=results,
@@ -76,7 +88,8 @@ async def get_session_v2(user_id: int) -> Session:
         preferences=preferences,
         feedback={},  # TODO Phase 3: load from skill_runs.rating
         tone_calibration=slim.get("tone_calibration") or {},
-        content_outputs={},  # TODO Phase 3: load from posts table
+        # Bug 2 fix — load content_outputs from slim
+        content_outputs=slim.get("content_outputs") or {},
         created_at=(user or {}).get("created_at"),
         updated_at=(user or {}).get("updated_at"),
     )
@@ -97,6 +110,14 @@ async def save_session_v2(session: Session) -> None:
     prefs = session.preferences or {}
 
     # ── 1. users ────────────────────────────────────────────
+    # Bug 5 fix — sync cost_used_usd to users table
+    cost_used_usd = None
+    if "cost_used_usd" in prefs:
+        try:
+            cost_used_usd = float(prefs["cost_used_usd"])
+        except (TypeError, ValueError):
+            pass
+
     await upsert_user(
         user_id=user_id,
         name=prefs.get("user_name"),
@@ -104,6 +125,7 @@ async def save_session_v2(session: Session) -> None:
         token_quota=int(prefs.get("token_quota", 500000)) if prefs.get("token_quota") else None,
         plan=prefs.get("plan"),
         industry_cached=session.profile.industry,
+        cost_used_usd=cost_used_usd,
     )
 
     # Token tracking: nếu token_used trong session khác với DB → update
@@ -127,13 +149,21 @@ async def save_session_v2(session: Session) -> None:
         await upsert_profile(user_id, **profile_clean)
 
     # ── 3. user_sessions_slim ───────────────────────────────
+    # Bug 4 fix — pass selected_task and pending_followup_skill directly so
+    # None values are written to DB (clearing the field), not skipped.
+    # Bug 1 fix — save pending_followup_skill
+    # Bug 2 fix — save content_outputs
+    # Bug 3 fix — save token_log (_token_log from preferences)
     await upsert_session_slim(
         user_id=user_id,
         stage=session.stage.value,
-        selected_task=session.selected_task,
+        selected_task=session.selected_task,               # None → writes NULL (sentinel)
+        pending_followup_skill=session.pending_followup_skill,  # None → writes NULL
         pending_intake=session.pending_intake or {},
         intake_history=(session.intake_history or [])[-20:],
         tone_calibration=session.tone_calibration or {},
+        token_log=prefs.get("_token_log", []),
+        content_outputs=session.content_outputs or {},
     )
 
     # ── 4. skill_runs — append-only, chỉ insert version mới ─

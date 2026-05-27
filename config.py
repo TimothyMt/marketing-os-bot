@@ -66,8 +66,8 @@ USE_MULTI_AGENT_PIPELINE = os.getenv("USE_MULTI_AGENT", "true").lower() in ("tru
 #   Phase D: WRITE=F READ=T → v2 only (sau khi confident)
 #
 # Rollback: set 2 vars về False bất cứ lúc nào → quay về v1 only
-DB_V2_WRITE = os.getenv("DB_V2_WRITE", "false").lower() in ("true", "1", "yes")
-DB_V2_READ  = os.getenv("DB_V2_READ",  "false").lower() in ("true", "1", "yes")
+DB_V2_WRITE = os.getenv("DB_V2_WRITE", "false").lower() in ("true", "1", "yes")  # Phase D: default False (V2-only, no dual-write)
+DB_V2_READ  = os.getenv("DB_V2_READ",  "true").lower()  in ("true", "1", "yes")  # Phase D: default True (read from V2)
 # Legacy compat
 USE_DB_V2 = DB_V2_READ  # backward-compat nếu code khác đang đọc
 

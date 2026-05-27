@@ -15,6 +15,9 @@ from storage.v2._client import get_client
 logger = logging.getLogger(__name__)
 TABLE = "user_sessions_slim"
 
+# Sentinel — phân biệt "không truyền vào" vs "truyền None để xoá"
+_UNSET = object()
+
 
 async def get_session_slim(user_id: int) -> dict:
     """
@@ -41,35 +44,44 @@ async def get_session_slim(user_id: int) -> dict:
 
 def _default_session(user_id: int) -> dict:
     return {
-        "user_id":          user_id,
-        "stage":            "idle",
-        "selected_task":    None,
-        "pending_intake":   {},
-        "intake_history":   [],
-        "tone_calibration": {},
+        "user_id":                user_id,
+        "stage":                  "idle",
+        "selected_task":          None,
+        "pending_followup_skill": None,
+        "pending_intake":         {},
+        "intake_history":         [],
+        "tone_calibration":       {},
+        "token_log":              [],
+        "content_outputs":        {},
     }
 
 
 async def upsert_session_slim(
     user_id: int,
     stage: Optional[str] = None,
-    selected_task: Optional[str] = None,
+    selected_task=_UNSET,           # None = clear, _UNSET = don't touch
+    pending_followup_skill=_UNSET,  # None = clear, _UNSET = don't touch
     pending_intake: Optional[dict] = None,
     intake_history: Optional[list] = None,
     tone_calibration: Optional[dict] = None,
+    token_log: Optional[list] = None,
+    content_outputs: Optional[dict] = None,
     touch_last_msg: bool = True,
 ) -> bool:
-    """Upsert session fields. Only non-None fields written."""
+    """Upsert session fields. Only non-_UNSET / non-None fields written."""
     client = get_client()
     if client is None:
         return False
 
     payload: dict = {"user_id": user_id}
-    if stage is not None:            payload["stage"] = stage
-    if selected_task is not None:    payload["selected_task"] = selected_task
-    if pending_intake is not None:   payload["pending_intake"] = pending_intake
-    if intake_history is not None:   payload["intake_history"] = intake_history
-    if tone_calibration is not None: payload["tone_calibration"] = tone_calibration
+    if stage is not None:                            payload["stage"] = stage
+    if selected_task is not _UNSET:                  payload["selected_task"] = selected_task
+    if pending_followup_skill is not _UNSET:         payload["pending_followup_skill"] = pending_followup_skill
+    if pending_intake is not None:                   payload["pending_intake"] = pending_intake
+    if intake_history is not None:                   payload["intake_history"] = intake_history
+    if tone_calibration is not None:                 payload["tone_calibration"] = tone_calibration
+    if token_log is not None:                        payload["token_log"] = token_log
+    if content_outputs is not None:                  payload["content_outputs"] = content_outputs
     if touch_last_msg:
         payload["last_message_at"] = datetime.now(timezone.utc).isoformat()
 

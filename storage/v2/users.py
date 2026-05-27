@@ -39,6 +39,7 @@ async def upsert_user(
     token_quota: Optional[int] = None,
     plan: Optional[str] = None,
     industry_cached: Optional[str] = None,
+    cost_used_usd: Optional[float] = None,
 ) -> Optional[dict]:
     """Upsert user. Only non-None fields are written."""
     client = get_client()
@@ -49,11 +50,12 @@ async def upsert_user(
         "user_id": user_id,
         "last_active_at": datetime.now(timezone.utc).isoformat(),
     }
-    if name is not None:           payload["name"] = name
-    if en_level is not None:       payload["en_level"] = en_level
-    if token_quota is not None:    payload["token_quota"] = token_quota
-    if plan is not None:           payload["plan"] = plan
+    if name is not None:            payload["name"] = name
+    if en_level is not None:        payload["en_level"] = en_level
+    if token_quota is not None:     payload["token_quota"] = token_quota
+    if plan is not None:            payload["plan"] = plan
     if industry_cached is not None: payload["industry_cached"] = industry_cached
+    if cost_used_usd is not None:   payload["cost_used_usd"] = cost_used_usd
 
     try:
         resp = await client.table(TABLE).upsert(payload).execute()
