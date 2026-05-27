@@ -447,7 +447,10 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
     # Hoặc user đã từng có results từ skill nào đó (returning power user)
     _has_any_results = bool(session.results)
-    _is_returning_user = _has_any_profile or _has_any_results
+    # Hoặc user đã hoàn tất onboarding tên (đã tương tác trước đó — vd chỉ chạy
+    # brand_voice nên profile rỗng nhưng vẫn là returning user, không cần intake lại)
+    _has_onboarded = bool(_get_user_name(session))
+    _is_returning_user = _has_any_profile or _has_any_results or _has_onboarded
 
     # Log để debug nếu lần sau vẫn lỗi
     if _is_greeting:
