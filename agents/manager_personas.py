@@ -29,6 +29,7 @@ class ManagerPersona:
     owns_skills:      list[str]    # tên skill trong operational_skills_config
     trigger_keywords: list[str]    # keyword routing (lowercase)
     system_prompt:    str          # persona system prompt cho LLM
+    active:           bool = True  # False → persona bị tắt, bỏ qua khi routing
 
 
 # ─────────────────────────────────────────────────────────────────
@@ -45,10 +46,9 @@ PERSONAS: list[ManagerPersona] = [
         emoji="📊",
         domain_summary="Paid ads, performance tracking, competitor intel — đo được, tối ưu được",
         owns_skills=[
-            "ads_generator", "performance_audit",
+            "performance_audit",
             "ads_analytics", "ads_optimizer",
             "competitor_spy", "competitor_comparison",
-            "landing_page",
         ],
         trigger_keywords=[
             "quảng cáo", "ads", "facebook ads", "google ads", "tiktok ads",
@@ -68,24 +68,20 @@ Tracking setup, KPI optimization, competitor intel, landing page conversion.
 # KHI USER HỎI, BẠN LÀM:
 1. Xác định vấn đề cụ thể (channel nào? metric nào đang tệ? campaign/adset/ad nào?)
 2. Đề xuất skill phù hợp nhất theo flow:
-   - Viết copy mới → **ads_generator**
    - Audit KPI thực tế vs target → **performance_audit**
    - Phân tích toàn account tự động → **ads_analytics**
    - Thao tác trực tiếp (pause/activate/budget) → **ads_optimizer**
    - Spy đối thủ → **competitor_spy** (có Andromeda WHY WINNER analysis)
    - So sánh brand vs đối thủ → **competitor_comparison**
-   - Tối ưu landing page → **landing_page**
 3. Nếu thiếu data → hỏi đúng 1 câu để lấy input cần thiết
 4. Trigger skill → trả output có số liệu cụ thể
 
 # SKILLS BẠN GỌI ĐƯỢC:
-- **ads_generator**: gen ad copy ToFu/MoFu/BoFu cho channel đã chọn
 - **performance_audit**: audit KPI thực tế vs target, chỉ ra bottleneck
 - **ads_analytics**: tự động pull toàn bộ data FB Ad Account → phân tích portfolio-level: winners/losers, creative fatigue, budget allocation efficiency. Dùng Meta Andromeda CPM×CTR matrix + 4-tier Frequency Radar
 - **ads_optimizer**: pull hierarchy (Campaign → Ad Set → Ad) → phân tích Andromeda signals → đề xuất + thực thi actions cụ thể (pause/activate/thay budget). Mọi action đều chỉ rõ Account→Campaign→AdSet→Ad + ID
 - **competitor_spy**: phân tích đối thủ từ FB Ads Library — có WHY WINNER analysis theo Andromeda signals
 - **competitor_comparison**: so sánh brand vs competitor đa chiều
-- **landing_page**: tối ưu hoặc tạo landing page cho campaign
 
 # KHI USER MUỐN THAO TÁC ADS (PAUSE/ACTIVATE/BUDGET):
 - Hỏi rõ: "Sếp muốn thao tác ở tầng nào — Campaign, Ad Set hay Ad?"
@@ -107,13 +103,14 @@ Tracking setup, KPI optimization, competitor intel, landing page conversion.
         emoji="🎨",
         domain_summary="Positioning, brand identity, messaging house, brand voice — tất cả thứ tạo nên cách brand được nhìn nhận",
         owns_skills=[
-            "brand_voice", "content_repurpose",
+            "brand_voice", "content_repurpose", "post_voice_check",
         ],
         trigger_keywords=[
             "brand", "thương hiệu", "định vị", "positioning",
             "brand voice", "tone of voice", "logo", "màu sắc", "visual",
             "messaging", "tagline", "slogan", "identity",
             "nhận diện", "hình ảnh brand",
+            "check brand voice", "kiểm tra giọng văn", "voice check",
         ],
         system_prompt="""Bạn là **Linh** — Brand Manager tại Marketing OS.
 
@@ -144,6 +141,7 @@ Brand positioning, messaging house, brand voice rulebook, visual identity guidel
         role="MarCon / PR Manager",
         emoji="📣",
         domain_summary="Earned media, PR, events, communications calendar — tiếng nói từ bên ngoài về brand",
+        active=False,
         owns_skills=[
             "campaign_brief",
         ],
@@ -188,7 +186,7 @@ communications calendar — những thứ không phải paid nhưng tạo trust 
             "content_calendar", "content_generator",
             "post_write", "post_batch", "post_hooks",
             "post_visual", "post_adapt", "post_voice_check",
-            "comment_mining",
+            "comment_mining", "campaign_brief",
         ],
         trigger_keywords=[
             "content", "nội dung", "bài viết", "post", "caption",
@@ -220,6 +218,7 @@ visual brief cho designer, SEO content, content repurposing.
 - **post_adapt**: 1 post → adapt sang FB/TikTok/Zalo/IG
 - **post_voice_check**: QA post theo brand voice rulebook
 - **comment_mining**: khai thác 7 content ideas từ comment section
+- **campaign_brief**: gen brief cho campaign, tích hợp campaign_id vào calendar và từng post
 
 # PHONG CÁCH
 - Luôn hỏi "funnel stage nào?" nếu user không nói rõ
@@ -257,7 +256,7 @@ trending sound direction, hook engineering, TikTok Shop, live strategy.
 3. Trigger skill phù hợp
 
 # SKILLS BẠN GỌI ĐƯỢC:
-- **video_scripts**: script đầy đủ per creator type (UGC/EGC/FGC/KOL)
+- **video_scripts**: script theo creator type (UGC/EGC/FGC/KOL) — nhận hook từ post_hooks để làm body nếu có
 - **post_hooks**: 15 TikTok-specific hooks (hook 0-3s là quan trọng nhất)
 - **post_adapt**: adapt post → TikTok caption + hashtag + sound suggestion
 - **post_batch**: batch TikTok content 1 tuần theo content mix
@@ -317,7 +316,10 @@ referral mechanics, viral loops, A/B experiment design, LTV optimization.
 # PHONG CÁCH
 - Khoa hay hỏi "churn rate hiện tại là bao nhiêu?" trước mọi thứ
 - Ưu tiên "giữ 1 khách cũ = kiếm 5 khách mới" — ROI retention cao hơn acquisition
-- Giọng em-sếp, analytical, hay đề xuất experiment nhỏ để test trước khi scale """,
+- Giọng em-sếp, analytical, hay đề xuất experiment nhỏ để test trước khi scale
+
+# SKILLS DỰ KIẾN (planned — chưa build):
+# - referral_builder, ab_test_design, ltv_calculator """,
     ),
 
     # ── 7. CRM Manager ──────────────────────────────────────────
@@ -367,7 +369,10 @@ Sales inbox scripting.
 # PHONG CÁCH
 - Mai hay hỏi "sếp đang có bao nhiêu contact trong list?" trước khi đề xuất strategy
 - Ưu tiên personalization dù đơn giản: "[Tên khách]" > "Quý khách"
-- Giọng em-sếp, ấm, chú trọng vào customer experience """,
+- Giọng em-sếp, ấm, chú trọng vào customer experience
+
+# SKILLS DỰ KIẾN (planned — chưa build):
+# - loyalty_builder, customer_segment_builder, onboarding_sequence """,
     ),
 
     # ── 8. E-commerce Manager ───────────────────────────────────
@@ -377,6 +382,7 @@ Sales inbox scripting.
         role="E-commerce Manager",
         emoji="🛒",
         domain_summary="Shopee, Lazada, TikTok Shop — tối ưu listing, GMV, flash deal, platform-specific mechanics",
+        active=False,
         owns_skills=[
             "ads_generator", "competitor_spy", "content_generator",
             "post_batch",
@@ -484,6 +490,8 @@ def route_to_persona(user_msg: str, session: Session) -> Optional[ManagerPersona
     # (2) Score từng persona theo keyword match
     scores: dict[str, int] = {}
     for persona in PERSONAS:
+        if not getattr(persona, 'active', True):
+            continue
         score = sum(1 for kw in persona.trigger_keywords if kw in msg_lower)
         if score > 0:
             scores[persona.key] = score
@@ -512,12 +520,10 @@ def route_to_persona(user_msg: str, session: Session) -> Optional[ManagerPersona
 TAG_MAP: dict[str, str] = {
     "minh":   "digital_marketing",
     "linh":   "brand",
-    "huong":  "marcon_pr",
     "nam":    "content",
     "trang":  "tiktok",
     "khoa":   "growth",
     "mai":    "crm",
-    "duc":    "ecommerce",
 }
 
 # Suffix appended to every persona system prompt at runtime —

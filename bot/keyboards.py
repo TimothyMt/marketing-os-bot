@@ -1,19 +1,23 @@
 """
 Telegram inline keyboards for the bot.
-Multi-tier menu: Main → Chiến lược / Sản xuất / Đánh giá.
 """
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 
 
 # ─────────────────────────────────────────────────────────────────
-# MAIN MENU — Tier 1 (categories)
+# MAIN MENU — Persona-based entry (6 active managers)
 # ─────────────────────────────────────────────────────────────────
 
 MAIN_MENU_KEYBOARD = InlineKeyboardMarkup([
-    [InlineKeyboardButton("🎯 Chiến Lược",         callback_data="menu_strategic")],
-    [InlineKeyboardButton("⚙️ Sản Xuất",           callback_data="menu_operational")],
-    [InlineKeyboardButton("📊 Theo Dõi & Báo Cáo", callback_data="menu_analysis")],
+    [InlineKeyboardButton("📊 Minh — Ads & Performance",   callback_data="persona_menu_digital_marketing")],
+    [InlineKeyboardButton("🎨 Linh — Brand Voice",          callback_data="persona_menu_brand")],
+    [InlineKeyboardButton("✍️ Nam — Content",               callback_data="persona_menu_content")],
+    [InlineKeyboardButton("🎬 Trang — TikTok",              callback_data="persona_menu_tiktok")],
+    [InlineKeyboardButton("🚀 Khoa — Growth & Retention",  callback_data="persona_menu_growth")],
+    [InlineKeyboardButton("💬 Mai — CRM & Zalo",            callback_data="persona_menu_crm")],
 ])
+
+TASK_SELECT_KEYBOARD = MAIN_MENU_KEYBOARD  # alias
 
 # Sprint 1: Language preference setup (first-time)
 LANG_LEVEL_KEYBOARD = InlineKeyboardMarkup([
@@ -93,77 +97,6 @@ IMAGE_REVIEW_KEYBOARD = InlineKeyboardMarkup([
 
 
 # ─────────────────────────────────────────────────────────────────
-# STRATEGIC MENU — Tier 2 (5 single + 1 A→Z full)
-# ─────────────────────────────────────────────────────────────────
-
-STRATEGIC_KEYBOARD = InlineKeyboardMarkup([
-    [
-        InlineKeyboardButton("📊 Tìm Hiểu Thị Trường", callback_data="task_market"),
-        InlineKeyboardButton("🕵️ Phân Tích Đối Thủ",   callback_data="task_competitor"),
-    ],
-    [
-        InlineKeyboardButton("👥 Insight Khách Hàng", callback_data="task_customer"),
-        InlineKeyboardButton("💰 Chiến Lược Giá",     callback_data="task_pricing"),
-    ],
-    [InlineKeyboardButton("🎯 Lập Kế Hoạch Tổng", callback_data="task_strategy")],
-    [InlineKeyboardButton("🔍 Phân Tích Tổng Hợp A→Z (5 bước)", callback_data="task_full")],
-    [InlineKeyboardButton("🔄 Chiến Lược Giữ Chân Khách", callback_data="task_retention_strategy")],
-    [InlineKeyboardButton("🔁 Winback Khách Cũ",          callback_data="task_winback_campaign")],
-    [InlineKeyboardButton("← Quay lại",                callback_data="menu_main")],
-])
-
-
-# ─────────────────────────────────────────────────────────────────
-# OPERATIONAL MENU — Tier 2 (8 skills, grouped by purpose)
-# ─────────────────────────────────────────────────────────────────
-
-OPERATIONAL_KEYBOARD = InlineKeyboardMarkup([
-    # Production cluster (đã ra mắt)
-    [InlineKeyboardButton("📅 Lịch Nội Dung",        callback_data="task_content_calendar")],
-    [InlineKeyboardButton("✨ Content Suite v2 (NEW)", callback_data="menu_content_suite")],
-    [InlineKeyboardButton("✍️ Sản Xuất Nội Dung (cũ)", callback_data="task_content_generator")],
-    [InlineKeyboardButton("📧 Chăm Sóc Khách Hàng",  callback_data="task_email_zalo_sequence")],
-    # NEW skills (test branch)
-    [InlineKeyboardButton("💬 Phân Tích Comment",       callback_data="task_comment_mining")],
-    [InlineKeyboardButton("♻️ Tái Sử Dụng Content",     callback_data="task_content_repurpose")],
-    # Coming soon — disabled placeholders (click → "Sắp ra mắt")
-    [InlineKeyboardButton("🚧 Viết Brief Campaign (coming soon)",  callback_data="coming_soon_campaign_brief")],
-    [InlineKeyboardButton("🚧 Sản Xuất Nội Dung Ads (coming soon)", callback_data="coming_soon_ads_generator")],
-    [InlineKeyboardButton("🚧 Viết Kịch Bản Video (coming soon)",  callback_data="coming_soon_video_scripts")],
-    [InlineKeyboardButton("🚧 Thiết Kế Website (coming soon)",     callback_data="coming_soon_landing_page")],
-    [InlineKeyboardButton("🚧 Kịch Bản Sales (coming soon)",       callback_data="coming_soon_sales_inbox_script")],
-    [InlineKeyboardButton("← Quay lại",                callback_data="menu_main")],
-])
-
-
-# ─────────────────────────────────────────────────────────────────
-# CONTENT SUITE v2 — sub-menu (6 skills chuyên content production)
-# ─────────────────────────────────────────────────────────────────
-
-CONTENT_SUITE_KEYBOARD = InlineKeyboardMarkup([
-    [InlineKeyboardButton("🎙️ Bộ Quy Tắc Brand Voice",    callback_data="task_brand_voice")],
-    [InlineKeyboardButton("✍️ Viết 1 Bài Content",        callback_data="task_post_write")],
-    [InlineKeyboardButton("📚 Batch — Tuần Content",      callback_data="task_post_batch")],
-    [InlineKeyboardButton("🔄 Adapt sang Channel Khác",   callback_data="task_post_adapt")],
-    [InlineKeyboardButton("🪝 Hook Bank — 15 hooks",      callback_data="task_post_hooks")],
-    [InlineKeyboardButton("🎨 Visual Brief cho Designer", callback_data="task_post_visual")],
-    [InlineKeyboardButton("✅ Check Brand Voice",         callback_data="task_post_voice_check")],
-    [InlineKeyboardButton("← Quay lại Sản Xuất",         callback_data="menu_operational")],
-])
-
-
-# ─────────────────────────────────────────────────────────────────
-# ANALYSIS MENU — Tier 2
-# ─────────────────────────────────────────────────────────────────
-
-ANALYSIS_KEYBOARD = InlineKeyboardMarkup([
-    [InlineKeyboardButton("🔍 Theo Dõi Đối Thủ",      callback_data="task_competitor_spy")],
-    [InlineKeyboardButton("📊 Báo Cáo Ads",            callback_data="task_performance_audit")],
-    [InlineKeyboardButton("← Quay lại",                callback_data="menu_main")],
-])
-
-
-# ─────────────────────────────────────────────────────────────────
 # Confirmation + flow control
 # ─────────────────────────────────────────────────────────────────
 
@@ -180,28 +113,18 @@ RESTART_KEYBOARD = InlineKeyboardMarkup([
 
 
 # ─────────────────────────────────────────────────────────────────
-# ACTION KEYBOARDS — sau khi 1 skill xong, split theo category
+# ACTION KEYBOARD — sau khi bất kỳ skill nào xong
 # ─────────────────────────────────────────────────────────────────
 
-# Strategic skill done → suggest chuyển sang Ops
-ACTION_AFTER_STRATEGIC = InlineKeyboardMarkup([
-    [InlineKeyboardButton("⚡ Chuyển sang Sản Xuất",     callback_data="menu_operational")],
-    [InlineKeyboardButton("⚙️ Chọn Strategic khác",     callback_data="menu_strategic")],
+ACTION_AFTER_SKILL = InlineKeyboardMarkup([
+    [InlineKeyboardButton("🏠 Về menu chính",            callback_data="menu_main")],
     [InlineKeyboardButton("❓ Hỏi thêm về output này",  callback_data="ask_followup")],
 ])
 
-# Operational skill done → suggest quay về Strategic
-ACTION_AFTER_OPS = InlineKeyboardMarkup([
-    [InlineKeyboardButton("🎯 Quay lại Chiến Lược",     callback_data="menu_strategic")],
-    [InlineKeyboardButton("⚙️ Chọn Ops khác",           callback_data="menu_operational")],
-    [InlineKeyboardButton("❓ Hỏi thêm về output này",  callback_data="ask_followup")],
-])
-
-# Analysis skill done → about menu chính
-ACTION_AFTER_ANALYSIS = InlineKeyboardMarkup([
-    [InlineKeyboardButton("⚙️ Chọn task khác",          callback_data="menu_main")],
-    [InlineKeyboardButton("❓ Hỏi thêm về output này",  callback_data="ask_followup")],
-])
+# Aliases for backward compat (old callback_data "menu_strategic" / "menu_operational" still route to menu_main)
+ACTION_AFTER_STRATEGIC = ACTION_AFTER_SKILL
+ACTION_AFTER_OPS       = ACTION_AFTER_SKILL
+ACTION_AFTER_ANALYSIS  = ACTION_AFTER_SKILL
 
 # Q&A follow-up — sau khi user hỏi thêm 1 lần, có thể hỏi tiếp hoặc thoát
 ASK_FOLLOWUP_KEYBOARD = InlineKeyboardMarkup([
@@ -211,32 +134,14 @@ ASK_FOLLOWUP_KEYBOARD = InlineKeyboardMarkup([
 
 
 def get_action_keyboard(task_name: str) -> InlineKeyboardMarkup:
-    """Pick action keyboard dựa trên category của skill vừa xong."""
-    from agents.task_registry import OPERATIONAL_TASKS, STRATEGIC_TASKS
-    SINGLE_SHOT_STRATEGIC = {"market", "competitor", "customer", "pricing", "strategy", "full"}
-    ANALYSIS_TASKS = {"competitor_spy", "performance_audit"}
-
-    if task_name in ANALYSIS_TASKS:
-        return ACTION_AFTER_ANALYSIS
-    if task_name in OPERATIONAL_TASKS and task_name not in ANALYSIS_TASKS:
-        return ACTION_AFTER_OPS
-    if task_name in SINGLE_SHOT_STRATEGIC or task_name in STRATEGIC_TASKS:
-        return ACTION_AFTER_STRATEGIC
-    # Fallback
-    return ACTION_AFTER_OPS
+    """Return post-skill action keyboard."""
+    return ACTION_AFTER_SKILL
 
 
 def stage_done_keyboard(is_last: bool = False, task_name: str | None = None) -> InlineKeyboardMarkup:
-    """Keyboard sau mỗi stage. is_last=True → action keyboard, else continue button.
-
-    Note: When is_last=True, prefer get_action_keyboard(task_name) directly.
-    This function kept for backward compat.
-    """
+    """Keyboard sau mỗi stage. is_last=True → action keyboard, else continue button."""
     if is_last:
-        if task_name:
-            return get_action_keyboard(task_name)
-        # Fallback
-        return ACTION_AFTER_OPS
+        return ACTION_AFTER_SKILL
     return InlineKeyboardMarkup([
         [InlineKeyboardButton("▶️ Chạy bước tiếp theo", callback_data="continue_pipeline")],
     ])
@@ -387,8 +292,3 @@ def post_action_keyboard(post_id: str) -> InlineKeyboardMarkup:
     ])
 
 
-# ─────────────────────────────────────────────────────────────────
-# Legacy — keep for backward compat (callbacks still work)
-# ─────────────────────────────────────────────────────────────────
-
-TASK_SELECT_KEYBOARD = MAIN_MENU_KEYBOARD  # alias for old code

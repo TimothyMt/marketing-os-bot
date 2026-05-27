@@ -19,9 +19,6 @@ from agents.task_registry import TASK_REGISTRY, OPERATIONAL_TASKS, STRATEGIC_TAS
 from frameworks.kpi_library import KPI_LIBRARY
 from bot.keyboards import (
     MAIN_MENU_KEYBOARD,
-    STRATEGIC_KEYBOARD,
-    OPERATIONAL_KEYBOARD,
-    ANALYSIS_KEYBOARD,
     TASK_SELECT_KEYBOARD,
     CONFIRM_KEYBOARD,
     RESTART_KEYBOARD,
@@ -44,7 +41,6 @@ from bot.keyboards import (
     NEEDS_STRATEGY_KEYBOARD,
     MONITOR_PROMPT_KEYBOARD,
     MONITOR_INTERVAL_KEYBOARD,
-    CONTENT_SUITE_KEYBOARD,
     POST_AZ_CAMPAIGN_KEYBOARD,
     CAMPAIGN_OPTION_KEYBOARD,
     CAMPAIGN_IDEA_CONFIRM_KEYBOARD,
@@ -1422,37 +1418,11 @@ async def _handle_callback_inner(update, context, query, session, data, user_id)
             )
         return
 
-    if data == "menu_strategic":
+    if data in ("menu_strategic", "menu_operational", "menu_content_suite", "menu_analysis"):
         await query.edit_message_text(
-            "🎯 *Chiến lược* — phân tích sâu để ra quyết định lớn\n\nChọn task:",
+            "📋 *Chọn chuyên gia bạn muốn làm việc cùng:*",
             parse_mode=ParseMode.MARKDOWN,
-            reply_markup=STRATEGIC_KEYBOARD,
-        )
-        return
-
-    if data == "menu_operational":
-        await query.edit_message_text(
-            "⚙️ *Sản xuất* — deliverable dùng hàng tuần\n\nChọn task:",
-            parse_mode=ParseMode.MARKDOWN,
-            reply_markup=OPERATIONAL_KEYBOARD,
-        )
-        return
-
-    if data == "menu_content_suite":
-        await query.edit_message_text(
-            "✨ *Content Suite v2 — 6 skills chuyên content production*\n\n"
-            "_Output narrative chất lượng cao, modular, channel-aware._\n\n"
-            "Chọn skill:",
-            parse_mode=ParseMode.MARKDOWN,
-            reply_markup=CONTENT_SUITE_KEYBOARD,
-        )
-        return
-
-    if data == "menu_analysis":
-        await query.edit_message_text(
-            "📊 *Đánh giá* — audit campaign đang chạy\n\nChọn task:",
-            parse_mode=ParseMode.MARKDOWN,
-            reply_markup=ANALYSIS_KEYBOARD,
+            reply_markup=MAIN_MENU_KEYBOARD,
         )
         return
 
