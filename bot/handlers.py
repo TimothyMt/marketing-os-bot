@@ -2144,8 +2144,8 @@ def _format_card(stage_key: str, parsed: dict, token_entry: dict | None = None) 
     parts.append("📎 _Xem full analysis trong file HTML cuối pipeline_")
 
     if token_entry:
-        from tools.token_tracker import fmt as _fmt
-        provider  = token_entry.get("provider", "?")
+        from tools.token_tracker import fmt as _fmt, _provider_label as _plabel
+        provider  = _plabel(token_entry.get("provider", "?"))
         inp       = token_entry.get("input_tok", 0)
         out       = token_entry.get("output_tok", 0)
         total_tok = token_entry.get("total", inp + out)
