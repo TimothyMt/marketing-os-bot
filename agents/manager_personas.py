@@ -462,6 +462,32 @@ def route_to_persona(user_msg: str, session: Session) -> Optional[ManagerPersona
 
 
 # ─────────────────────────────────────────────────────────────────
+# @tag → persona key map  (lowercase, no diacritics)
+# ─────────────────────────────────────────────────────────────────
+
+TAG_MAP: dict[str, str] = {
+    "minh":   "digital_marketing",
+    "linh":   "brand",
+    "huong":  "marcon_pr",
+    "nam":    "content",
+    "trang":  "tiktok",
+    "khoa":   "growth",
+    "mai":    "crm",
+    "duc":    "ecommerce",
+}
+
+# Suffix appended to every persona system prompt at runtime —
+# instructs LLM to emit [SKILL_DISPATCH:name] when it picks a concrete skill.
+_DISPATCH_SUFFIX = """
+# KHI QUYẾT ĐỊNH CHẠY SKILL
+Khi đã xác định được 1 skill cụ thể giải quyết đúng vấn đề → kết thúc response bằng đúng marker này (dòng cuối):
+[SKILL_DISPATCH:tên_skill]
+- tên_skill phải là 1 trong danh sách skills bạn owns (snake_case chính xác).
+- VD: [SKILL_DISPATCH:ads_copy]
+- KHÔNG dùng marker nếu chỉ tư vấn chung, chưa chắc skill nào phù hợp, hoặc cần hỏi thêm sếp."""
+
+
+# ─────────────────────────────────────────────────────────────────
 # Persona runner
 # ─────────────────────────────────────────────────────────────────
 
@@ -470,22 +496,15 @@ async def run_persona_turn(
     user_msg: str,
     persona: ManagerPersona,
 ) -> str:
-    """Chạy 1 lượt hội thoại với persona. Returns response text.
-
-    Persona đọc context → đề xuất skill → hỏi intake nếu cần → trả lời.
-    """
+    """Chạy 1 lượt hội thoại với persona. Returns response text (may contain [SKILL_DISPATCH:x])."""
     from tools.llm_router import call as router_call, TaskType, AllProvidersFailedError
 
-    # Build context
     p = session.profile
-    advisory   = session.get_latest_result("advisory") or session.get_latest_result("synthesis") or ""
-    campaign   = session.get_latest_result("campaign_brief") or ""
+    advisory    = session.get_latest_result("advisory") or session.get_latest_result("synthesis") or ""
+    campaign    = session.get_latest_result("campaign_brief") or ""
     profile_ctx = p.to_context_string()
 
-    context_parts = [
-        "# THÔNG TIN BUSINESS",
-        profile_ctx,
-    ]
+    context_parts = ["# THÔNG TIN BUSINESS", profile_ctx]
     if advisory:
         context_parts += ["", "# STRATEGY (đã duyệt)", advisory[:1500]]
     if campaign:
@@ -493,20 +512,18 @@ async def run_persona_turn(
 
     context_parts += [
         "",
-        f"# SKILLS BẠN CÓ THỂ GỌI",
-        ", ".join(persona.owns_skills),
+        "# SKILLS BẠN CÓ THỂ GỌI (dùng đúng tên này trong SKILL_DISPATCH)",
+        "\n".join(f"- {s}" for s in persona.owns_skills),
         "",
         "# YÊU CẦU CỦA SẾP",
         user_msg,
     ]
 
-    user_prompt = "\n".join(context_parts)
-
     try:
         result = await router_call(
             task_type  = TaskType.GENERIC_CREATIVE,
-            system     = persona.system_prompt,
-            user       = user_prompt,
+            system     = persona.system_prompt + _DISPATCH_SUFFIX,
+            user       = "\n".join(context_parts),
             max_tokens = 2000,
         )
         return result.get("output", "")
@@ -529,10 +546,13 @@ def render_team_card() -> str:
     return "\n".join(lines).strip()
 
 
-def render_persona_intro(persona: ManagerPersona) -> str:
+def render_persona_intro(persona: ManagerPersona, first_time: bool = True) -> str:
     """Intro card khi persona được gọi. Pure."""
+    if not first_time:
+        return f"{persona.emoji} *{persona.name}* đây ạ —"
     skills_str = " · ".join(persona.owns_skills)
     return (
-        f"{persona.emoji} *{persona.name}* ({persona.role}) — sếp cần gì ạ?\n\n"
-        f"_Em có thể làm: {skills_str}_"
+        f"{persona.emoji} *{persona.name}* ({persona.role})\n"
+        f"_{persona.domain_summary}_\n\n"
+        f"Skills em làm được: `{'` · `'.join(persona.owns_skills)}`"
     )

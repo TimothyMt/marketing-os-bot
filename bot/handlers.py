@@ -527,12 +527,15 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # Advisor mode chain — sau khi user click "Hỏi tiếp"
     if session.pending_intake.get("_advisor_mode"):
+        if await _try_persona_route(update, context, session, text):
+            return
         await _claude_advisor_fallback(update, context, session, text)
         return
 
     if session.stage in (PipelineStage.IDLE, PipelineStage.TASK_SELECT):
-        # User typed free-form text instead of using keyboard
-        # → Fallback: Sonnet advisor with full context
+        # User typed free-form text → try persona routing first, then generic advisor
+        if await _try_persona_route(update, context, session, text):
+            return
         await _claude_advisor_fallback(update, context, session, text)
         return
 
@@ -1369,8 +1372,9 @@ async def _handle_callback_inner(update, context, query, session, data, user_id)
 
     # ── Menu navigation (tier 1 → tier 2) ─────────────────────────
     if data == "menu_main":
-        # Clear advisor mode marker khi về menu
+        # Clear advisor + persona markers khi về menu
         session.pending_intake.pop("_advisor_mode", None)
+        session.pending_intake.pop("_active_persona", None)
         await save_session(session)
         try:
             await query.edit_message_text(
@@ -1418,6 +1422,34 @@ async def _handle_callback_inner(update, context, query, session, data, user_id)
             "📊 *Đánh giá* — audit campaign đang chạy\n\nChọn task:",
             parse_mode=ParseMode.MARKDOWN,
             reply_markup=ANALYSIS_KEYBOARD,
+        )
+        return
+
+    # ── Persona skill picker — user chọn skill từ domain expert ──
+    if data.startswith("persona_menu_"):
+        persona_key = data[len("persona_menu_"):]
+        from agents.manager_personas import get_persona as _get_persona
+        persona = _get_persona(persona_key)
+        if not persona:
+            await query.answer("Persona không tồn tại.")
+            return
+        await query.edit_message_reply_markup(reply_markup=None)
+
+        from agents.task_registry import get_task as _get_task
+        buttons = []
+        for skill_name in persona.owns_skills:
+            task_cfg = _get_task(skill_name)
+            if task_cfg:
+                label = f"{task_cfg.button_emoji} {task_cfg.label}"
+            else:
+                label = skill_name
+            buttons.append([InlineKeyboardButton(label, callback_data=f"task_{skill_name}")])
+        buttons.append([InlineKeyboardButton("↩ Hỏi thêm", callback_data="continue_advisor")])
+
+        await query.message.reply_text(
+            f"{persona.emoji} *{persona.name} — Chọn skill muốn chạy:*",
+            parse_mode=ParseMode.MARKDOWN,
+            reply_markup=InlineKeyboardMarkup(buttons),
         )
         return
 
@@ -3194,6 +3226,95 @@ def _personalize(text: str, session) -> str:
 
 
 # ─── Claude advisor fallback ────────────────────────────────────
+
+async def _try_persona_route(update, context, session, text: str) -> bool:
+    """Thử route free-form message đến đúng domain expert persona.
+
+    Priority: @tag direct > keyword score >= 1 > fall through.
+    Returns True nếu đã handle → caller nên return ngay.
+    """
+    import re as _re
+    from agents.manager_personas import (
+        route_to_persona, run_persona_turn,
+        render_persona_intro, get_persona, TAG_MAP,
+    )
+
+    # ── @tag direct invocation (@minh, @trang, ...) ──────────────
+    persona = None
+    first_time = True
+    actual_text = text
+
+    tag_match = _re.match(r"^@([a-zA-ZÀ-ỹ]+)\s*(.*)?$", text.strip(), _re.IGNORECASE | _re.UNICODE)
+    if tag_match:
+        raw_tag = tag_match.group(1).lower()
+        # Normalize diacritics: đức→duc, hương→huong
+        _norm = str.maketrans("àáảãạăắặẳẵằâấậẩẫắèéẻẹêếềệểễìíỉịòóỏọôốồổỗộơớờởỡợùúủụưứừửữựỳýỷỵỹđ",
+                              "aaaaaaaaaaaaaaaeeeeeeeeeeiiiioooooooooooooooooouuuuuuuuuuuyyyyyd")
+        tag_norm = raw_tag.translate(_norm)
+        persona_key = TAG_MAP.get(tag_norm) or TAG_MAP.get(raw_tag)
+        if persona_key:
+            persona = get_persona(persona_key)
+            actual_text = (tag_match.group(2) or "").strip() or text
+
+    # ── Keyword routing if no @tag ────────────────────────────────
+    if persona is None:
+        persona = route_to_persona(text, session)
+
+    if persona is None:
+        return False
+
+    # ── If re-entering same persona conversation, skip full intro ─
+    active_key = session.pending_intake.get("_active_persona")
+    first_time = active_key != persona.key
+
+    await context.bot.send_chat_action(chat_id=update.effective_chat.id, action=ChatAction.TYPING)
+
+    if first_time:
+        await update.message.reply_text(
+            render_persona_intro(persona, first_time=True),
+            parse_mode=ParseMode.MARKDOWN,
+        )
+
+    # ── Run persona LLM turn ──────────────────────────────────────
+    persona_response = await run_persona_turn(session, actual_text, persona)
+
+    # ── Parse [SKILL_DISPATCH:name] marker ───────────────────────
+    dispatch_match = _re.search(r"\[SKILL_DISPATCH:(\w+)\]", persona_response)
+    clean = _re.sub(r"\[SKILL_DISPATCH:\w+\]", "", persona_response).strip()
+
+    if dispatch_match:
+        skill_name = dispatch_match.group(1)
+        from agents.task_registry import TASK_REGISTRY
+        if skill_name in TASK_REGISTRY and skill_name in persona.owns_skills:
+            if clean:
+                await update.message.reply_text(clean, parse_mode=ParseMode.MARKDOWN)
+            session.selected_task = skill_name
+            session.pending_intake.pop("_advisor_mode", None)
+            session.pending_intake.pop("_active_persona", None)
+            await save_session(session)
+            await _launch_task_from_advisor(update, context, session, skill_name)
+            return True
+
+    # ── Advisory response — no skill dispatched yet ───────────────
+    session.pending_intake["_active_persona"] = persona.key
+    session.pending_intake["_advisor_mode"] = "1"
+    await save_session(session)
+
+    await send_long_message(
+        update.message,
+        clean or persona_response,
+        parse_mode=ParseMode.MARKDOWN,
+        reply_markup=InlineKeyboardMarkup([
+            [InlineKeyboardButton(
+                f"⚡ Chọn skill ({persona.emoji} {persona.name})",
+                callback_data=f"persona_menu_{persona.key}",
+            )],
+            [InlineKeyboardButton("💬 Hỏi tiếp",       callback_data="continue_advisor")],
+            [InlineKeyboardButton("⚙️ Mở menu task",   callback_data="menu_main")],
+        ]),
+    )
+    return True
+
 
 async def _claude_advisor_fallback(update, context, session, text: str):
     """User nhắn free-form ngoài skill flow → Sonnet trả lời với full context.
