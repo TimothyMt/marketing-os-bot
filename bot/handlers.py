@@ -708,14 +708,14 @@ async def _handle_intake(update, context, session, text):
 
         confirm_msg = (
             f"Tôi đã nắm được thông tin cần thiết!\n\n"
-            f"🏢 *Business*: {session.profile.business_name or 'Business của bạn'}\n"
-            f"📦 *Sản phẩm/DV*: {session.profile.product_service or 'Chưa xác định'}\n"
-            f"👥 *Khách hàng*: {session.profile.target_customer or 'Chưa xác định'}\n"
-            f"📊 *Ngành*: {industry_name}\n"
-            f"🚀 *Stage*: {session.profile.stage or 'Chưa xác định'}\n"
-            f"💰 *Doanh thu*: {session.profile.monthly_revenue or 'Chưa rõ'}\n"
-            f"🎯 *Mục tiêu*: {session.profile.primary_goal or 'Chưa xác định'}\n"
-            f"⚡ *Thách thức*: {session.profile.main_challenge or 'Chưa xác định'}\n\n"
+            f"🏢 *Business*: {_escape_md(session.profile.business_name or 'Business của bạn')}\n"
+            f"📦 *Sản phẩm/DV*: {_escape_md(session.profile.product_service or 'Chưa xác định')}\n"
+            f"👥 *Khách hàng*: {_escape_md(session.profile.target_customer or 'Chưa xác định')}\n"
+            f"📊 *Ngành*: {_escape_md(industry_name)}\n"
+            f"🚀 *Stage*: {_escape_md(session.profile.stage or 'Chưa xác định')}\n"
+            f"💰 *Doanh thu*: {_escape_md(session.profile.monthly_revenue or 'Chưa rõ')}\n"
+            f"🎯 *Mục tiêu*: {_escape_md(session.profile.primary_goal or 'Chưa xác định')}\n"
+            f"⚡ *Thách thức*: {_escape_md(session.profile.main_challenge or 'Chưa xác định')}\n\n"
             f"─────────────────────────\n"
             f"*Task*: {task_label}\n"
             f"{steps_desc}\n\n"
@@ -2191,20 +2191,20 @@ async def _show_profile_reuse_confirm(message: Message, session, task_name: str)
 
     # Build profile recap — chỉ hiện fields liên quan
     profile_lines = []
-    profile_lines.append(f"🏢 *Business*: {profile.business_name or 'Business của bạn'}")
-    profile_lines.append(f"📦 *Sản phẩm/DV*: {profile.product_service or '—'}")
-    profile_lines.append(f"👥 *Khách hàng*: {profile.target_customer or '—'}")
-    profile_lines.append(f"📊 *Ngành*: {industry_name}")
+    profile_lines.append(f"🏢 *Business*: {_escape_md(profile.business_name or 'Business của bạn')}")
+    profile_lines.append(f"📦 *Sản phẩm/DV*: {_escape_md(profile.product_service or '—')}")
+    profile_lines.append(f"👥 *Khách hàng*: {_escape_md(profile.target_customer or '—')}")
+    profile_lines.append(f"📊 *Ngành*: {_escape_md(industry_name)}")
     if profile.location:
-        profile_lines.append(f"📍 *Địa bàn*: {profile.location}")
+        profile_lines.append(f"📍 *Địa bàn*: {_escape_md(profile.location)}")
     if profile.monthly_revenue:
-        profile_lines.append(f"💰 *Doanh thu*: {profile.monthly_revenue}")
+        profile_lines.append(f"💰 *Doanh thu*: {_escape_md(profile.monthly_revenue)}")
     if profile.primary_goal:
-        profile_lines.append(f"🎯 *Mục tiêu*: {profile.primary_goal}")
+        profile_lines.append(f"🎯 *Mục tiêu*: {_escape_md(profile.primary_goal)}")
     if profile.main_challenge:
-        profile_lines.append(f"⚡ *Thách thức*: {profile.main_challenge}")
+        profile_lines.append(f"⚡ *Thách thức*: {_escape_md(profile.main_challenge)}")
     if profile.competitors and task_name == "competitor":
-        profile_lines.append(f"🕵️ *Đối thủ*: {profile.competitors}")
+        profile_lines.append(f"🕵️ *Đối thủ*: {_escape_md(profile.competitors)}")
 
     confirm_msg = (
         f"{emoji} *{label}*\n\n"
@@ -2218,7 +2218,8 @@ async def _show_profile_reuse_confirm(message: Message, session, task_name: str)
     session.stage = PipelineStage.CONFIRMED
     await save_session(session)
 
-    await message.reply_text(
+    await _safe_reply(
+        message,
         confirm_msg,
         parse_mode=ParseMode.MARKDOWN,
         reply_markup=CONFIRM_KEYBOARD,
@@ -2492,7 +2493,7 @@ async def _send_single_shot_form(message: Message, session, task_name: str):
         lines.append("*Em đã có sẵn từ business profile của sếp:*")
         for k, v in prefilled.items():
             label = next((f["label"] for f in task.intake_fields if f["key"] == k), k)
-            lines.append(f"• *{label}:* {v[:120]}")
+            lines.append(f"• *{label}:* {_escape_md(v[:120])}")
         lines.append("")
         if remaining_fields:
             lines.append("─────────────────────────")
@@ -2521,7 +2522,7 @@ async def _send_single_shot_form(message: Message, session, task_name: str):
     session.stage = PipelineStage.INTAKE
     await save_session(session)
 
-    await message.reply_text("\n".join(lines), parse_mode=ParseMode.MARKDOWN)
+    await _safe_reply(message, "\n".join(lines), parse_mode=ParseMode.MARKDOWN)
 
 
 def _parse_single_shot_intake(text: str, task_name: str) -> dict:
@@ -4818,11 +4819,11 @@ async def _send_basic_business_form(message: Message, session, pending_skill: st
     # Pre-fill placeholders nếu profile có sẵn vài field
     p = session.profile
     pre = {
-        "industry":         p.industry         or "_(chưa có)_",
-        "product":          p.product_service  or "_(chưa có)_",
-        "target":           p.target_customer  or "_(chưa có)_",
-        "stage":            p.stage            or "_(chưa có)_",
-        "goal":             p.primary_goal     or "_(chưa có)_",
+        "industry":         _escape_md(p.industry)         if p.industry         else "_(chưa có)_",
+        "product":          _escape_md(p.product_service)  if p.product_service  else "_(chưa có)_",
+        "target":           _escape_md(p.target_customer)  if p.target_customer  else "_(chưa có)_",
+        "stage":            _escape_md(p.stage)            if p.stage            else "_(chưa có)_",
+        "goal":             _escape_md(p.primary_goal)     if p.primary_goal     else "_(chưa có)_",
     }
 
     msg = (
