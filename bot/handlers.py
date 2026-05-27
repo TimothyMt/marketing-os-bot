@@ -2153,7 +2153,7 @@ def _format_card(stage_key: str, parsed: dict, token_entry: dict | None = None) 
         cache_r   = token_entry.get("cache_read", 0)
         cache_txt = f" · cache {_fmt(cache_r)}" if cache_r else ""
         parts.append(
-            f"\n`⚡ {provider}` · {_fmt(inp)} in + {_fmt(out)} out"
+            f"\n`⚡ {provider}` · {_fmt(inp)} vào + {_fmt(out)} ra"
             f"{cache_txt} = *{_fmt(total_tok)}* tokens · {latency:.1f}s"
         )
 

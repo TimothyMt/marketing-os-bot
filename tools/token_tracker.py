@@ -351,7 +351,7 @@ def get_job_breakdown(session, job_seq: Optional[int] = None) -> list[dict]:
 def format_job_footer(session, job_seq: Optional[int] = None) -> str:
     """Footer cho card kết quả: hiện API nào làm job + token sử dụng.
 
-    - 1 provider  → 1 dòng: '⚡ GPT-5 · 2.1K in + 3.4K out = 5.5K tokens'
+    - 1 provider  → 1 dòng: '⚡ GPT-5 · 2.1K vào + 3.4K ra = 5.5K tokens'
     - ≥2 provider → liệt kê token mỗi API + dòng tổng.
 
     Trả "" nếu không có dữ liệu.
@@ -364,7 +364,7 @@ def format_job_footer(session, job_seq: Optional[int] = None) -> str:
         r = rows[0]
         return (
             f"\n`⚡ {_provider_label(r['provider'])}` · "
-            f"{fmt(r['input_tok'])} in + {fmt(r['output_tok'])} out "
+            f"{fmt(r['input_tok'])} vào + {fmt(r['output_tok'])} ra "
             f"= *{fmt(r['total'])}* tokens"
         )
 
@@ -375,7 +375,7 @@ def format_job_footer(session, job_seq: Optional[int] = None) -> str:
         grand_total += r["total"]
         lines.append(
             f"  • `{_provider_label(r['provider'])}`: "
-            f"{fmt(r['input_tok'])} in + {fmt(r['output_tok'])} out "
+            f"{fmt(r['input_tok'])} vào + {fmt(r['output_tok'])} ra "
             f"= {fmt(r['total'])}"
         )
     lines.append(f"  *Tổng: {fmt(grand_total)} tokens*")
