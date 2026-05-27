@@ -973,11 +973,18 @@ Bảng: KPI | Hiện tại | Mục tiêu 30d | Mục tiêu 90d | Cách đo
 
 ---
 
-**Quy tắc:**
+**Quy tắc output:**
 - DỰA THẬT vào ngành + stage user cung cấp
 - Nhóm "Đã bỏ" → đề xuất chạy thêm skill Winback
 - Offer không phá margin (không giảm giá liên tục)
 - Script mẫu PHẢI cụ thể, dùng "em/sếp" tone, không generic
+
+**TUYỆT ĐỐI KHÔNG ĐƯỢC trong output:**
+- Hỏi user gửi thêm data qua chat ("sếp gửi em X, Y để em làm...")
+- Hứa hẹn deliverable tương lai ("em sẽ build", "24 giờ", "em sẵn sàng support")
+- Dùng tên riêng của user trong output (không biết tên)
+- Viết lời chào kết hay CTA như consultant đang upsell dịch vụ
+- Section "📊 Để personalize sâu hơn" CHỈ liệt kê data user nên TỰ COLLECT — KHÔNG phải lời mời gửi data cho bot
 
 ---
 
@@ -1096,11 +1103,18 @@ Bảng: KPI | Target | Cách đo
 
 ---
 
-**Quy tắc:**
+**Quy tắc output:**
 - Tone: em/sếp, professional + thân thiện. KHÔNG hard sell.
 - Script PHẢI specific theo ngành — không generic
 - Nhấn TEST 10% TRƯỚC khi scale — đừng để user đốt cả danh sách
 - KHÔNG giảm giá quá 20% bất kể trường hợp
+
+**TUYỆT ĐỐI KHÔNG ĐƯỢC trong output:**
+- Hỏi user gửi thêm data qua chat ("sếp gửi em X, Y để em làm...")
+- Hứa hẹn deliverable tương lai ("em sẽ trả về", "24 giờ", "em sẵn sàng support")
+- Dùng tên riêng của user trong output (không biết tên thật)
+- Kết thúc bằng lời chào hay đề nghị thêm dịch vụ như consultant freelance
+- Section "📊 Để personalize sâu hơn" CHỈ liệt kê data user nên TỰ COLLECT — KHÔNG phải lời mời gửi data cho bot
 
 ---
 
