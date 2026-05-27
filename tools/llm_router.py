@@ -84,11 +84,12 @@ class TaskType(str, Enum):
     GENERIC_CREATIVE          = "generic_creative"
     GENERIC_STRUCTURED        = "generic_structured"
 
-    # ─── Operational skills — quality-first chains ────────────────
-    OPS_BRIEF                 = "ops_brief"            # Campaign Brief, Landing Page — long-form
-    OPS_ANALYSIS              = "ops_analysis"         # Audit, Analytics, Optimizer, Spy
-    OPS_CONTENT_CREATIVE      = "ops_content_creative" # Ads copy, video scripts, brand voice
-    OPS_CONTENT_BULK          = "ops_content_bulk"     # Email sequence, post batch, generator
+    # ─── Operational skills ──────────────────────────────────────
+    OPS_CRITICAL              = "ops_critical"          # High-stakes: ads_optimizer, brand_voice — Sonnet locked
+    OPS_BRIEF                 = "ops_brief"             # Campaign Brief, Landing Page — GPT-5 primary
+    OPS_ANALYSIS              = "ops_analysis"          # Audit, Analytics, Spy — GPT-5 primary
+    OPS_CONTENT_CREATIVE      = "ops_content_creative"  # Ads copy, video scripts — GPT-5 primary
+    OPS_CONTENT_BULK          = "ops_content_bulk"      # Email sequence, post batch — GPT-5-mini primary
 
 
 # ─────────────────────────────────────────────────────────────────
@@ -138,14 +139,16 @@ ROUTING_TABLE: dict[TaskType, list[Provider]] = {
     TaskType.GENERIC_CREATIVE:           [Provider.ANTHROPIC_SONNET, Provider.OPENAI_GPT5, Provider.GEMINI_PRO],
     TaskType.GENERIC_STRUCTURED:         [Provider.OPENAI_GPT5_MINI, Provider.ANTHROPIC_SONNET, Provider.OPENAI_GPT_4_1_MINI],
 
-    # ─── Operational skills — quality-first ──────────────────────
-    # Complex multi-section briefs: Sonnet depth first
-    TaskType.OPS_BRIEF:             [Provider.ANTHROPIC_SONNET, Provider.OPENAI_GPT5, Provider.GEMINI_PRO],
-    # Data analysis + diagnosis: Sonnet reasoning first
-    TaskType.OPS_ANALYSIS:          [Provider.ANTHROPIC_SONNET, Provider.OPENAI_GPT5, Provider.OPENAI_GPT5_MINI],
-    # Creative writing (ads, video, brand voice): Sonnet nuance first
-    TaskType.OPS_CONTENT_CREATIVE:  [Provider.ANTHROPIC_SONNET, Provider.OPENAI_GPT5, Provider.OPENAI_GPT5_MINI],
-    # Bulk/structured content (batch, email seq, generator): GPT-5-mini cost-efficient
+    # ─── Operational skills ──────────────────────────────────────
+    # High-stakes actions (real money, brand foundation): Sonnet must be primary
+    TaskType.OPS_CRITICAL:          [Provider.ANTHROPIC_SONNET, Provider.OPENAI_GPT5, Provider.GEMINI_PRO],
+    # Long briefs: GPT-5 handles structured long-form well
+    TaskType.OPS_BRIEF:             [Provider.OPENAI_GPT5, Provider.ANTHROPIC_SONNET, Provider.GEMINI_PRO],
+    # Data analysis: GPT-5 strong on numbers, Sonnet fallback for nuance
+    TaskType.OPS_ANALYSIS:          [Provider.OPENAI_GPT5, Provider.ANTHROPIC_SONNET, Provider.OPENAI_GPT5_MINI],
+    # Creative copy: GPT-5 capable, Sonnet fallback
+    TaskType.OPS_CONTENT_CREATIVE:  [Provider.OPENAI_GPT5, Provider.ANTHROPIC_SONNET, Provider.OPENAI_GPT5_MINI],
+    # Bulk/structured content: GPT-5-mini cost-efficient
     TaskType.OPS_CONTENT_BULK:      [Provider.OPENAI_GPT5_MINI, Provider.ANTHROPIC_SONNET, Provider.GEMINI_FLASH],
 }
 
@@ -745,39 +748,41 @@ def availability_report() -> str:
 # ─────────────────────────────────────────────────────────────────
 
 OPS_SKILL_TASK_TYPES: dict[str, TaskType] = {
-    # Complex briefs — Sonnet depth (OPS_BRIEF)
+    # ── Sonnet-locked: real-money actions + brand foundation ──────
+    "ads_optimizer":         TaskType.OPS_CRITICAL,   # Executes FB API actions — must be best model
+    "brand_voice":           TaskType.OPS_CRITICAL,   # Defines brand tone for entire business
+
+    # ── GPT-5 primary: long structured briefs ─────────────────────
     "campaign_brief":        TaskType.OPS_BRIEF,
     "landing_page":          TaskType.OPS_BRIEF,
 
-    # Analysis & audit — Sonnet reasoning (OPS_ANALYSIS)
+    # ── GPT-5 primary: data analysis & diagnosis ──────────────────
     "performance_audit":     TaskType.OPS_ANALYSIS,
     "ads_analytics":         TaskType.OPS_ANALYSIS,
-    "ads_optimizer":         TaskType.OPS_ANALYSIS,
     "competitor_spy":        TaskType.OPS_ANALYSIS,
     "competitor_comparison": TaskType.OPS_ANALYSIS,
     "comment_mining":        TaskType.OPS_ANALYSIS,
 
-    # Creative writing — Sonnet nuance (OPS_CONTENT_CREATIVE)
+    # ── GPT-5 primary: creative writing ───────────────────────────
     "ads_generator":         TaskType.OPS_CONTENT_CREATIVE,
     "ads_copy":              TaskType.OPS_CONTENT_CREATIVE,
     "video_scripts":         TaskType.OPS_CONTENT_CREATIVE,
-    "brand_voice":           TaskType.OPS_CONTENT_CREATIVE,
     "sales_inbox_script":    TaskType.OPS_CONTENT_CREATIVE,
     "content_repurpose":     TaskType.OPS_CONTENT_CREATIVE,
     "post_write":            TaskType.OPS_CONTENT_CREATIVE,
     "post_hooks":            TaskType.OPS_CONTENT_CREATIVE,
 
-    # Bulk / structured — GPT-5-mini efficient (OPS_CONTENT_BULK)
+    # ── GPT-5-mini primary: bulk / structured content ─────────────
     "content_generator":     TaskType.OPS_CONTENT_BULK,
     "email_zalo_sequence":   TaskType.OPS_CONTENT_BULK,
     "post_batch":            TaskType.OPS_CONTENT_BULK,
 
-    # Already-optimal chains from strategic ROUTING_TABLE
+    # ── Already-optimal chains from strategic ROUTING_TABLE ───────
     "retention_strategy":    TaskType.RETENTION_MATRIX,   # GPT-5-mini → Sonnet
     "winback_campaign":      TaskType.WINBACK_STRATEGY,   # GPT-5-mini → Sonnet
-    "content_calendar":      TaskType.CONTENT_TABLE,      # GPT-5-mini → Sonnet (table-heavy)
+    "content_calendar":      TaskType.CONTENT_TABLE,      # GPT-5-mini → Sonnet
 
-    # Light tasks — cheap providers
+    # ── Light tasks — cheap providers ─────────────────────────────
     "post_adapt":            TaskType.CHANNEL_ADAPT,      # GPT-5-mini → Haiku
     "post_voice_check":      TaskType.CRITIC_REVIEW,      # Haiku → GPT-5-mini
     "post_visual":           TaskType.CHANNEL_ADAPT,      # GPT-5-mini → Haiku
