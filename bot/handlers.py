@@ -2898,6 +2898,15 @@ async def _send_ops_result(message: Message, session, task_name: str, result: st
         file_attached_hint=primary_label,
     )
 
+    # Footer: API nào làm job này + token sử dụng (breakdown nếu nhiều API)
+    try:
+        from tools.token_tracker import format_job_footer
+        footer = format_job_footer(session)
+        if footer:
+            card_text = f"{card_text}\n{footer}"
+    except Exception as e:
+        logger.warning("Token footer failed for %s: %s", task_name, e)
+
     await _safe_reply(message, card_text, parse_mode=ParseMode.MARKDOWN)
 
     business_slug = re.sub(r"[^a-zA-Z0-9_-]", "_", session.profile.business_name or task_name)[:30]

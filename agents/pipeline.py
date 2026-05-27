@@ -358,6 +358,14 @@ async def _run_skill(skill: AgentSkill, session: Session) -> str:
     (Strategic 4-section vs Operational Deliverable vs Operational Analysis).
     Critic call only happens when skill.enable_critic = True.
     """
+    # Mở 1 job mới — mọi LLM call trong skill này (main + critic) được gom
+    # chung job_seq để hiển thị token theo API.
+    try:
+        from tools.token_tracker import begin_job
+        begin_job(session)
+    except Exception:
+        pass
+
     context = skill.build_context(session)
     user_msg = skill.build_user_msg(session)
 
@@ -450,7 +458,7 @@ async def _run_skill(skill: AgentSkill, session: Session) -> str:
     raw_output = result["output"]
 
     if skill.enable_critic:
-        return await run_critic(raw_output, agent_name=skill.name)
+        return await run_critic(raw_output, agent_name=skill.name, session=session)
     return raw_output
 
 

@@ -124,8 +124,12 @@ def _add_hyperlinks(text: str) -> str:
     return text
 
 
-async def run_critic(agent_output: str, agent_name: str = "agent") -> str:
-    """Run critic review on agent output, return reviewed text with hyperlinks."""
+async def run_critic(agent_output: str, agent_name: str = "agent", session=None) -> str:
+    """Run critic review on agent output, return reviewed text with hyperlinks.
+
+    session: nếu truyền vào → track token Haiku của critic dưới cùng job_seq
+             (để footer hiện đúng "nhiều API cùng làm job").
+    """
     if not agent_output or not agent_output.strip():
         return agent_output
 
@@ -143,6 +147,25 @@ async def run_critic(agent_output: str, agent_name: str = "agent") -> str:
             ],
             messages=[{"role": "user", "content": agent_output}],
         )
+
+        # Track critic token usage (Haiku) dưới cùng job hiện tại
+        if session is not None:
+            try:
+                from tools.token_tracker import track_skill
+                from tools.llm_router import Provider
+                usage = response.usage
+                track_skill(
+                    session,
+                    skill_name=f"{agent_name}_critic",
+                    provider=Provider.ANTHROPIC_HAIKU.value,
+                    input_tok=getattr(usage, "input_tokens", 0) or 0,
+                    output_tok=getattr(usage, "output_tokens", 0) or 0,
+                    cache_read=getattr(usage, "cache_read_input_tokens", 0) or 0,
+                    cache_create=getattr(usage, "cache_creation_input_tokens", 0) or 0,
+                )
+            except Exception as _e:
+                logger.warning("Critic token track failed: %s", _e)
+
         reviewed = response.content[0].text
         if not reviewed or not reviewed.strip():
             logger.warning("Critic returned empty for %s, falling back to original", agent_name)

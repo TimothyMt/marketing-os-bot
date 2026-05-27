@@ -14,6 +14,33 @@ logger = logging.getLogger(__name__)
 DEFAULT_QUOTA = 1_000_000  # 1M tokens/user/month
 _TOKEN_LOG_KEY = "_token_log"
 _TOKEN_LOG_MAX = 50  # số entries tối đa giữ lại
+_JOB_SEQ_KEY = "_job_seq"  # monotonic counter — gom các call của cùng 1 job
+
+
+def begin_job(session) -> int:
+    """Bắt đầu 1 job mới (1 task user yêu cầu). Mọi track_skill sau đó
+    được stamp cùng job_seq cho tới lần begin_job kế tiếp.
+
+    Returns: job_seq mới.
+    """
+    if session is None:
+        return 0
+    prefs = session.preferences or {}
+    try:
+        current = int(prefs.get(_JOB_SEQ_KEY, 0))
+    except (ValueError, TypeError):
+        current = 0
+    new_seq = current + 1
+    prefs[_JOB_SEQ_KEY] = new_seq
+    session.preferences = prefs
+    return new_seq
+
+
+def _current_job_seq(prefs: dict) -> int:
+    try:
+        return int(prefs.get(_JOB_SEQ_KEY, 0))
+    except (ValueError, TypeError):
+        return 0
 
 
 def _append_log(prefs: dict, entry: dict):
@@ -78,6 +105,7 @@ def track_skill(
         "total":        total,
         "cost_usd":     round(cost_usd, 6),
         "latency_sec":  round(latency_sec, 1),
+        "job_seq":      _current_job_seq(prefs),
         "ts":           datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S"),
     })
 
@@ -258,3 +286,97 @@ def usage_summary(session) -> str:
     quota = get_quota(session)
     pct = (used / quota * 100) if quota else 0
     return f"{fmt(used)} / {fmt(quota)} ({pct:.1f}%)"
+
+
+# ─────────────────────────────────────────────────────────────────
+# Per-job provider breakdown (which API did this job + tokens)
+# ─────────────────────────────────────────────────────────────────
+
+# Provider value → tên hiển thị gọn cho user
+_PROVIDER_LABELS = {
+    "anthropic_sonnet":    "Claude Sonnet",
+    "anthropic_haiku":     "Claude Haiku",
+    "gemini_pro":          "Gemini Pro",
+    "gemini_pro_grounded": "Gemini Pro (Search)",
+    "gemini_flash":        "Gemini Flash",
+    "openai_gpt5":         "GPT-5",
+    "openai_gpt5_mini":    "GPT-5 mini",
+    "openai_gpt5_nano":    "GPT-5 nano",
+    "openai_gpt_4_1_mini": "GPT-4.1 mini",
+    "openai_gpt4o":        "GPT-4o",
+    "openai_gpt4o_mini":   "GPT-4o mini",
+}
+
+
+def _provider_label(provider: str) -> str:
+    return _PROVIDER_LABELS.get(provider, provider)
+
+
+def get_job_breakdown(session, job_seq: Optional[int] = None) -> list[dict]:
+    """Gom các token-log entries của 1 job → aggregate theo provider.
+
+    job_seq=None → dùng job mới nhất (job vừa chạy xong).
+
+    Returns: list[{provider, input_tok, output_tok, total, cost_usd, calls}]
+             sắp xếp theo total giảm dần.
+    """
+    log = get_token_log(session)
+    if not log:
+        return []
+
+    if job_seq is None:
+        seqs = [e.get("job_seq", 0) for e in log]
+        job_seq = max(seqs) if seqs else 0
+
+    by_provider: dict[str, dict] = {}
+    for e in log:
+        if e.get("job_seq", 0) != job_seq:
+            continue
+        prov = e.get("provider", "unknown")
+        agg = by_provider.setdefault(prov, {
+            "provider": prov, "input_tok": 0, "output_tok": 0,
+            "total": 0, "cost_usd": 0.0, "calls": 0,
+        })
+        agg["input_tok"]  += e.get("input_tok", 0)
+        agg["output_tok"] += e.get("output_tok", 0)
+        agg["total"]      += e.get("total", 0)
+        agg["cost_usd"]   += e.get("cost_usd", 0.0)
+        agg["calls"]      += 1
+
+    rows = list(by_provider.values())
+    rows.sort(key=lambda r: r["total"], reverse=True)
+    return rows
+
+
+def format_job_footer(session, job_seq: Optional[int] = None) -> str:
+    """Footer cho card kết quả: hiện API nào làm job + token sử dụng.
+
+    - 1 provider  → 1 dòng: '⚡ GPT-5 · 2.1K in + 3.4K out = 5.5K tokens'
+    - ≥2 provider → liệt kê token mỗi API + dòng tổng.
+
+    Trả "" nếu không có dữ liệu.
+    """
+    rows = get_job_breakdown(session, job_seq)
+    if not rows:
+        return ""
+
+    if len(rows) == 1:
+        r = rows[0]
+        return (
+            f"\n`⚡ {_provider_label(r['provider'])}` · "
+            f"{fmt(r['input_tok'])} in + {fmt(r['output_tok'])} out "
+            f"= *{fmt(r['total'])}* tokens"
+        )
+
+    # Nhiều API cùng làm job → breakdown per API
+    lines = ["\n⚡ *Token theo API:*"]
+    grand_total = 0
+    for r in rows:
+        grand_total += r["total"]
+        lines.append(
+            f"  • `{_provider_label(r['provider'])}`: "
+            f"{fmt(r['input_tok'])} in + {fmt(r['output_tok'])} out "
+            f"= {fmt(r['total'])}"
+        )
+    lines.append(f"  *Tổng: {fmt(grand_total)} tokens*")
+    return "\n".join(lines)
