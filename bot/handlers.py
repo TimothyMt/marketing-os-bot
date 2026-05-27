@@ -331,7 +331,11 @@ async def cmd_reset(update: Update, context: ContextTypes.DEFAULT_TYPE):
     preserved_prefs = dict(old_session.preferences) if old_session.preferences else {}
 
     await reset_session(user_id)
-    session = await get_session(user_id)
+    # Build a fresh Session locally instead of re-reading. A re-read right after
+    # reset could resurrect stale profile data (e.g. via a V2-read fallback to a
+    # leftover V1 row), which save_session would then persist back as industry_cached.
+    from storage.models import Session
+    session = Session(user_id=user_id)
     session.preferences = preserved_prefs
     session.stage = PipelineStage.TASK_SELECT
     await save_session(session)

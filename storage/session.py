@@ -207,6 +207,19 @@ async def save_session(session: Session):
     await _client.table(TABLE).upsert(payload).execute()
 
 
+async def _clear_v1_row(user_id: int) -> None:
+    """Best-effort delete of the legacy V1 sessions row.
+
+    The V1 sessions table is no longer written in V2-only mode, but old rows
+    persist. The get_session V1 fallback path reads them on any V2 read error,
+    which can resurrect stale profile data. Deleting on reset removes that risk.
+    """
+    try:
+        await _client.table(TABLE).delete().eq("user_id", user_id).execute()
+    except Exception as e:
+        logger.warning("V1 row cleanup failed for user %d (non-fatal): %s", user_id, e)
+
+
 async def reset_session(user_id: int):
     """Reset session to initial state.
 
@@ -224,9 +237,13 @@ async def reset_session(user_id: int):
     _v2_only = DB_V2_READ and not DB_V2_WRITE
 
     if _v2_only:
-        # Phase D: chỉ reset V2
+        # Phase D: reset V2 (source of truth)
         from storage.session_v2_adapter import reset_session_v2
         await reset_session_v2(user_id)
+        # Also wipe the stale V1 sessions row so the get_session V1 fallback
+        # (session.py get_session, line ~118) can never resurrect old profile
+        # data — e.g. industry → industry_cached — after a reset.
+        await _clear_v1_row(user_id)
         return
 
     # Dual-write: reset V2 best-effort (không làm fail V1)
