@@ -108,7 +108,9 @@ ROUTING_TABLE: dict[TaskType, list[Provider]] = {
 
     # VN-critical creative — Sonnet primary, GPT-5 fallback, Gemini Pro last
     TaskType.CUSTOMER_INSIGHT:           [Provider.ANTHROPIC_SONNET, Provider.OPENAI_GPT5, Provider.GEMINI_PRO],
-    TaskType.PSYCHOLOGY:                 [Provider.ANTHROPIC_SONNET, Provider.OPENAI_GPT5, Provider.GEMINI_PRO],
+    # PSYCHOLOGY: GPT-5 primary — combined psychology+pricing output is 8-10K tokens;
+    # Sonnet hits 180s timeout at that length. GPT-5 completes in ~30-40s.
+    TaskType.PSYCHOLOGY:                 [Provider.OPENAI_GPT5, Provider.ANTHROPIC_SONNET, Provider.GEMINI_PRO],
     TaskType.USP_CREATIVE:               [Provider.ANTHROPIC_SONNET, Provider.OPENAI_GPT5, Provider.GEMINI_PRO],
     TaskType.CONTENT_HERO:               [Provider.ANTHROPIC_SONNET, Provider.OPENAI_GPT5_MINI],
 
@@ -179,8 +181,8 @@ def _get_anthropic_client() -> anthropic.AsyncAnthropic:
     if _anthropic_client is None:
         _anthropic_client = anthropic.AsyncAnthropic(
             api_key=ANTHROPIC_API_KEY,
-            timeout=180.0,
-            max_retries=1,  # match pipeline.py hotfix
+            timeout=300.0,  # 5 min — Sonnet fallback for long outputs (was 180s)
+            max_retries=1,
         )
     return _anthropic_client
 

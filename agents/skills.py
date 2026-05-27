@@ -171,7 +171,7 @@ Hãy đào sâu vào psychographics, JTBD, và Vietnamese cultural context của
 class PsychologyPricingSkill(AgentSkill):
     """Combines Marketing Psychology + Pricing Strategy in 1 call to save latency."""
     name = "psychology_pricing"
-    max_tokens = 10000
+    max_tokens = 8000  # was 10000 — reduced to stay well within provider timeouts
     enable_critic = False
     intake_pattern = IntakePattern.SINGLE_SHOT_FORM  # Phase 3
     context_strategy = ContextStrategy.FULL_PIPELINE
