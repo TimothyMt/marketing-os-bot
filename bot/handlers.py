@@ -1958,7 +1958,7 @@ async def _handle_callback_inner(update, context, query, session, data, user_id)
             "⚡ *Đang thực thi...*",
             parse_mode=ParseMode.MARKDOWN,
         )
-        summary = await _execute_optimizer_actions(query, session)
+        summary = await _execute_optimizer_actions(session)
         await _safe_reply(
             query.message,
             f"✅ *Hoàn tất — Kết quả thực thi:*\n\n{summary}\n\n"
@@ -2716,12 +2716,15 @@ async def _handle_ops_intake_reply(update: Update, context: ContextTypes.DEFAULT
                 timeout=AGENT_TIMEOUT,
             )
             await save_session(session)
-            await _send_ops_result(update.message, session, task_name, result)
 
-            # Ads Optimizer: parse [ACTION:...] markers → show confirmation keyboard
+            # Ads Optimizer: clean display text (strip markers), then show confirmation separately
             if task_name == "ads_optimizer":
+                clean_result = _ACTION_RE.sub("", result).strip()
+                await _send_ops_result(update.message, session, task_name, clean_result)
                 await _show_optimizer_confirm(update.message, session, result)
                 return
+
+            await _send_ops_result(update.message, session, task_name, result)
 
             # Sprint 6: Tone Calibration Loop cho content_calendar
             if task_name == "content_calendar":
@@ -2900,8 +2903,8 @@ async def _send_ops_result(message: Message, session, task_name: str, result: st
     business_slug = re.sub(r"[^a-zA-Z0-9_-]", "_", session.profile.business_name or task_name)[:30]
     business_name = session.profile.business_name or "Business"
 
-    # Skip HTML cho content_generator — chỉ cần Excel master (split by week)
-    SKIP_HTML_SKILLS = {"content_generator"}
+    # Skip HTML: content_generator (only needs Excel), ads_optimizer (action skill — no deliverable files)
+    SKIP_HTML_SKILLS = {"content_generator", "ads_optimizer"}
 
     if task_name not in SKIP_HTML_SKILLS:
         # Send HTML always (universal viewable)
@@ -2926,8 +2929,8 @@ async def _send_ops_result(message: Message, session, task_name: str, result: st
     # Content Suite v2: skills luôn output MD primary + Excel secondary (Haiku convert)
     CONTENT_SUITE_V2 = {"post_write", "post_adapt", "post_voice_check", "post_hooks", "post_visual", "post_batch"}
 
-    # Send primary deliverable per skill config
-    if skill.primary_deliverable == PrimaryDeliverable.MARKDOWN:
+    # Send primary deliverable per skill config (skip for action skills like ads_optimizer)
+    if task_name not in SKIP_HTML_SKILLS and skill.primary_deliverable == PrimaryDeliverable.MARKDOWN:
         md_bytes = render_markdown_file(task_name, task.label, parsed, skill.output_format, business_name)
         buf = io.BytesIO(md_bytes)
         buf.name = f"{task_name}_{business_slug}.md"
@@ -3793,8 +3796,6 @@ def _parse_optimizer_actions(result: str) -> list[dict]:
 
 async def _show_optimizer_confirm(message: Message, session, result: str):
     """Parse action markers from optimizer output and show confirmation keyboard."""
-    from telegram import InlineKeyboardMarkup, InlineKeyboardButton
-
     actions = _parse_optimizer_actions(result)
     if not actions:
         return  # No actions found — just advisory output, no confirmation needed
@@ -3830,7 +3831,7 @@ async def _show_optimizer_confirm(message: Message, session, result: str):
     await _safe_reply(message, confirm_text, parse_mode=ParseMode.MARKDOWN, reply_markup=keyboard)
 
 
-async def _execute_optimizer_actions(query, session) -> str:
+async def _execute_optimizer_actions(session) -> str:
     """Execute all pending actions from _pending_actions list. Returns summary text."""
     from tools.fb_marketing import set_object_status, update_budget
 
