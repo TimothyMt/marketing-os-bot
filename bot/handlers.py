@@ -692,6 +692,18 @@ async def _handle_image_edit_text(update, context, session, text):
 # ─── Intake ───────────────────────────────────────────────────────
 
 async def _handle_intake(update, context, session, text):
+    # Guard: profile already complete — skip multi-turn, go straight to confirm
+    if session.profile.is_intake_complete():
+        logger.warning(
+            "_handle_intake called with complete profile (stage=%s) — redirecting to CONFIRMED",
+            session.stage,
+        )
+        task = session.selected_task or "full"
+        session.stage = PipelineStage.CONFIRMED
+        await save_session(session)
+        await _show_profile_reuse_confirm(update.message, session, task)
+        return
+
     await context.bot.send_chat_action(
         chat_id=update.effective_chat.id,
         action=ChatAction.TYPING,
@@ -1957,18 +1969,10 @@ async def _handle_callback_inner(update, context, query, session, data, user_id)
         await _run_pipeline_sequentially(query.message, session)
 
     elif data == "confirm_no":
-        session.stage = PipelineStage.INTAKE
-        from storage.models import BusinessProfile
-        session.profile = BusinessProfile()
-        session.intake_history = []
-        await save_session(session)
-
+        # 1 user = 1 business: keep existing profile, let user correct specific fields only
+        await query.edit_message_reply_markup(reply_markup=None)
         task = session.selected_task or "full"
-        opening = TASK_OPENING_QUESTIONS.get(task, TASK_OPENING_QUESTIONS["full"])
-        await query.edit_message_text(
-            f"Không sao! Hãy mô tả lại — tôi nghe lại từ đầu nhé 🙂\n\n{opening}",
-            parse_mode=ParseMode.MARKDOWN,
-        )
+        await _send_basic_business_form(query.message, session, task)
 
     # ── Ads Optimizer confirmation ────────────────────────────────
     elif data == "optimizer_confirm":
@@ -2029,14 +2033,8 @@ async def _handle_callback_inner(update, context, query, session, data, user_id)
             await save_session(session)
             await _run_pipeline_sequentially(query.message, session)
         else:
-            # Cần multi-turn intake trước
-            session.stage = PipelineStage.INTAKE
-            await save_session(session)
-            opening = TASK_OPENING_QUESTIONS.get("full", TASK_OPENING_QUESTIONS["full"])
-            await query.message.reply_text(
-                f"✅ *Chuẩn bị Phân Tích Tổng Hợp A→Z*\n\n{opening}",
-                parse_mode=ParseMode.MARKDOWN,
-            )
+            # Profile chưa đủ — collect basic context via single-shot form, then chain A→Z
+            await _send_basic_business_form(query.message, session, "full")
         return
 
     elif data == "continue_pipeline":

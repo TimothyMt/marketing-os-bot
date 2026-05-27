@@ -116,9 +116,17 @@ async def get_session(user_id: int) -> Session:
             from storage.session_v2_adapter import get_session_v2
             return await get_session_v2(user_id)
         except Exception as e:
+            try:
+                from config import DB_V2_WRITE as _v2w
+            except ImportError:
+                _v2w = False
+            if not _v2w:
+                # Phase D (V2-only): never resurrect stale V1 data on V2 failure
+                logger.error("V2-only get_session failed, returning fresh session (no V1 fallback): %s", e)
+                return Session(user_id=user_id)
             logger.exception("V2 get_session failed, fallback to v1: %s", e)
 
-    # v1 path (legacy / fallback)
+    # v1 path (legacy / fallback — only reached when DB_V2_READ=False or dual-write V2 failed)
     resp = (
         await _client.table(TABLE)
         .select("*")

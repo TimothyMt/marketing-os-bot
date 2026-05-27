@@ -83,10 +83,21 @@ class OperationalSkill(AgentSkill):
 
         elif self.context_strategy == ContextStrategy.PROFILE_PLUS_STRATEGY:
             parts = [session.profile.to_context_string()]
-            # v0.1: advisory từ run_advisor() — ưu tiên hơn synthesis cũ
             advisory = session.get_latest_result("advisory") or session.get_latest_result("synthesis")
             if advisory:
                 parts.append(f"## Marketing Strategy (đã duyệt)\n{advisory}")
+            else:
+                # Synthesis chưa có — include available sub-strategic results so ops
+                # skills aren't flying blind (enriches context without re-asking user)
+                for key, label in [
+                    ("market_research",  "Market Research"),
+                    ("competitor",       "Competitor Analysis"),
+                    ("customer_insight", "Customer Insights"),
+                    ("psychology_pricing", "Psychology & Pricing"),
+                ]:
+                    result = session.get_latest_result(key)
+                    if result:
+                        parts.append(f"## {label}\n{result[:3000]}")
             return "\n\n---\n\n".join(parts)
 
         elif self.context_strategy == ContextStrategy.PROFILE_PLUS_CAMPAIGN:
