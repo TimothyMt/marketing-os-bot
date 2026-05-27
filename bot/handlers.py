@@ -9,6 +9,7 @@ import re
 from telegram import Update, Message, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
 from telegram.constants import ParseMode, ChatAction
+from telegram.error import TimedOut, NetworkError
 
 from storage import get_session, save_session, reset_session
 from storage.models import PipelineStage
@@ -2746,47 +2747,27 @@ async def _handle_ops_intake_reply(update: Update, context: ContextTypes.DEFAULT
                 await _start_tone_calibration(update.message, session, result)
                 return
 
-            # Sprint 5: Persist Brand Voice to DB sau khi gen xong
+            # Sprint 5: Persist Brand Voice to DB sau khi gen xong.
+            # Deliverable (card + files) đã gửi xong ở trên — post-processing
+            # KHÔNG được làm skill báo lỗi. Wrap riêng để mọi lỗi đều non-fatal.
             if task_name == "brand_voice":
-                await _persist_brand_voice_from_session(session, result)
-                # Chain sang skill gốc nếu user vào BV qua lazy trigger
-                pending_skill = session.pending_intake.pop("_bv_pending_skill", None)
-                session.pending_intake.pop("_bv_skipped_session", None)
-                if pending_skill and pending_skill != "brand_voice":
-                    await save_session(session)
-                    pending_label = (
-                        get_task(pending_skill).label if get_task(pending_skill) else pending_skill
-                    )
-                    await update.message.reply_text(
-                        f"✅ *Brand Voice đã lưu!* Em tiếp tục *{pending_label}* "
-                        f"với BV vừa setup luôn nhé...",
-                        parse_mode=ParseMode.MARKDOWN,
-                    )
-                    session.selected_task = pending_skill
-                    session.pending_intake = {}  # reset for fresh intake
-                    await save_session(session)
-                    if pending_skill in ("ads_copy", "ads_generator"):
-                        from bot.keyboards import ADS_COPY_TIER_KEYBOARD as _ADS_KB
-                        await update.message.reply_text(
-                            "📢 *Sản Xuất Nội Dung Ads* — chọn tier:",
-                            parse_mode=ParseMode.MARKDOWN,
-                            reply_markup=_ADS_KB,
-                        )
-                    elif pending_skill == "video_scripts":
-                        from bot.keyboards import VIDEO_CREATOR_KEYBOARD as _VID_KB
-                        await update.message.reply_text(
-                            "🎬 *Viết Kịch Bản Video* — chọn loại creator:",
-                            parse_mode=ParseMode.MARKDOWN,
-                            reply_markup=_VID_KB,
-                        )
-                    else:
-                        await _send_single_shot_form(update.message, session, pending_skill)
+                try:
+                    await _persist_brand_voice_from_session(session, result)
+                    await _continue_after_brand_voice(update.message, session)
+                except (TimedOut, NetworkError) as e:
+                    logger.warning("[BV] post-processing transient error (non-fatal): %s", e)
+                except Exception as e:
+                    logger.exception("[BV] post-processing failed (non-fatal): %s", e)
     except asyncio.TimeoutError:
         logger.error("Skill %s timeout sau %ds", task_name, 500)
         await update.message.reply_text(
             f"⚠️ Skill {task_name} timeout (API chậm hoặc treo). Sếp thử lại nhé.\n"
             f"Nếu lặp lại, có thể giảm scope intake để output ngắn hơn."
         )
+    except (TimedOut, NetworkError) as e:
+        # Telegram delivery timed out — output thường ĐÃ gửi tới user.
+        # Không hiện lỗi "thử /start" gây hiểu nhầm là skill fail.
+        logger.warning("Skill %s: Telegram delivery timeout (output likely delivered): %s", task_name, e)
     except Exception as e:
         logger.exception("Skill %s failed: %s", task_name, e)
         await update.message.reply_text(
@@ -4187,6 +4168,55 @@ def _extract_tone_from_md(markdown: str) -> list[str]:
         return []
     tones = re.split(r"[,;]|\s+và\s+", m.group(1))
     return [t.strip().strip("*_.`") for t in tones if t.strip()][:5]
+
+
+async def _continue_after_brand_voice(message: Message, session) -> None:
+    """Sau khi brand_voice gen + persist xong: chain sang skill gốc (nếu vào BV
+    qua lazy trigger), hoặc kết thúc bằng rating prompt (standalone)."""
+    pending_skill = session.pending_intake.pop("_bv_pending_skill", None)
+    session.pending_intake.pop("_bv_skipped_session", None)
+
+    # Standalone — không có skill gốc chờ → kết thúc bằng rating prompt
+    if not pending_skill or pending_skill == "brand_voice":
+        session.pending_intake["_awaiting_rating_for"] = "brand_voice"
+        await save_session(session)
+        await message.reply_text(
+            "✅ *Brand Voice đã lưu!* Từ giờ mọi nội dung em làm sẽ tuân theo bộ quy tắc này.\n\n"
+            "Sếp đánh giá output em vừa làm thế nào ạ?",
+            parse_mode=ParseMode.MARKDOWN,
+            reply_markup=RATING_KEYBOARD,
+        )
+        return
+
+    # Lazy trigger — chain sang skill gốc với BV vừa setup
+    await save_session(session)
+    pending_label = (
+        get_task(pending_skill).label if get_task(pending_skill) else pending_skill
+    )
+    await message.reply_text(
+        f"✅ *Brand Voice đã lưu!* Em tiếp tục *{pending_label}* "
+        f"với BV vừa setup luôn nhé...",
+        parse_mode=ParseMode.MARKDOWN,
+    )
+    session.selected_task = pending_skill
+    session.pending_intake = {}  # reset for fresh intake
+    await save_session(session)
+    if pending_skill in ("ads_copy", "ads_generator"):
+        from bot.keyboards import ADS_COPY_TIER_KEYBOARD as _ADS_KB
+        await message.reply_text(
+            "📢 *Sản Xuất Nội Dung Ads* — chọn tier:",
+            parse_mode=ParseMode.MARKDOWN,
+            reply_markup=_ADS_KB,
+        )
+    elif pending_skill == "video_scripts":
+        from bot.keyboards import VIDEO_CREATOR_KEYBOARD as _VID_KB
+        await message.reply_text(
+            "🎬 *Viết Kịch Bản Video* — chọn loại creator:",
+            parse_mode=ParseMode.MARKDOWN,
+            reply_markup=_VID_KB,
+        )
+    else:
+        await _send_single_shot_form(message, session, pending_skill)
 
 
 async def _persist_brand_voice_from_session(session, raw_markdown: str):
