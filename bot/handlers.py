@@ -434,6 +434,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         or session.pending_intake.get("_awaiting_campaign_finalize")
         or session.pending_intake.get("_awaiting_image_reference")
         or session.pending_intake.get(BIZ_CONTEXT_AWAITING)
+        or session.pending_intake.get("_workflow_awaiting_topic")
     )
     # Returning user heuristic: bất kỳ field profile nào có data → coi như đã có context
     _p = session.profile
@@ -482,6 +483,16 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # McKinsey Discovery Gate — user submitted basic business form
     if session.pending_intake.get(BIZ_CONTEXT_AWAITING):
         await _handle_basic_business_text(update, context, session, text)
+        return
+
+    # Task 1: Workflow topic intake — user gửi chủ đề viết content
+    if session.pending_intake.get("_workflow_awaiting_topic"):
+        workflow_task = session.pending_intake.get("_workflow_task", "write_content")
+        topic_text = update.message.text.strip() if update.message else ""
+        if workflow_task == "write_content":
+            session.pending_intake.pop("_workflow_awaiting_topic", None)
+            await save_session(session)
+            await _run_write_content_workflow_handler(update.message, session, topic_text)
         return
 
     # Sprint 6: Tone calibration feedback
@@ -1423,6 +1434,20 @@ async def _handle_callback_inner(update, context, query, session, data, user_id)
             "📋 *Chọn chuyên gia bạn muốn làm việc cùng:*",
             parse_mode=ParseMode.MARKDOWN,
             reply_markup=MAIN_MENU_KEYBOARD,
+        )
+        return
+
+    # ── Task 1: Viết Content — full workflow ─────────────────────
+    if data == "task_write_content":
+        await query.edit_message_reply_markup(reply_markup=None)
+        session.pending_intake["_workflow_task"] = "write_content"
+        session.pending_intake["_workflow_awaiting_topic"] = "1"
+        await save_session(session)
+        await query.message.reply_text(
+            "✍️ *Max nhận yêu cầu viết content.*\n\n"
+            "Sếp muốn viết về chủ đề gì? Gõ ngắn gọn ạ.\n"
+            "_Vd: 'Hướng dẫn chọn serum Vitamin C cho da nhạy cảm' hoặc 'Giới thiệu sản phẩm mới tháng 6'_",
+            parse_mode=ParseMode.MARKDOWN,
         )
         return
 
@@ -2380,6 +2405,47 @@ def _extract_campaigns_from_strategy(synthesis_text: str) -> list[str]:
         if len(result) >= 5:
             break
     return result
+
+
+async def _run_write_content_workflow_handler(message: Message, session, topic_text: str):
+    """Task 1: Execute the write_content workflow and send results.
+
+    Flow: Linh (brand_direction) → Nam (post_write) → Linh (post_voice_check).
+    """
+    from agents.workflow_runner import run_write_content_workflow
+
+    await message.reply_text("🔄 *Max đang điều phối team...*", parse_mode=ParseMode.MARKDOWN)
+    await message.chat.send_action(ChatAction.TYPING)
+
+    async def on_progress(text: str):
+        try:
+            await message.reply_text(text, parse_mode=ParseMode.MARKDOWN)
+        except Exception:
+            pass
+
+    result = await run_write_content_workflow(
+        session,
+        topic=topic_text,
+        on_progress=on_progress,
+    )
+
+    if result["success"]:
+        await save_session(session)
+        output = result["final_output"]
+        if len(output) > 4000:
+            for i in range(0, len(output), 4000):
+                chunk = output[i:i + 4000]
+                if i + 4000 >= len(output):
+                    await message.reply_text(chunk, reply_markup=get_action_keyboard("post_write"))
+                else:
+                    await message.reply_text(chunk)
+        else:
+            await message.reply_text(output, reply_markup=get_action_keyboard("post_write"))
+    else:
+        await message.reply_text(
+            f"⚠️ Workflow gặp lỗi ở bước {result.get('error', 'unknown')}. Sếp thử lại sau ạ.",
+            reply_markup=get_action_keyboard("post_write"),
+        )
 
 
 async def _send_single_shot_form(message: Message, session, task_name: str):

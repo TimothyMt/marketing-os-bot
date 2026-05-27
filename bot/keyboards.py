@@ -9,6 +9,7 @@ from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 # ─────────────────────────────────────────────────────────────────
 
 MAIN_MENU_KEYBOARD = InlineKeyboardMarkup([
+    [InlineKeyboardButton("✍️ Viết Content — full workflow", callback_data="task_write_content")],
     [InlineKeyboardButton("📊 Minh — Ads & Performance",   callback_data="persona_menu_digital_marketing")],
     [InlineKeyboardButton("🎨 Linh — Brand Voice",          callback_data="persona_menu_brand")],
     [InlineKeyboardButton("✍️ Nam — Content",               callback_data="persona_menu_content")],

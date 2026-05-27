@@ -169,6 +169,14 @@ class OperationalSkill(AgentSkill):
                 f"{fb_data}"
             )
 
+        # Inject Brand Direction từ workflow (Linh → Nam pipeline)
+        if workflow_context:
+            msg += (
+                "\n\n---\n\n"
+                "**BRAND DIRECTION ĐÃ XÁC NHẬN (từ bước phân tích brand trước):**\n"
+                f"{workflow_context}"
+            )
+
         # Inject Strategy context nếu có (Brief Campaign / Content Calendar / Landing Page reuse)
         synthesis = session.get_latest_result("synthesis") or session.get_latest_result("strategy")
         if synthesis:
