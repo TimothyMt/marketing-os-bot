@@ -3270,6 +3270,37 @@ def _personalize(text: str, session) -> str:
 
 # ─── Claude advisor fallback ────────────────────────────────────
 
+def _sanitize_telegram_md(text: str) -> str:
+    """Lớp an toàn: chuyển markdown nặng (heading/blockquote) về dạng Telegram
+    legacy render được. LLM đôi khi vẫn xuất `#`, `>` dù prompt đã cấm.
+
+    - `### Heading` / `## H` / `# H`  → `*Heading*`
+    - leading `> blockquote`          → bỏ dấu `>`
+    - dòng phân cách `---` / `***`     → bỏ (Telegram không render thành line)
+    """
+    import re as _re
+    if not text:
+        return text
+    out_lines = []
+    for line in text.split("\n"):
+        stripped = line.lstrip()
+        # Heading → bold
+        m = _re.match(r"^(#{1,6})\s+(.*)$", stripped)
+        if m:
+            heading = m.group(2).strip().rstrip("#").strip()
+            out_lines.append(f"*{heading}*" if heading else "")
+            continue
+        # Blockquote → bỏ dấu >
+        if stripped.startswith(">"):
+            out_lines.append(stripped.lstrip(">").lstrip())
+            continue
+        # Horizontal rule → bỏ
+        if _re.match(r"^([-*_])\1{2,}\s*$", stripped):
+            continue
+        out_lines.append(line)
+    return "\n".join(out_lines).strip()
+
+
 async def _try_persona_route(update, context, session, text: str) -> bool:
     """Thử route free-form message đến đúng domain expert persona.
 
@@ -3324,6 +3355,7 @@ async def _try_persona_route(update, context, session, text: str) -> bool:
     # ── Parse [SKILL_DISPATCH:name] marker ───────────────────────
     dispatch_match = _re.search(r"\[SKILL_DISPATCH:(\w+)\]", persona_response)
     clean = _re.sub(r"\[SKILL_DISPATCH:\w+\]", "", persona_response).strip()
+    clean = _sanitize_telegram_md(clean)
 
     if dispatch_match:
         skill_name = dispatch_match.group(1)
@@ -3345,7 +3377,7 @@ async def _try_persona_route(update, context, session, text: str) -> bool:
 
     await send_long_message(
         update.message,
-        clean or persona_response,
+        clean or _sanitize_telegram_md(persona_response),
         parse_mode=ParseMode.MARKDOWN,
         reply_markup=InlineKeyboardMarkup([
             [InlineKeyboardButton(

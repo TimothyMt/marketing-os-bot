@@ -93,6 +93,19 @@ async def upsert_session_slim(
         return False
 
 
+async def delete_session_slim(user_id: int) -> bool:
+    """Xoá hẳn slim session của user (dùng cho /reset)."""
+    client = get_client()
+    if client is None:
+        return False
+    try:
+        await client.table(TABLE).delete().eq("user_id", user_id).execute()
+        return True
+    except Exception as e:
+        logger.warning("delete_session_slim(%d) failed: %s", user_id, e)
+        return False
+
+
 async def touch_last_message(user_id: int) -> bool:
     """Lightweight update — chỉ cập nhật last_message_at để tránh stale-reset."""
     client = get_client()

@@ -38,6 +38,19 @@ async def get_profile(user_id: int) -> Optional[dict]:
         return None
 
 
+async def delete_profile(user_id: int) -> bool:
+    """Xoá hẳn business profile của user (dùng cho /reset)."""
+    client = get_client()
+    if client is None:
+        return False
+    try:
+        await client.table(TABLE).delete().eq("user_id", user_id).execute()
+        return True
+    except Exception as e:
+        logger.warning("delete_profile(%d) failed: %s", user_id, e)
+        return False
+
+
 async def upsert_profile(user_id: int, **fields) -> Optional[dict]:
     """
     Upsert profile fields. Chỉ accept whitelist fields.

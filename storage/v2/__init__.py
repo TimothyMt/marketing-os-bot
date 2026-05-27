@@ -17,16 +17,18 @@ Coexists with v1 (storage/session.py) during Phase 1-2 migration.
 from .users import (
     get_user, upsert_user, soft_delete_user,
     add_token_usage, set_token_quota, reset_token_usage,
+    clear_industry_cached,
 )
 from .profiles import (
-    get_profile, upsert_profile,
+    get_profile, upsert_profile, delete_profile,
 )
 from .sessions_slim import (
     get_session_slim, upsert_session_slim, touch_last_message,
+    delete_session_slim,
 )
 from .skill_runs import (
     insert_skill_run, get_latest_skill_run, list_skill_runs,
-    update_rating,
+    update_rating, delete_skill_runs,
 )
 from .campaigns_v2 import (
     create_campaign, get_campaign, list_campaigns_v2,

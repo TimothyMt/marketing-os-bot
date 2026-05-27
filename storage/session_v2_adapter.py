@@ -95,6 +95,23 @@ async def get_session_v2(user_id: int) -> Session:
     )
 
 
+async def reset_session_v2(user_id: int) -> None:
+    """Xoá business data của user ở schema V2 (tương đương reset_session V1).
+
+    XOÁ: user_business_profile, user_sessions_slim, skill_runs.
+    GIỮ: users row (identity + token_quota/token_used/cost) — chỉ clear industry_cached.
+    KHÔNG đụng: user_brand_voice, tracked_competitors, feedback_log (tài sản vệ tinh).
+    """
+    from storage.v2 import (
+        delete_profile, delete_session_slim, delete_skill_runs,
+        clear_industry_cached,
+    )
+    await delete_profile(user_id)
+    await delete_session_slim(user_id)
+    await delete_skill_runs(user_id)
+    await clear_industry_cached(user_id)
+
+
 async def save_session_v2(session: Session) -> None:
     """
     Split Session dataclass → upsert sang 3 v2 tables.

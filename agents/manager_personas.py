@@ -450,17 +450,38 @@ def get_all_personas() -> list[ManagerPersona]:
     return PERSONAS
 
 
+# Câu hỏi meta/trạng thái — KHÔNG phải yêu cầu gọi persona.
+# Để advisor chung trả lời từ session thực tế (đã chạy gì, tới đâu).
+_STATUS_QUESTION_PATTERNS = [
+    "đã chạy", "đã làm", "làm gì rồi", "làm được gì", "làm tới đâu",
+    "tới đâu", "đến đâu", "bước gì", "bước nào", "chạy bước",
+    "đang ở đâu", "ở bước nào", "tiến độ", "xong chưa", "có gì rồi",
+    "đã có gì", "status", "tình trạng", "đang làm gì",
+]
+
+
+def _is_status_question(msg_lower: str) -> bool:
+    """True nếu message là câu hỏi trạng thái/meta (không phải yêu cầu marketing)."""
+    return any(p in msg_lower for p in _STATUS_QUESTION_PATTERNS)
+
+
 def route_to_persona(user_msg: str, session: Session) -> Optional[ManagerPersona]:
     """Xác định manager persona phù hợp từ user message.
 
     Priority:
-    1. Keyword match (nhiều keyword hơn → score cao hơn)
-    2. Industry context (ecommerce → Đức, FnB → Mai/Trang)
-    3. None nếu không match rõ
+    1. Câu hỏi trạng thái/meta → None (advisor chung xử lý)
+    2. Keyword match (nhiều keyword hơn → score cao hơn)
+    3. Industry context — CHỈ khi message là yêu cầu thực (đủ dài), tránh
+       ép câu hỏi vu vơ vào persona theo ngành.
+    4. None nếu không match rõ
     """
-    msg_lower = user_msg.lower()
+    msg_lower = user_msg.lower().strip()
 
-    # Score từng persona theo keyword match
+    # (1) Câu hỏi trạng thái → không route persona
+    if _is_status_question(msg_lower):
+        return None
+
+    # (2) Score từng persona theo keyword match
     scores: dict[str, int] = {}
     for persona in PERSONAS:
         score = sum(1 for kw in persona.trigger_keywords if kw in msg_lower)
@@ -468,7 +489,10 @@ def route_to_persona(user_msg: str, session: Session) -> Optional[ManagerPersona
             scores[persona.key] = score
 
     if not scores:
-        # Industry fallback
+        # (3) Industry fallback — chỉ áp cho yêu cầu thực sự (≥4 từ), không
+        #     ép câu ngắn/vu vơ vào persona. Câu ngắn → advisor chung.
+        if len(msg_lower.split()) < 4:
+            return None
         industry = getattr(session.profile, "industry", "") or ""
         if industry == "ecommerce":
             return get_persona("ecommerce")
@@ -476,7 +500,7 @@ def route_to_persona(user_msg: str, session: Session) -> Optional[ManagerPersona
             return get_persona("crm")
         return None
 
-    # Trả persona có score cao nhất
+    # (4) Trả persona có score cao nhất
     best_key = max(scores, key=lambda k: scores[k])
     return get_persona(best_key)
 
@@ -505,6 +529,18 @@ Khi đã xác định được 1 skill cụ thể giải quyết đúng vấn đ
 - tên_skill phải là 1 trong danh sách skills bạn owns (snake_case chính xác).
 - VD: [SKILL_DISPATCH:ads_copy]
 - KHÔNG dùng marker nếu chỉ tư vấn chung, chưa chắc skill nào phù hợp, hoặc cần hỏi thêm sếp."""
+
+
+# Telegram chat KHÔNG render heading #, bảng |, blockquote > → hiện ký tự thô.
+# Bắt buộc output thân thiện Telegram: ngắn, chỉ bold/italic/bullet.
+_TELEGRAM_FORMAT_SUFFIX = """
+
+# FORMAT TRẢ LỜI (Telegram chat — BẮT BUỘC)
+- KHÔNG dùng heading markdown (`#`, `##`, `###`) — Telegram không render, hiện ký tự thô.
+- KHÔNG dùng bảng markdown (`|`) và KHÔNG dùng blockquote (`>`).
+- CHỈ dùng: *in đậm*, _in nghiêng_, và bullet "• ".
+- NGẮN GỌN: tối đa 4-6 câu hoặc 4-5 bullet. Đây là tin nhắn chat, không phải báo cáo.
+- Hỏi tối đa 1-2 câu làm rõ, không liệt kê dài dòng nhiều kịch bản."""
 
 
 # ─────────────────────────────────────────────────────────────────
@@ -542,7 +578,7 @@ async def run_persona_turn(
     try:
         result = await router_call(
             task_type  = TaskType.GENERIC_CREATIVE,
-            system     = persona.system_prompt + _DISPATCH_SUFFIX,
+            system     = persona.system_prompt + _DISPATCH_SUFFIX + _TELEGRAM_FORMAT_SUFFIX,
             user       = "\n".join(context_parts),
             max_tokens = 2000,
         )

@@ -104,6 +104,19 @@ async def list_skill_runs(
         return []
 
 
+async def delete_skill_runs(user_id: int) -> bool:
+    """Xoá toàn bộ skill_runs của user (dùng cho /reset — tương đương clear results)."""
+    client = get_client()
+    if client is None:
+        return False
+    try:
+        await client.table(TABLE).delete().eq("user_id", user_id).execute()
+        return True
+    except Exception as e:
+        logger.warning("delete_skill_runs(%d) failed: %s", user_id, e)
+        return False
+
+
 async def update_rating(
     run_id: str,
     rating: int,

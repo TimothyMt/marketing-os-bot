@@ -208,7 +208,36 @@ async def save_session(session: Session):
 
 
 async def reset_session(user_id: int):
-    """Reset session to initial state."""
+    """Reset session to initial state.
+
+    Dual-Write strategy (mirror save_session):
+      Phase D (READ=True, WRITE=False) → reset V2 only.
+      Dual-write (WRITE=True)          → reset V2 best-effort + V1.
+      Default (cả 2 False)             → reset V1 only.
+    """
+    try:
+        from config import DB_V2_WRITE, DB_V2_READ
+    except ImportError:
+        DB_V2_WRITE = False
+        DB_V2_READ = False
+
+    _v2_only = DB_V2_READ and not DB_V2_WRITE
+
+    if _v2_only:
+        # Phase D: chỉ reset V2
+        from storage.session_v2_adapter import reset_session_v2
+        await reset_session_v2(user_id)
+        return
+
+    # Dual-write: reset V2 best-effort (không làm fail V1)
+    if DB_V2_WRITE:
+        try:
+            from storage.session_v2_adapter import reset_session_v2
+            await reset_session_v2(user_id)
+        except Exception as e:
+            logger.warning("V2 reset failed (V1 will still reset): %s", e)
+
+    # V1 path (default / dual-write source of truth)
     payload = {
         "user_id":         user_id,
         "stage":           "idle",

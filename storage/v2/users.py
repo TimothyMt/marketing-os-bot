@@ -83,6 +83,24 @@ async def soft_delete_user(user_id: int) -> bool:
         return False
 
 
+async def clear_industry_cached(user_id: int) -> bool:
+    """Reset industry_cached về NULL (dùng cho /reset — giữ row users + quota)."""
+    client = get_client()
+    if client is None:
+        return False
+    try:
+        await (
+            client.table(TABLE)
+            .update({"industry_cached": None})
+            .eq("user_id", user_id)
+            .execute()
+        )
+        return True
+    except Exception as e:
+        logger.warning("clear_industry_cached(%d) failed: %s", user_id, e)
+        return False
+
+
 async def add_token_usage(user_id: int, tokens: int) -> Optional[int]:
     """Increment token_used atomically via PostgREST RPC or read-modify-write.
 
