@@ -31,6 +31,7 @@ from agents.operational_prompts import (
     CONTENT_REPURPOSE_SYSTEM,
     RETENTION_STRATEGY_SYSTEM,
     WINBACK_CAMPAIGN_SYSTEM,
+    ADS_ANALYTICS_SYSTEM,
 )
 from agents.content_suite_prompts import (
     POST_WRITE_SYSTEM,
@@ -364,6 +365,15 @@ def make_performance_audit_skill() -> OperationalSkill:
     ))
 
 
+def make_ads_analytics_skill() -> OperationalSkill:
+    return OperationalSkill(_config_for(
+        "ads_analytics",
+        ADS_ANALYTICS_SYSTEM,
+        max_tokens=5000,
+        context_strategy=ContextStrategy.PROFILE_PLUS_STRATEGY,
+    ))
+
+
 # ─────────────────────────────────────────────────────────────────
 # SPECIAL skills (2) — custom subclasses with extra logic
 # ─────────────────────────────────────────────────────────────────
@@ -523,6 +533,7 @@ OPS_SKILL_FACTORIES: dict[str, callable] = {
     "sales_inbox_script":  make_sales_inbox_script_skill,
     "email_zalo_sequence": make_email_zalo_sequence_skill,
     "performance_audit":   make_performance_audit_skill,
+    "ads_analytics":       make_ads_analytics_skill,
     "ads_copy":            AdsCopySkill,
     "ads_generator":       AdsCopySkill,
     "video_scripts":       VideoScriptsSkill,

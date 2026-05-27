@@ -2672,7 +2672,7 @@ async def _handle_ops_intake_reply(update: Update, context: ContextTypes.DEFAULT
         # Pre-fetch live FB data cho các skills cần (competitor_spy, performance_audit)
         if task_name == "competitor_spy":
             await _prefetch_competitor_ads(update.message, session)
-        elif task_name == "performance_audit":
+        elif task_name in ("performance_audit", "ads_analytics"):
             await _prefetch_performance_data(update.message, session)
 
         # Dispatch theo task type
