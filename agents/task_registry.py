@@ -482,6 +482,19 @@ OPERATIONAL_TASKS: dict[str, TaskConfig] = {
             {"key": "campaign_filter", "label": "Lọc campaign cụ thể (bỏ trống = toàn account)", "example": "FT09 / Tết 2026", "required": False},
         ],
     ),
+    "ads_optimizer": TaskConfig(
+        name="ads_optimizer",
+        label="Tối Ưu Ads Trực Tiếp",
+        button_emoji="⚡",
+        category="analysis",
+        description="Phân tích Andromeda signals → đề xuất + thực thi actions (pause/activate/budget) trên campaigns có sẵn",
+        skill_class_name="AdsOptimizerSkill",
+        intake_fields=[
+            {"key": "target",     "label": "Campaign / Ad Set / Ad cần thao tác",    "example": "FT09 / Lookalike 1% / toàn account", "required": True},
+            {"key": "action",     "label": "Hành động muốn thực hiện",                "example": "pause campaign yếu / tăng budget FT09 lên 500k / bật lại adset Lookalike 2%", "required": True},
+            {"key": "reason",     "label": "Lý do / metric tham chiếu (tuỳ chọn)",   "example": "Frequency 6.5, CPM 180K > benchmark", "required": False},
+        ],
+    ),
 }
 
 

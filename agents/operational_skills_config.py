@@ -32,6 +32,7 @@ from agents.operational_prompts import (
     RETENTION_STRATEGY_SYSTEM,
     WINBACK_CAMPAIGN_SYSTEM,
     ADS_ANALYTICS_SYSTEM,
+    ADS_OPTIMIZER_SYSTEM,
 )
 from agents.content_suite_prompts import (
     POST_WRITE_SYSTEM,
@@ -374,6 +375,49 @@ def make_ads_analytics_skill() -> OperationalSkill:
     ))
 
 
+class AdsOptimizerSkill(AgentSkill):
+    """Special ops skill: phân tích + đề xuất actions trên campaign hierarchy.
+
+    build_user_msg() embeds prefetched hierarchy data từ session.pending_intake["_optimizer_hierarchy"].
+    Output chứa [ACTION:...] markers mà handler parse để show confirmation flow.
+    """
+    name = "ads_optimizer"
+    system_prompt = ADS_OPTIMIZER_SYSTEM
+    max_tokens = 4000
+    enable_critic = False
+    output_format = OutputFormat.OPERATIONAL_ANALYSIS
+    intake_pattern = IntakePattern.SINGLE_SHOT_FORM
+    context_strategy = ContextStrategy.PROFILE_ONLY
+    primary_deliverable = PrimaryDeliverable.MARKDOWN
+    accumulate_to_report = False
+
+    def build_context(self, session: Session) -> str:
+        return session.profile.to_context_string()
+
+    def build_user_msg(self, session: Session) -> str:
+        intake = session.pending_intake or {}
+        hierarchy = intake.get("_optimizer_hierarchy", "⚠️ Chưa load được hierarchy — hãy kiểm tra kết nối Marketing API")
+        account_id = intake.get("_optimizer_account_id", "act_???")
+
+        return f"""## Yêu cầu Tối Ưu Ads
+
+**Tài khoản:** {account_id}
+**Muốn thao tác:** {intake.get('target', 'toàn account')}
+**Hành động:** {intake.get('action', 'chưa xác định')}
+**Lý do / metric tham chiếu:** {intake.get('reason', '(không có)')}
+
+---
+
+## Hierarchy Data (live từ Marketing API)
+
+{hierarchy}
+
+---
+
+Phân tích hierarchy trên, áp dụng Andromeda signals, đề xuất action plan cụ thể với đầy đủ [ACTION:...] markers.
+Nếu object sếp yêu cầu không có trong hierarchy → thông báo rõ ràng."""
+
+
 # ─────────────────────────────────────────────────────────────────
 # SPECIAL skills (2) — custom subclasses with extra logic
 # ─────────────────────────────────────────────────────────────────
@@ -534,6 +578,7 @@ OPS_SKILL_FACTORIES: dict[str, callable] = {
     "email_zalo_sequence": make_email_zalo_sequence_skill,
     "performance_audit":   make_performance_audit_skill,
     "ads_analytics":       make_ads_analytics_skill,
+    "ads_optimizer":       AdsOptimizerSkill,
     "ads_copy":            AdsCopySkill,
     "ads_generator":       AdsCopySkill,
     "video_scripts":       VideoScriptsSkill,

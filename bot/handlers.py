@@ -1951,6 +1951,30 @@ async def _handle_callback_inner(update, context, query, session, data, user_id)
             parse_mode=ParseMode.MARKDOWN,
         )
 
+    # ── Ads Optimizer confirmation ────────────────────────────────
+    elif data == "optimizer_confirm":
+        await query.edit_message_reply_markup(reply_markup=None)
+        await query.message.reply_text(
+            "⚡ *Đang thực thi...*",
+            parse_mode=ParseMode.MARKDOWN,
+        )
+        summary = await _execute_optimizer_actions(query, session)
+        await _safe_reply(
+            query.message,
+            f"✅ *Hoàn tất — Kết quả thực thi:*\n\n{summary}\n\n"
+            f"_Kiểm tra lại trong Ads Manager để xác nhận thay đổi đã áp dụng._",
+            parse_mode=ParseMode.MARKDOWN,
+        )
+
+    elif data == "optimizer_cancel":
+        session.pending_intake.pop("_pending_actions", None)
+        await save_session(session)
+        await query.edit_message_reply_markup(reply_markup=None)
+        await query.message.reply_text(
+            "❌ *Đã hủy.* Không có thay đổi nào được thực hiện.",
+            parse_mode=ParseMode.MARKDOWN,
+        )
+
     # ── Restart ───────────────────────────────────────────────────
     elif data == "restart":
         await reset_session(user_id)
@@ -2669,11 +2693,13 @@ async def _handle_ops_intake_reply(update: Update, context: ContextTypes.DEFAULT
 
     try:
         from config import AGENT_TIMEOUT
-        # Pre-fetch live FB data cho các skills cần (competitor_spy, performance_audit)
+        # Pre-fetch live FB data cho các skills cần
         if task_name == "competitor_spy":
             await _prefetch_competitor_ads(update.message, session)
         elif task_name in ("performance_audit", "ads_analytics"):
             await _prefetch_performance_data(update.message, session)
+        elif task_name == "ads_optimizer":
+            await _prefetch_optimizer_data(update.message, session)
 
         # Dispatch theo task type
         if task_name in SINGLE_SHOT_STRATEGIC:
@@ -2691,6 +2717,11 @@ async def _handle_ops_intake_reply(update: Update, context: ContextTypes.DEFAULT
             )
             await save_session(session)
             await _send_ops_result(update.message, session, task_name, result)
+
+            # Ads Optimizer: parse [ACTION:...] markers → show confirmation keyboard
+            if task_name == "ads_optimizer":
+                await _show_optimizer_confirm(update.message, session, result)
+                return
 
             # Sprint 6: Tone Calibration Loop cho content_calendar
             if task_name == "content_calendar":
@@ -3694,6 +3725,146 @@ async def _prefetch_performance_data(message: Message, session):
     except Exception as e:
         logger.warning("FB Marketing pre-fetch failed (non-blocking): %s", e)
         # Non-blocking — skill vẫn chạy, user tự paste data
+
+
+async def _prefetch_optimizer_data(message: Message, session):
+    """Pre-fetch campaign hierarchy cho ads_optimizer skill.
+    Load toàn bộ Campaign → AdSet tree, inject vào _optimizer_hierarchy."""
+    try:
+        from tools.fb_marketing import (
+            get_campaigns_with_adsets, format_hierarchy_for_optimizer, is_available
+        )
+        from config import FB_AD_ACCOUNT_ID
+        if not is_available():
+            logger.info("FB Marketing API not configured — skipping optimizer pre-fetch")
+            return
+
+        await message.reply_text(
+            "⚡ Em đang load hierarchy Campaign → Ad Set từ tài khoản Ads...",
+            parse_mode=ParseMode.MARKDOWN,
+        )
+
+        account_id = FB_AD_ACCOUNT_ID or ""
+        campaigns = await get_campaigns_with_adsets(ad_account_id=account_id)
+        hierarchy_text = format_hierarchy_for_optimizer(campaigns, account_id)
+        session.pending_intake["_optimizer_hierarchy"] = hierarchy_text
+        session.pending_intake["_optimizer_account_id"] = (
+            account_id if account_id.startswith("act_") else f"act_{account_id}"
+        )
+        logger.info("Optimizer pre-fetch: %d campaigns loaded", len(campaigns))
+
+    except Exception as e:
+        logger.warning("Optimizer pre-fetch failed (non-blocking): %s", e)
+
+
+_ACTION_RE = re.compile(
+    r'\[ACTION:(PAUSE|ACTIVATE|BUDGET_DAILY|BUDGET_LIFETIME):([^:\]]+):([^:\]]+):([^:\]]+?)(?::(\d+))?\]'
+)
+
+_ACTION_LABEL = {
+    "PAUSE": "⏸ PAUSE",
+    "ACTIVATE": "▶️ ACTIVATE",
+    "BUDGET_DAILY": "💰 DAILY BUDGET",
+    "BUDGET_LIFETIME": "💰 LIFETIME BUDGET",
+}
+
+_LEVEL_ICON = {
+    "campaign": "📊",
+    "adset": "📦",
+    "ad": "🎯",
+}
+
+
+def _parse_optimizer_actions(result: str) -> list[dict]:
+    """Extract [ACTION:...] markers from optimizer skill output."""
+    actions = []
+    for m in _ACTION_RE.finditer(result):
+        action_type, obj_id, level, name = m.group(1), m.group(2), m.group(3), m.group(4)
+        amount = int(m.group(5)) if m.group(5) else None
+        actions.append({
+            "type": action_type,
+            "id": obj_id.strip(),
+            "level": level.strip().lower(),
+            "name": name.strip(),
+            "amount": amount,
+        })
+    return actions
+
+
+async def _show_optimizer_confirm(message: Message, session, result: str):
+    """Parse action markers from optimizer output and show confirmation keyboard."""
+    from telegram import InlineKeyboardMarkup, InlineKeyboardButton
+
+    actions = _parse_optimizer_actions(result)
+    if not actions:
+        return  # No actions found — just advisory output, no confirmation needed
+
+    # Store in session for callback to execute
+    session.pending_intake["_pending_actions"] = actions
+    await save_session(session)
+
+    # Build summary of proposed actions
+    lines = ["", "─────────────────────────────", "⚡ **Minh đề xuất thực thi:**", ""]
+    for i, a in enumerate(actions, 1):
+        icon = _LEVEL_ICON.get(a["level"], "🔷")
+        label = _ACTION_LABEL.get(a["type"], a["type"])
+        name_str = f"{icon} **{a['name']}** (`{a['id']}`)"
+        if a["type"] in ("BUDGET_DAILY", "BUDGET_LIFETIME") and a["amount"]:
+            budget_k = f"{a['amount']:,} VND"
+            lines.append(f"`{i}.` {label}: {name_str} → {budget_k}")
+        else:
+            lines.append(f"`{i}.` {label}: {name_str}")
+    lines.append("")
+    lines.append(f"**Tổng: {len(actions)} actions** — Xác nhận để thực hiện ngay trên FB.")
+
+    confirm_text = "\n".join(lines)
+
+    keyboard = InlineKeyboardMarkup([[
+        InlineKeyboardButton(
+            f"✅ Thực hiện {len(actions)} actions",
+            callback_data="optimizer_confirm",
+        ),
+        InlineKeyboardButton("❌ Hủy", callback_data="optimizer_cancel"),
+    ]])
+
+    await _safe_reply(message, confirm_text, parse_mode=ParseMode.MARKDOWN, reply_markup=keyboard)
+
+
+async def _execute_optimizer_actions(query, session) -> str:
+    """Execute all pending actions from _pending_actions list. Returns summary text."""
+    from tools.fb_marketing import set_object_status, update_budget
+
+    actions = session.pending_intake.pop("_pending_actions", [])
+    if not actions:
+        return "Không có action nào để thực hiện."
+
+    results = []
+    for a in actions:
+        atype = a["type"]
+        obj_id = a["id"]
+        name = a["name"]
+        level = a["level"]
+        icon = _LEVEL_ICON.get(level, "🔷")
+
+        try:
+            if atype == "PAUSE":
+                await set_object_status(obj_id, "PAUSED")
+                results.append(f"✅ ⏸ PAUSE: {icon} **{name}** (`{obj_id}`)")
+            elif atype == "ACTIVATE":
+                await set_object_status(obj_id, "ACTIVE")
+                results.append(f"✅ ▶️ ACTIVATE: {icon} **{name}** (`{obj_id}`)")
+            elif atype in ("BUDGET_DAILY", "BUDGET_LIFETIME"):
+                budget_type = "daily_budget" if atype == "BUDGET_DAILY" else "lifetime_budget"
+                amount = a.get("amount") or 0
+                await update_budget(obj_id, budget_type, amount)
+                results.append(f"✅ 💰 BUDGET: {icon} **{name}** (`{obj_id}`) → {amount:,} VND")
+            else:
+                results.append(f"⚠️ Unknown action type: {atype}")
+        except Exception as e:
+            results.append(f"❌ FAILED — {icon} **{name}** (`{obj_id}`): {e}")
+
+    await save_session(session)
+    return "\n".join(results)
 
 
 async def _send_html_report(message: Message, html_str: str, session):
