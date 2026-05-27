@@ -83,16 +83,17 @@ class OperationalSkill(AgentSkill):
 
         elif self.context_strategy == ContextStrategy.PROFILE_PLUS_STRATEGY:
             parts = [session.profile.to_context_string()]
-            synthesis = session.get_latest_result("synthesis")
-            if synthesis:
-                parts.append(f"## Kết quả Marketing Strategy (đã có từ trước)\n{synthesis}")
+            # v0.1: advisory từ run_advisor() — ưu tiên hơn synthesis cũ
+            advisory = session.get_latest_result("advisory") or session.get_latest_result("synthesis")
+            if advisory:
+                parts.append(f"## Marketing Strategy (đã duyệt)\n{advisory}")
             return "\n\n---\n\n".join(parts)
 
         elif self.context_strategy == ContextStrategy.PROFILE_PLUS_CAMPAIGN:
             parts = [session.profile.to_context_string()]
-            synthesis = session.get_latest_result("synthesis")
-            if synthesis:
-                parts.append(f"## Marketing Strategy nền\n{synthesis}")
+            advisory = session.get_latest_result("advisory") or session.get_latest_result("synthesis")
+            if advisory:
+                parts.append(f"## Marketing Strategy nền\n{advisory}")
             campaign_brief = session.get_latest_result("campaign_brief")
             if campaign_brief:
                 parts.append(f"## Campaign Brief hiện tại\n{campaign_brief}")
