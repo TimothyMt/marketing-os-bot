@@ -484,22 +484,20 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # For returning users, greeting = intent to reset → always show menu and
     # clear any stale flags from abandoned flows.
     _STUCK_FLAGS = (
-        "_post_editing", "_awaiting_image_edit", "_awaiting_campaign_idea",
+        "_awaiting_image_edit", "_awaiting_campaign_idea",
         "_awaiting_campaign_finalize", "_awaiting_image_reference",
-        "_workflow_awaiting_topic", "_workflow_task",
         OPS_INTAKE_AWAITING, "_awaiting_followup_for", "_advisor_mode",
         BIZ_CONTEXT_AWAITING, BIZ_CONTEXT_PENDING_SKILL,
         "_awaiting_feedback_for", "_awaiting_rating_for", "_pending_regen_skill",
     )
     _stuck_now = [k for k in _STUCK_FLAGS if session.pending_intake.get(k)]
-    _tone_stuck = session.tone_calibration.get("stage") in ("checking_tone", "waiting_feedback")
-    _in_special_flow = bool(_stuck_now) or _tone_stuck
+    _in_special_flow = bool(_stuck_now)
 
     if _is_greeting:
         logger.info(
-            "Greeting detected (user=%d) | stage=%s | returning=%s | in_special=%s | stuck_flags=%s | tone_stuck=%s | results_keys=%s",
+            "Greeting detected (user=%d) | stage=%s | returning=%s | in_special=%s | stuck_flags=%s | results_keys=%s",
             session.user_id, session.stage.value, _is_returning_user,
-            _in_special_flow, _stuck_now, _tone_stuck,
+            _in_special_flow, _stuck_now,
             list(session.results.keys())[:5],
         )
 
@@ -520,13 +518,11 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 )
             return
 
-        # Returning user — clear ALL stuck flags + tone state, reset stage, show menu.
+        # Returning user — clear ALL stuck flags, reset stage, show menu.
         if session.stage not in (PipelineStage.IDLE, PipelineStage.TASK_SELECT, PipelineStage.COMPLETE):
             session.stage = PipelineStage.IDLE
         for _k in _STUCK_FLAGS:
             session.pending_intake.pop(_k, None)
-        if _tone_stuck:
-            session.tone_calibration = {}
         await save_session(session)
 
         addr = _addr(session)
@@ -544,65 +540,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # McKinsey Discovery Gate — user submitted basic business form
     if session.pending_intake.get(BIZ_CONTEXT_AWAITING):
         await _handle_basic_business_text(update, context, session, text)
-        return
-
-    # Task 1: Workflow topic intake — user gửi chủ đề viết content
-    if session.pending_intake.get("_workflow_awaiting_topic"):
-        workflow_task = session.pending_intake.get("_workflow_task", "write_content")
-        topic_text = update.message.text.strip() if update.message else ""
-        if workflow_task == "write_content":
-            # Validate topic — input quá ngắn / là calendar ref ("tuần 2",
-            # "ngày 5", "week 3") → ask back. Trước đây bot tự bịa nội dung
-            # rồi chạy 2 phút pipeline cho 1 topic vô nghĩa.
-            _t = topic_text.lower()
-            _is_calendar_ref = bool(re.fullmatch(
-                r"(tuần|tuan|week|ngày|ngay|day|bài|bai|post)\s*[\d/.-]+",
-                _t,
-            ))
-            if len(topic_text) < 15 or _is_calendar_ref:
-                hint = (
-                    "Sếp tả cụ thể hơn 1 chút ạ — tối thiểu 1 câu mô tả "
-                    "*nội dung* bài viết.\n\n"
-                    "_Vd: 'Hướng dẫn chọn serum Vitamin C cho da nhạy cảm' "
-                    "hoặc 'Chia sẻ 3 sai lầm khi chạy ads cho spa mới mở'._"
-                )
-                if _is_calendar_ref:
-                    hint = (
-                        "Em chưa hỗ trợ tham chiếu calendar trực tiếp ạ. "
-                        "Sếp gõ *nội dung* cụ thể của bài muốn viết.\n\n"
-                        "_Vd: 'Hướng dẫn chọn serum Vitamin C cho da nhạy cảm'._"
-                    )
-                await update.message.reply_text(hint, parse_mode=ParseMode.MARKDOWN)
-                # Keep _workflow_awaiting_topic set — user trả lời tiếp.
-                return
-            session.pending_intake.pop("_workflow_awaiting_topic", None)
-            await save_session(session)
-            await _run_write_content_workflow_handler(update.message, session, topic_text)
-        return
-
-    # Sprint 6: Tone calibration feedback
-    if session.tone_calibration.get("stage") == "waiting_feedback":
-        await _handle_tone_feedback(update, context, session, text)
-        return
-
-    # Sprint 7: Post edit instruction
-    if session.pending_intake.get("_post_editing"):
-        post_id = session.pending_intake.pop("_post_editing")
-        post = session.content_outputs.get(post_id)
-        if post:
-            await update.message.reply_text("✏️ _Đang chỉnh sửa..._", parse_mode=ParseMode.MARKDOWN)
-            from agents.post_actions import edit_post
-            edited = await edit_post(post.get("content", ""), text, session)
-            session.content_outputs[post_id]["content"] = edited
-            session.content_outputs[post_id]["status"] = "draft"
-            await save_session(session)
-            from agents.post_actions import format_post_preview
-            from bot.keyboards import post_action_keyboard
-            await update.message.reply_text(
-                f"✅ *`{post_id}` đã chỉnh:*\n\n" + format_post_preview(post_id, session.content_outputs[post_id]),
-                parse_mode=ParseMode.MARKDOWN,
-                reply_markup=post_action_keyboard(post_id),
-            )
         return
 
     # Sprint 5 v2: Image edit text reply
@@ -965,20 +902,6 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def _handle_callback_inner(update, context, query, session, data, user_id):
-
-    # ── Sprint 6: Tone Calibration ────────────────────────────────
-    if data.startswith("tone_"):
-        await _handle_tone_callback(query, session)
-        return
-
-    # ── Sprint 7: Per-post Actions ────────────────────────────────
-    if data.startswith("post_"):
-        await _handle_post_action_callback(query, session)
-        return
-
-    if data.startswith("adapt_"):
-        await _handle_adapt_channel_callback(query, session)
-        return
 
     # ── Competitor → Compare follow-up (Sprint 4) ─────────────────
     if data == "run_compare":
@@ -1525,20 +1448,6 @@ async def _handle_callback_inner(update, context, query, session, data, user_id)
             "📋 *Chọn chuyên gia bạn muốn làm việc cùng:*",
             parse_mode=ParseMode.MARKDOWN,
             reply_markup=MAIN_MENU_KEYBOARD,
-        )
-        return
-
-    # ── Task 1: Viết Content — full workflow ─────────────────────
-    if data == "task_write_content":
-        await query.edit_message_reply_markup(reply_markup=None)
-        session.pending_intake["_workflow_task"] = "write_content"
-        session.pending_intake["_workflow_awaiting_topic"] = "1"
-        await save_session(session)
-        await query.message.reply_text(
-            "✍️ *Max nhận yêu cầu viết content.*\n\n"
-            "Sếp muốn viết về chủ đề gì? Gõ ngắn gọn ạ.\n"
-            "_Vd: 'Hướng dẫn chọn serum Vitamin C cho da nhạy cảm' hoặc 'Giới thiệu sản phẩm mới tháng 6'_",
-            parse_mode=ParseMode.MARKDOWN,
         )
         return
 
@@ -2498,47 +2407,6 @@ def _extract_campaigns_from_strategy(synthesis_text: str) -> list[str]:
     return result
 
 
-async def _run_write_content_workflow_handler(message: Message, session, topic_text: str):
-    """Task 1: Execute the write_content workflow and send results.
-
-    Flow: Linh (brand_direction) → Nam (post_write) → Linh (post_voice_check).
-    """
-    from agents.workflow_runner import run_write_content_workflow
-
-    await message.reply_text("🔄 *Max đang điều phối team...*", parse_mode=ParseMode.MARKDOWN)
-    await message.chat.send_action(ChatAction.TYPING)
-
-    async def on_progress(text: str):
-        try:
-            await message.reply_text(text, parse_mode=ParseMode.MARKDOWN)
-        except Exception:
-            pass
-
-    result = await run_write_content_workflow(
-        session,
-        topic=topic_text,
-        on_progress=on_progress,
-    )
-
-    if result["success"]:
-        await save_session(session)
-        output = result["final_output"]
-        if len(output) > 4000:
-            for i in range(0, len(output), 4000):
-                chunk = output[i:i + 4000]
-                if i + 4000 >= len(output):
-                    await message.reply_text(chunk, reply_markup=get_action_keyboard("post_write"))
-                else:
-                    await message.reply_text(chunk)
-        else:
-            await message.reply_text(output, reply_markup=get_action_keyboard("post_write"))
-    else:
-        await message.reply_text(
-            f"⚠️ Workflow gặp lỗi ở bước {result.get('error', 'unknown')}. Sếp thử lại sau ạ.",
-            reply_markup=get_action_keyboard("post_write"),
-        )
-
-
 async def _send_single_shot_form(message: Message, session, task_name: str):
     """Send a paste-template form for ops skill intake.
     User fills in template, replies once with all fields.
@@ -2925,11 +2793,6 @@ async def _handle_ops_intake_reply(update: Update, context: ContextTypes.DEFAULT
 
             await _send_ops_result(update.message, session, task_name, result)
 
-            # Sprint 6: Tone Calibration Loop cho content_calendar
-            if task_name == "content_calendar":
-                await _start_tone_calibration(update.message, session, result)
-                return
-
             # Sprint 5: Persist Brand Voice to DB sau khi gen xong.
             # Deliverable (card + files) đã gửi xong ở trên — post-processing
             # KHÔNG được làm skill báo lỗi. Wrap riêng để mọi lỗi đều non-fatal.
@@ -3239,8 +3102,7 @@ async def _send_ops_result(message: Message, session, task_name: str, result: st
         )
         return
 
-    # content_calendar: no upsell here — _start_tone_calibration fires in main flow,
-    # and the content-gen upsell is shown AFTER tone is locked/skipped.
+    # content_calendar: no upsell here.
     if task_name == "content_calendar":
         return
 
@@ -4886,359 +4748,6 @@ async def cmd_history(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
 
     lines.append("\n💡 _Dùng `/history <từ khoá>` để tìm campaign tương tự_")
     await update.message.reply_text("\n".join(lines), parse_mode=ParseMode.MARKDOWN)
-
-
-# ═════════════════════════════════════════════════════════════════
-# Sprint 6 — Tone Calibration Loop
-# ═════════════════════════════════════════════════════════════════
-
-async def _start_tone_calibration(message, session, calendar_result: str) -> None:
-    """
-    Khởi động Tone Calibration Loop sau khi content_calendar gen xong.
-    Extract Post 1 → show với tone check keyboard.
-    """
-    from agents.tone_calibration import parse_first_post
-    from bot.keyboards import TONE_CHECK_KEYBOARD
-
-    first = parse_first_post(calendar_result)
-    if not first:
-        # Không parse được → skip calibration
-        return
-
-    # Lưu state calibration
-    session.tone_calibration = {
-        "stage":            "checking_tone",
-        "rejection_count":  0,
-        "post1_content":    first["full_block"],
-        "calendar_full":    calendar_result,
-        "locked_signals":   {},
-    }
-    await save_session(session)
-
-    preview = first["preview"][:500]
-    await message.reply_text(
-        "🎨 *Kiểm tra Tone — Bài đăng đầu tiên*\n\n"
-        "_Em extract bài đầu tiên để sếp check tone trước khi em apply cho toàn bộ calendar:_\n\n"
-        f"```\n{preview}\n```\n\n"
-        "Tone ổn chưa sếp? Nếu muốn chỉnh, gõ feedback sau khi bấm *Chỉnh tone*.",
-        parse_mode=ParseMode.MARKDOWN,
-        reply_markup=TONE_CHECK_KEYBOARD,
-    )
-
-
-async def _handle_tone_feedback(update, context, session, text: str) -> None:
-    """
-    Xử lý feedback text sau khi user bấm 'Chỉnh tone'.
-    Extract signals → regen Post 1 → show với TONE_REGEN_KEYBOARD.
-    """
-    from agents.tone_calibration import (
-        extract_tone_signals, regen_post_with_signals, format_signals_card
-    )
-    from bot.keyboards import TONE_REGEN_KEYBOARD
-
-    cal = session.tone_calibration
-    rejection_count = cal.get("rejection_count", 0) + 1
-
-    await update.message.reply_text("🔄 _Đang chỉnh tone..._", parse_mode=ParseMode.MARKDOWN)
-
-    post1 = cal.get("post1_content", "")
-    signals = await extract_tone_signals(session, text, post1)
-    new_post = await regen_post_with_signals(session, post1, signals)
-
-    # Update state
-    session.tone_calibration.update({
-        "stage":           "checking_tone",
-        "rejection_count": rejection_count,
-        "post1_content":   new_post,
-        "locked_signals":  signals,
-    })
-    await save_session(session)
-
-    signals_card = format_signals_card(signals)
-    max_attempts = 3
-    remaining = max_attempts - rejection_count
-
-    kb = TONE_REGEN_KEYBOARD
-    suffix = ""
-    if rejection_count >= max_attempts:
-        suffix = "\n\n⚠️ _Đã chỉnh tối đa 3 lần — lần này sẽ tự lock tone._"
-        # Auto-approve after 3 rejections
-        await _tone_lock_and_apply(update.message, session)
-        return
-
-    await update.message.reply_text(
-        f"{signals_card}\n\n"
-        f"*Bài viết lại:*\n```\n{new_post[:500]}\n```\n"
-        f"_(Còn {remaining} lần chỉnh){suffix}_",
-        parse_mode=ParseMode.MARKDOWN,
-        reply_markup=kb,
-    )
-
-
-async def _tone_lock_and_apply(message, session) -> None:
-    """
-    Lock tone signals → apply lên full calendar → update session.
-    """
-    from agents.tone_calibration import apply_tone_to_calendar
-    from agents.post_actions import parse_calendar_to_posts
-
-    cal = session.tone_calibration
-    signals = cal.get("locked_signals", {})
-    post1 = cal.get("post1_content", "")
-    calendar_full = cal.get("calendar_full", "")
-
-    await message.reply_text(
-        "🔒 *Tone đã lock!* Em đang apply cho toàn bộ calendar...",
-        parse_mode=ParseMode.MARKDOWN,
-    )
-
-    # Apply tone lên full calendar
-    if signals:
-        updated_calendar = await apply_tone_to_calendar(session, calendar_full, signals, post1)
-    else:
-        updated_calendar = calendar_full
-
-    # Sprint 7: Parse posts → assign POST-XXX IDs
-    campaign_id = session.pending_intake.get("campaign_name", "")
-    posts = parse_calendar_to_posts(updated_calendar, campaign_id=campaign_id)
-    if posts:
-        session.content_outputs.update(posts)
-
-    # Update results + clear tone state
-    session.add_result("content_calendar", updated_calendar)
-    session.tone_calibration = {"stage": "done", "locked_signals": signals}
-    await save_session(session)
-
-    # Show updated calendar
-    preview = updated_calendar[:2000] + ("..." if len(updated_calendar) > 2000 else "")
-    await message.reply_text(
-        f"✅ *Content Calendar (Tone Applied)*\n\n{preview}",
-        parse_mode=ParseMode.MARKDOWN,
-    )
-
-    # Sprint 7: Show post IDs summary
-    if posts:
-        post_count = len(posts)
-        await message.reply_text(
-            f"📋 *{post_count} bài đã được gán ID*\n\n"
-            + "\n".join([f"`{pid}` — {p.get('channel','').capitalize()} · Tuần {p.get('week',1)}"
-                        for pid, p in list(posts.items())[:10]])
-            + ("\n..." if post_count > 10 else "")
-            + "\n\n💡 _Dùng /post \\<ID\\> để xem + quản lý từng bài_",
-            parse_mode=ParseMode.MARKDOWN,
-        )
-
-    # Show content-gen upsell AFTER tone is locked
-    await message.reply_text(
-        "✅ *Lịch Nội Dung xong rồi sếp!*\n\n"
-        "Sếp muốn em *sản xuất nội dung chi tiết* từ lịch này luôn không ạ?\n"
-        "_(Mỗi bài: Hook + Body 200-300 chữ + CTA + Hashtags + Visual hint)_",
-        parse_mode=ParseMode.MARKDOWN,
-        reply_markup=CALENDAR_TO_CONTENT_GEN_KEYBOARD,
-    )
-
-
-# ─── Tone calibration callbacks ───────────────────────────────────────────────
-
-async def _handle_tone_callback(query, session) -> None:
-    """Dispatch tone_* callback queries."""
-    data = query.data
-
-    if data == "tone_approve":
-        await query.edit_message_reply_markup(reply_markup=None)
-        # Lock với signals hiện tại (có thể rỗng nếu approve ngay lần đầu)
-        await _tone_lock_and_apply(query.message, session)
-
-    elif data == "tone_reject":
-        await query.edit_message_reply_markup(reply_markup=None)
-        session.tone_calibration["stage"] = "waiting_feedback"
-        await save_session(session)
-        await query.message.reply_text(
-            "✏️ *Gõ feedback về tone để em chỉnh:*\n\n"
-            "_Ví dụ: 'Viết thân mật hơn, bớt formal' / 'Thêm emoji' / 'Ngắn hơn, mạnh hơn'_",
-            parse_mode=ParseMode.MARKDOWN,
-        )
-
-    elif data == "tone_skip":
-        await query.edit_message_reply_markup(reply_markup=None)
-        # Skip: parse calendar gốc sang POST-XXX luôn không apply tone
-        cal = session.tone_calibration
-        from agents.post_actions import parse_calendar_to_posts
-        posts = parse_calendar_to_posts(cal.get("calendar_full", ""))
-        if posts:
-            session.content_outputs.update(posts)
-        session.tone_calibration = {"stage": "done"}
-        await save_session(session)
-        await query.message.reply_text(
-            f"⏭ _Bỏ qua tone calibration. Calendar đã lưu với {len(posts)} bài._",
-            parse_mode=ParseMode.MARKDOWN,
-        )
-        await query.message.reply_text(
-            "✅ *Lịch Nội Dung xong rồi sếp!*\n\n"
-            "Sếp muốn em *sản xuất nội dung chi tiết* từ lịch này luôn không ạ?\n"
-            "_(Mỗi bài: Hook + Body 200-300 chữ + CTA + Hashtags + Visual hint)_",
-            parse_mode=ParseMode.MARKDOWN,
-            reply_markup=CALENDAR_TO_CONTENT_GEN_KEYBOARD,
-        )
-
-
-# ═════════════════════════════════════════════════════════════════
-# Sprint 7 — Per-post Actions (/post command + callbacks)
-# ═════════════════════════════════════════════════════════════════
-
-async def cmd_post(update, context) -> None:
-    """
-    /post <POST-ID> — Xem chi tiết + action menu cho 1 bài.
-    Ví dụ: /post POST-001  hoặc  /post 001
-    """
-    user_id = update.effective_user.id
-    from storage import get_session
-    session = await get_session(user_id)
-
-    arg = " ".join(context.args).strip().upper()
-    if not arg.startswith("POST-"):
-        arg = f"POST-{arg.zfill(3)}"
-
-    post = session.content_outputs.get(arg)
-    if not post:
-        await update.message.reply_text(
-            f"❌ Không tìm thấy `{arg}`.\n"
-            "Dùng `/history` để xem danh sách posts.",
-            parse_mode=ParseMode.MARKDOWN,
-        )
-        return
-
-    from agents.post_actions import format_post_preview
-    from bot.keyboards import post_action_keyboard
-
-    preview = format_post_preview(arg, post)
-    await update.message.reply_text(
-        preview,
-        parse_mode=ParseMode.MARKDOWN,
-        reply_markup=post_action_keyboard(arg),
-    )
-
-
-async def _handle_post_action_callback(query, session) -> None:
-    """Dispatch post_edit/adapt/variant/delete callbacks."""
-    data = query.data  # e.g. "post_edit_001"
-    parts = data.split("_", 2)  # ["post", "edit", "001"]
-    if len(parts) < 3:
-        return
-
-    action = parts[1]  # edit | adapt | variant | delete
-    pid_short = parts[2]  # "001"
-    post_id = f"POST-{pid_short}"
-    post = session.content_outputs.get(post_id)
-
-    if not post:
-        await query.answer("Không tìm thấy bài này.", show_alert=True)
-        return
-
-    await query.edit_message_reply_markup(reply_markup=None)
-
-    if action == "delete":
-        session.content_outputs[post_id]["status"] = "deleted"
-        await save_session(session)
-        await query.message.reply_text(
-            f"🗑 `{post_id}` đã xoá khỏi calendar.",
-            parse_mode=ParseMode.MARKDOWN,
-        )
-        return
-
-    if action == "adapt":
-        # Show channel selection
-        from telegram import InlineKeyboardMarkup, InlineKeyboardButton
-        kb = InlineKeyboardMarkup([
-            [InlineKeyboardButton("📱 TikTok",    callback_data=f"adapt_{pid_short}_tiktok")],
-            [InlineKeyboardButton("💬 Zalo OA",   callback_data=f"adapt_{pid_short}_zalo")],
-            [InlineKeyboardButton("📸 Instagram", callback_data=f"adapt_{pid_short}_instagram")],
-            [InlineKeyboardButton("📧 Email",     callback_data=f"adapt_{pid_short}_email")],
-        ])
-        await query.message.reply_text(
-            f"🔄 Adapt `{post_id}` sang kênh nào?",
-            parse_mode=ParseMode.MARKDOWN,
-            reply_markup=kb,
-        )
-        return
-
-    if action == "variant":
-        await query.message.reply_text("✨ _Đang tạo A/B variant..._", parse_mode=ParseMode.MARKDOWN)
-        from agents.post_actions import gen_variant
-        variant_content = await gen_variant(post.get("content", ""), session)
-        # Assign new ID
-        existing = [k for k in session.content_outputs if k.startswith(f"{post_id}-V")]
-        variant_id = f"{post_id}-V{len(existing)+1}"
-        session.content_outputs[variant_id] = {
-            **post,
-            "content":   variant_content,
-            "parent_id": post_id,
-            "status":    "draft",
-        }
-        await save_session(session)
-        from agents.post_actions import format_post_preview
-        from bot.keyboards import post_action_keyboard
-        await query.message.reply_text(
-            f"✨ *Variant tạo thành công:* `{variant_id}`\n\n"
-            + format_post_preview(variant_id, session.content_outputs[variant_id]),
-            parse_mode=ParseMode.MARKDOWN,
-            reply_markup=post_action_keyboard(variant_id),
-        )
-        return
-
-    if action == "edit":
-        # Set state chờ edit instruction
-        session.pending_intake["_post_editing"] = post_id
-        await save_session(session)
-        await query.message.reply_text(
-            f"✏️ *Edit `{post_id}`* — gõ yêu cầu chỉnh sửa:\n\n"
-            "_Ví dụ: 'Viết hook mạnh hơn' / 'Thêm social proof' / 'Ngắn hơn 30%'_",
-            parse_mode=ParseMode.MARKDOWN,
-        )
-
-
-async def _handle_adapt_channel_callback(query, session) -> None:
-    """Xử lý adapt_<pid>_<channel> callback."""
-    parts = query.data.split("_", 2)  # ["adapt", "001", "tiktok"]
-    if len(parts) < 3:
-        return
-    pid_short = parts[1]
-    channel   = parts[2]
-    post_id   = f"POST-{pid_short}"
-    post = session.content_outputs.get(post_id)
-    if not post:
-        await query.answer("Không tìm thấy bài.", show_alert=True)
-        return
-
-    await query.edit_message_reply_markup(reply_markup=None)
-    await query.message.reply_text(
-        f"🔄 _Đang adapt `{post_id}` sang {channel.capitalize()}..._",
-        parse_mode=ParseMode.MARKDOWN,
-    )
-
-    from agents.post_actions import adapt_post
-    adapted = await adapt_post(post.get("content", ""), channel, session)
-
-    adapted_id = f"{post_id}-{channel[:2].upper()}"
-    session.content_outputs[adapted_id] = {
-        **post,
-        "content":   adapted,
-        "channel":   channel,
-        "parent_id": post_id,
-        "status":    "draft",
-    }
-    # Track adapted versions on parent
-    session.content_outputs[post_id].setdefault("adapted_versions", []).append(adapted_id)
-    await save_session(session)
-
-    from agents.post_actions import format_post_preview
-    from bot.keyboards import post_action_keyboard
-    await query.message.reply_text(
-        f"✅ *Adapted: `{adapted_id}`* ({channel.capitalize()})\n\n"
-        + format_post_preview(adapted_id, session.content_outputs[adapted_id]),
-        parse_mode=ParseMode.MARKDOWN,
-        reply_markup=post_action_keyboard(adapted_id),
-    )
 
 
 # ═════════════════════════════════════════════════════════════════

@@ -257,39 +257,3 @@ MONITOR_INTERVAL_KEYBOARD = InlineKeyboardMarkup([
 # vì cần inject page_id. Không define keyboard tĩnh ở đây.
 
 
-# ─────────────────────────────────────────────────────────────────
-# Sprint 6 — Tone Calibration Loop
-# ─────────────────────────────────────────────────────────────────
-
-TONE_CHECK_KEYBOARD = InlineKeyboardMarkup([
-    [InlineKeyboardButton("✅ Tone đúng rồi — Lock & gen tiếp", callback_data="tone_approve")],
-    [InlineKeyboardButton("✏️ Chỉnh tone (gõ feedback)",       callback_data="tone_reject")],
-    [InlineKeyboardButton("⏭ Bỏ qua kiểm tra tone",           callback_data="tone_skip")],
-])
-
-TONE_REGEN_KEYBOARD = InlineKeyboardMarkup([
-    [InlineKeyboardButton("✅ Ổn rồi — Lock tone này",  callback_data="tone_approve")],
-    [InlineKeyboardButton("🔄 Chỉnh thêm",              callback_data="tone_reject")],
-    [InlineKeyboardButton("⏭ Bỏ qua, dùng bản gốc",    callback_data="tone_skip")],
-])
-
-
-# ─────────────────────────────────────────────────────────────────
-# Sprint 7 — Per-post Action Menu (built dynamically with post_id)
-# ─────────────────────────────────────────────────────────────────
-
-def post_action_keyboard(post_id: str) -> InlineKeyboardMarkup:
-    """Build per-post action keyboard. post_id = 'POST-001' etc."""
-    pid = post_id.replace("POST-", "")  # '001'
-    return InlineKeyboardMarkup([
-        [
-            InlineKeyboardButton("✏️ Edit",     callback_data=f"post_edit_{pid}"),
-            InlineKeyboardButton("🔄 Adapt",    callback_data=f"post_adapt_{pid}"),
-        ],
-        [
-            InlineKeyboardButton("✨ Variant",  callback_data=f"post_variant_{pid}"),
-            InlineKeyboardButton("🗑 Delete",   callback_data=f"post_delete_{pid}"),
-        ],
-    ])
-
-
