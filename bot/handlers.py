@@ -412,7 +412,10 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "max ơi", "max", "ơi", "hello", "hi", "chào",
         "hey", "xin chào", "helo", "hii", "alo", "yo", "sup", "hola",
     )
-    _t = text.lower().strip()
+    # iOS/macOS Telegram often sends Vietnamese diacritics in NFD form;
+    # keywords above are NFC. Normalize so byte comparison matches.
+    import unicodedata as _ud
+    _t = _ud.normalize("NFC", text).lower().strip()
     _is_greeting = (
         len(_t) <= 25
         and (
