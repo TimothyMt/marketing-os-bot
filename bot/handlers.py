@@ -433,7 +433,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         or session.pending_intake.get("_awaiting_campaign_idea")
         or session.pending_intake.get("_awaiting_campaign_finalize")
         or session.pending_intake.get("_awaiting_image_reference")
-        or session.pending_intake.get(BIZ_CONTEXT_AWAITING)
+        # BIZ_CONTEXT_AWAITING intentionally excluded: greeting must be able to abandon the form
         or session.pending_intake.get("_workflow_awaiting_topic")
     )
     # Returning user heuristic: bất kỳ field profile nào có data → coi như đã có context
@@ -458,14 +458,28 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             list(session.results.keys())[:5], _in_special_flow,
         )
 
-    if _is_greeting and _is_returning_user and not _in_special_flow:
-        # Reset stage về IDLE để show menu — KHÔNG đi qua intake/followup
+    if _is_greeting and not _in_special_flow:
+        if not _is_returning_user:
+            # Brand-new user greeted before /start → start onboarding
+            if not session.pending_intake.get("_awaiting_user_name"):
+                session.pending_intake["_awaiting_user_name"] = "1"
+                session.stage = PipelineStage.TASK_SELECT
+                await save_session(session)
+                await update.message.reply_text(
+                    "👋 *Em là Max — AI CMO của sếp.*\n\n"
+                    "Sếp gõ tên để em biết gọi sếp thế nào ạ?\n\n"
+                    "_Vd: \"Nhiên\" / \"Anh Minh\" / \"Founder Lily\"_",
+                    parse_mode=ParseMode.MARKDOWN,
+                )
+            return
+
+        # Returning user — reset to menu
         if session.stage not in (PipelineStage.IDLE, PipelineStage.TASK_SELECT, PipelineStage.COMPLETE):
             session.stage = PipelineStage.IDLE
-        # Clear stale pending_intake flags để không route nhầm lần tiếp
-        session.pending_intake.pop(OPS_INTAKE_AWAITING, None)
-        session.pending_intake.pop("_awaiting_followup_for", None)
-        session.pending_intake.pop("_advisor_mode", None)
+        # Clear all stale flags (including biz context gate)
+        for _k in (OPS_INTAKE_AWAITING, "_awaiting_followup_for", "_advisor_mode",
+                   BIZ_CONTEXT_AWAITING, BIZ_CONTEXT_PENDING_SKILL):
+            session.pending_intake.pop(_k, None)
         await save_session(session)
 
         addr = _addr(session)
