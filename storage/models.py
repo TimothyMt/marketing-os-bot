@@ -341,6 +341,11 @@ class Session:
     created_at: Optional[str] = None
     updated_at: Optional[str] = None
 
+    # Transient: skills mutated via add_result() since last save. Used by the
+    # V2 adapter to avoid an N+1 GET preflight over the whole results dict.
+    # Resets on reload (default_factory) and after every save_session_v2().
+    _dirty_skills: set = field(default_factory=set, repr=False, compare=False)
+
     # ─── Intake history ───────────────────────────────────────────
 
     def add_to_history(self, role: str, content: str):
@@ -360,6 +365,7 @@ class Session:
         # FIFO trim
         if len(versions) > MAX_VERSIONS_PER_SKILL:
             self.results[skill_key] = versions[-MAX_VERSIONS_PER_SKILL:]
+        self._dirty_skills.add(skill_key)
         return next_version
 
     def get_latest_result(self, skill_key: str) -> Optional[str]:

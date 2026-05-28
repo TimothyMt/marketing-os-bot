@@ -120,7 +120,7 @@ async def save_session_v2(session: Session) -> None:
     from dataclasses import asdict
     from storage.v2 import (
         upsert_user, upsert_profile, upsert_session_slim,
-        insert_skill_run, get_latest_skill_run,
+        insert_skill_run,
     )
 
     user_id = session.user_id
@@ -183,19 +183,19 @@ async def save_session_v2(session: Session) -> None:
         content_outputs=session.content_outputs or {},
     )
 
-    # ── 4. skill_runs — append-only, chỉ insert version mới ─
-    for skill_name, versions in (session.results or {}).items():
-        if skill_name.startswith("_") or not versions:
+    # ── 4. skill_runs — append-only, chỉ insert skill vừa thay đổi ─
+    # Trước đây: iterate toàn bộ session.results + GET get_latest_skill_run
+    # mỗi skill = N+1 query. Giờ chỉ ghi skill được add_result() từ lần
+    # save trước. insert_skill_run tự tính next_version từ DB, không cần
+    # preflight ở đây.
+    dirty = list(session._dirty_skills)
+    for skill_name in dirty:
+        versions = session.results.get(skill_name) or []
+        if not versions or skill_name.startswith("_"):
             continue
-        latest_local = versions[-1]
-
-        # Check DB latest version
-        latest_db = await get_latest_skill_run(user_id, skill_name)
-        db_version = (latest_db or {}).get("version", 0)
-
-        if latest_local.version > db_version:
-            await insert_skill_run(
-                user_id=user_id,
-                skill_name=skill_name,
-                content=latest_local.content,
-            )
+        await insert_skill_run(
+            user_id=user_id,
+            skill_name=skill_name,
+            content=versions[-1].content,
+        )
+    session._dirty_skills.clear()
