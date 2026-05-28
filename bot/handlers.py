@@ -551,6 +551,30 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         workflow_task = session.pending_intake.get("_workflow_task", "write_content")
         topic_text = update.message.text.strip() if update.message else ""
         if workflow_task == "write_content":
+            # Validate topic — input quá ngắn / là calendar ref ("tuần 2",
+            # "ngày 5", "week 3") → ask back. Trước đây bot tự bịa nội dung
+            # rồi chạy 2 phút pipeline cho 1 topic vô nghĩa.
+            _t = topic_text.lower()
+            _is_calendar_ref = bool(re.fullmatch(
+                r"(tuần|tuan|week|ngày|ngay|day|bài|bai|post)\s*[\d/.-]+",
+                _t,
+            ))
+            if len(topic_text) < 15 or _is_calendar_ref:
+                hint = (
+                    "Sếp tả cụ thể hơn 1 chút ạ — tối thiểu 1 câu mô tả "
+                    "*nội dung* bài viết.\n\n"
+                    "_Vd: 'Hướng dẫn chọn serum Vitamin C cho da nhạy cảm' "
+                    "hoặc 'Chia sẻ 3 sai lầm khi chạy ads cho spa mới mở'._"
+                )
+                if _is_calendar_ref:
+                    hint = (
+                        "Em chưa hỗ trợ tham chiếu calendar trực tiếp ạ. "
+                        "Sếp gõ *nội dung* cụ thể của bài muốn viết.\n\n"
+                        "_Vd: 'Hướng dẫn chọn serum Vitamin C cho da nhạy cảm'._"
+                    )
+                await update.message.reply_text(hint, parse_mode=ParseMode.MARKDOWN)
+                # Keep _workflow_awaiting_topic set — user trả lời tiếp.
+                return
             session.pending_intake.pop("_workflow_awaiting_topic", None)
             await save_session(session)
             await _run_write_content_workflow_handler(update.message, session, topic_text)

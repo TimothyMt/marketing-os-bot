@@ -4,7 +4,11 @@ Workflow Runner — executes multi-step task workflows.
 Main entry point: run_write_content_workflow()
   Step 1: Linh (brand) generates brand_direction
   Step 2: Nam (content) runs post_write with brand_direction as context
-  Step 3: Linh (brand) runs post_voice_check on Nam's draft (optional)
+
+Note: post_voice_check (critique) is no longer chained here — it produced
+a critique report instead of refining the post, then was returned as the
+final deliverable. Users who want a QA pass can invoke post_voice_check
+as a standalone skill.
 """
 import logging
 from typing import Callable, Optional
@@ -190,37 +194,8 @@ async def run_write_content_workflow(
             "steps": steps_results,
         }
 
-    # ── Step 3: Linh runs post_voice_check (optional) ────────────
-    if on_progress:
-        try:
-            await on_progress("🔍 *Linh đang kiểm tra brand voice...*")
-        except Exception:
-            pass
-
-    session.pending_intake["draft_post"] = post_write_output[:3000]
-    session.pending_intake["brand_voice_rules"] = brand_direction[:1500]
-
-    try:
-        voice_check_output = await run_operational_skill("post_voice_check", session)
-        steps_results["post_voice_check"] = voice_check_output
-        final_output = voice_check_output
-    except Exception as e:
-        logger.warning(
-            "[workflow] post_voice_check failed (optional, skipping) for user=%s: %s",
-            session.user_id, e,
-        )
-        await log_workflow_error(
-            user_id=session.user_id,
-            task_type="write_content",
-            step_index=2,
-            skill_name="post_voice_check",
-            error_msg=e,
-        )
-        # Step is optional — use post_write output as final
-        final_output = post_write_output
-
     return {
         "success": True,
-        "final_output": final_output,
+        "final_output": post_write_output,
         "steps": steps_results,
     }
