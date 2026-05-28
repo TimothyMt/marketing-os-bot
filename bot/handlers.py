@@ -2829,10 +2829,37 @@ async def _handle_ops_intake_reply(update: Update, context: ContextTypes.DEFAULT
                 await _abort_with_fb_error(update.message, session, "ads_analytics", fb_status)
                 return
         elif task_name == "performance_audit":
-            # Skill này có intake fields cho user paste tay → không hard-gate.
-            # Live data là bonus; nếu fail, skill prompt sẽ tự refuse khi user
-            # cũng không paste data thật.
-            await _prefetch_performance_data(update.message, session)
+            fb_status = await _prefetch_performance_data(update.message, session)
+            # Gate: cần live data HOẶC user paste số liệu thực trong channels_data
+            has_live = bool(session.pending_intake.get("_fb_data"))
+            channels = (session.pending_intake.get("channels_data") or "").strip()
+            import re as _re
+            has_manual = bool(channels and len(channels) >= 20 and _re.search(r"\d", channels))
+            if not has_live and not has_manual:
+                session.stage = PipelineStage.TASK_SELECT
+                session.pending_intake.pop(OPS_INTAKE_AWAITING, None)
+                await save_session(session)
+                reason = fb_status.get("reason", "no_token")
+                detail = fb_status.get("detail", "")
+                if reason in ("no_token", "no_account"):
+                    api_note = (
+                        f"FB API chưa cấu hình ({detail}). "
+                        "Admin set env var trên Railway, HOẶC:"
+                    )
+                elif reason == "api_error":
+                    api_note = f"FB API lỗi: `{detail}`. Admin fix token, HOẶC:"
+                else:
+                    api_note = "FB API không trả về data. HOẶC:"
+                await update.message.reply_text(
+                    "🛑 *Không có data để audit.*\n\n"
+                    f"_{api_note}_\n\n"
+                    "*Sếp paste số liệu thật vào ô `Số liệu theo kênh` khi chạy lại task* "
+                    "(vd: `Meta: 800 mess, CPMess 19K, CTR 1.2%, 120 lead`). "
+                    "Không có số thật → em không audit được.\n\n"
+                    "_Gõ /menu để chọn task khác._",
+                    parse_mode=ParseMode.MARKDOWN,
+                )
+                return
         elif task_name == "ads_optimizer":
             fb_status = await _prefetch_optimizer_data(update.message, session)
             if not session.pending_intake.get("_optimizer_hierarchy"):
