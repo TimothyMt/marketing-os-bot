@@ -289,6 +289,7 @@ OPERATIONAL_TASKS: dict[str, TaskConfig] = {
             {"key": "competitor_name", "label": "Tên đối thủ",                          "example": "Cocoon Vietnam",                                  "required": True},
             {"key": "fanpage_url",     "label": "Link Facebook Page (nếu có, để chính xác)", "example": "https://facebook.com/cocoonvn",              "required": False},
             {"key": "focus_area",      "label": "Sếp muốn em focus phân tích gì",       "example": "Hook style / Offer mechanics / Creative format",  "required": False},
+            {"key": "pasted_ads",      "label": "Paste ads tay (nếu FB API chưa setup, mở https://facebook.com/ads/library copy 3-10 ads vào đây)", "example": "Ad 1: 'CEO sẽ hỏi gì?...' / Ad 2: ...", "required": False},
         ],
     ),
     "competitor_comparison": TaskConfig(

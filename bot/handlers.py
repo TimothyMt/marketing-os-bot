@@ -2768,6 +2768,31 @@ async def _handle_ops_intake_reply(update: Update, context: ContextTypes.DEFAULT
         # Pre-fetch live FB data cho các skills cần
         if task_name == "competitor_spy":
             await _prefetch_competitor_ads(update.message, session)
+            # Merge pasted_ads (manual fallback) vào _fb_data nếu user paste tay
+            pasted = (session.pending_intake.get("pasted_ads") or "").strip()
+            if pasted and len(pasted) > 30:
+                existing = session.pending_intake.get("_fb_data", "")
+                merged = (
+                    (existing + "\n\n---\n\n" if existing else "")
+                    + "**ADS USER PASTE TAY:**\n\n" + pasted
+                )
+                session.pending_intake["_fb_data"] = merged
+            # Hard gate — không có data thật → từ chối chạy, KHÔNG hallucinate
+            if not session.pending_intake.get("_fb_data"):
+                session.stage = PipelineStage.TASK_SELECT
+                session.pending_intake.pop(OPS_INTAKE_AWAITING, None)
+                await save_session(session)
+                await update.message.reply_text(
+                    "🛑 *Em chưa có data ads thật để phân tích.*\n\n"
+                    "Em không tự bịa được — sẽ ra phân tích vớ vẩn.\n\n"
+                    "*Sếp có 2 cách:*\n"
+                    "1. *Setup FB API* (admin set `FB_ACCESS_TOKEN` env) → em auto-fetch\n"
+                    "2. *Paste tay*: Vào https://www.facebook.com/ads/library/ → tìm đối thủ → copy text 3-10 ads → chạy lại task và điền vào ô *Paste ads tay*\n\n"
+                    "Gõ /menu để quay lại.",
+                    parse_mode=ParseMode.MARKDOWN,
+                    reply_markup=MAIN_MENU_KEYBOARD,
+                )
+                return
         elif task_name in ("performance_audit", "ads_analytics"):
             await _prefetch_performance_data(update.message, session)
         elif task_name == "ads_optimizer":
@@ -3765,6 +3790,9 @@ async def _prefetch_competitor_ads(message: Message, session):
                 limit=20,
             )
 
+        if not ads:
+            logger.info("FB Ads Library returned 0 ads — not setting _fb_data")
+            return
         fb_data = format_ads_for_analysis(ads, competitor_name or "đối thủ")
         session.pending_intake["_fb_data"] = fb_data
         # Lưu ad IDs cho monitor diff sau
@@ -3773,7 +3801,7 @@ async def _prefetch_competitor_ads(message: Message, session):
 
     except Exception as e:
         logger.warning("FB Ads Library pre-fetch failed (non-blocking): %s", e)
-        # Non-blocking — skill vẫn chạy mà không có live data
+        # Non-blocking — gate downstream sẽ block nếu không có _fb_data + pasted_ads
 
 
 async def _prefetch_performance_data(message: Message, session):
