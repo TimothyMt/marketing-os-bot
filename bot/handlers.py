@@ -2919,16 +2919,26 @@ async def _handle_ops_intake_reply(update: Update, context: ContextTypes.DEFAULT
                     logger.exception("[BV] post-processing failed (non-fatal): %s", e)
     except asyncio.TimeoutError:
         logger.error("Skill %s timeout sau %ds", task_name, 500)
+        # Reset stage để message tiếp theo không bị xử lý như intake reply.
+        session.stage = PipelineStage.TASK_SELECT
+        session.pending_intake.pop(OPS_INTAKE_AWAITING, None)
+        await save_session(session)
         await update.message.reply_text(
             f"⚠️ Skill {task_name} timeout (API chậm hoặc treo). Sếp thử lại nhé.\n"
             f"Nếu lặp lại, có thể giảm scope intake để output ngắn hơn."
         )
     except (TimedOut, NetworkError) as e:
         # Telegram delivery timed out — output thường ĐÃ gửi tới user.
-        # Không hiện lỗi "thử /start" gây hiểu nhầm là skill fail.
+        # Success path (line ~2892) đã reset stage trước khi gửi tin, nên
+        # ở đây không cần reset thêm. Chỉ log.
         logger.warning("Skill %s: Telegram delivery timeout (output likely delivered): %s", task_name, e)
     except Exception as e:
         logger.exception("Skill %s failed: %s", task_name, e)
+        # Skill có thể fail bất cứ đâu trong block — đảm bảo stage reset
+        # để user không kẹt ở INTAKE (message kế sẽ rơi vào _handle_intake).
+        session.stage = PipelineStage.TASK_SELECT
+        session.pending_intake.pop(OPS_INTAKE_AWAITING, None)
+        await save_session(session)
         await update.message.reply_text(
             f"⚠️ Skill {task_name} gặp lỗi: {str(e)[:200]}\n\nThử /start lại nhé."
         )
