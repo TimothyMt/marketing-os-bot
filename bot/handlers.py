@@ -2820,57 +2820,24 @@ async def _handle_ops_intake_reply(update: Update, context: ContextTypes.DEFAULT
                     + "**ADS USER PASTE TAY:**\n\n" + pasted
                 )
                 session.pending_intake["_fb_data"] = merged
-            # Hard gate — không có data thật → từ chối chạy, KHÔNG hallucinate
             if not session.pending_intake.get("_fb_data"):
-                session.stage = PipelineStage.TASK_SELECT
-                session.pending_intake.pop(OPS_INTAKE_AWAITING, None)
-                await save_session(session)
-                # Reason-specific message
-                reason = fb_status.get("reason", "no_token")
-                detail = fb_status.get("detail", "")
-                if reason == "no_token":
-                    body = (
-                        "🛑 *FB API chưa hoạt động.*\n\n"
-                        "Server chưa có `FB_ACCESS_TOKEN`. ⚠️ *KHÔNG paste token vào chat* — "
-                        "admin cần set trên Railway dashboard → Variables.\n\n"
-                        "Hoặc paste ads tay: chạy lại task này và điền vào ô *Paste ads tay*."
-                    )
-                elif reason == "page_not_found":
-                    body = (
-                        f"🛑 *Không tìm được Page trên FB.*\n\n"
-                        f"_{detail}_\n\n"
-                        "Sếp check lại link fanpage (phải là URL công khai dạng "
-                        "`https://facebook.com/tenpage`), hoặc paste ads tay."
-                    )
-                elif reason == "no_ads_in_country":
-                    body = (
-                        f"🛑 *Page không có ads đang chạy ở VN.*\n\n"
-                        f"_{detail}_\n\n"
-                        "Có thể đối thủ không chạy quảng cáo Meta hiện tại, hoặc chạy ở "
-                        "thị trường khác. Sếp paste ads tay nếu có ads từ thị trường khác."
-                    )
-                elif reason == "api_error":
-                    # Likely token expired or missing permission
-                    body = (
-                        f"🛑 *FB API trả lỗi.*\n\n"
-                        f"```\n{detail}\n```\n"
-                        "Thường do token hết hạn (60 ngày) hoặc thiếu permission `ads_read`. "
-                        "Admin cần generate token mới rồi update env var trên Railway."
-                    )
-                else:  # no_input
-                    body = (
-                        "🛑 *Em chưa có tên đối thủ hoặc link Page.*\n\n"
-                        "Chạy lại task và điền *Tên đối thủ* (bắt buộc) hoặc *Link Facebook Page*."
-                    )
-                await update.message.reply_text(
-                    body + "\n\n_Gõ /menu để chọn task khác._",
-                    parse_mode=ParseMode.MARKDOWN,
-                )
+                await _abort_with_fb_error(update.message, session, "competitor_spy", fb_status)
                 return
-        elif task_name in ("performance_audit", "ads_analytics"):
+        elif task_name == "ads_analytics":
+            fb_status = await _prefetch_performance_data(update.message, session)
+            if not session.pending_intake.get("_fb_data"):
+                await _abort_with_fb_error(update.message, session, "ads_analytics", fb_status)
+                return
+        elif task_name == "performance_audit":
+            # Skill này có intake fields cho user paste tay → không hard-gate.
+            # Live data là bonus; nếu fail, skill prompt sẽ tự refuse khi user
+            # cũng không paste data thật.
             await _prefetch_performance_data(update.message, session)
         elif task_name == "ads_optimizer":
-            await _prefetch_optimizer_data(update.message, session)
+            fb_status = await _prefetch_optimizer_data(update.message, session)
+            if not session.pending_intake.get("_optimizer_hierarchy"):
+                await _abort_with_fb_error(update.message, session, "ads_optimizer", fb_status)
+                return
 
         # Dispatch theo task type
         if task_name in SINGLE_SHOT_STRATEGIC:
@@ -3810,6 +3777,89 @@ async def _log_feedback_to_db(session, skill_name: str, rating: int, feedback_te
 
 # ─── Facebook API pre-fetch helpers ─────────────────────────────
 
+async def _abort_with_fb_error(message: Message, session, task_name: str, fb_status: dict):
+    """Send reason-specific error message + reset session, so user knows
+    why the skill refused to run. No menu keyboard inline (per user feedback)."""
+    session.stage = PipelineStage.TASK_SELECT
+    session.pending_intake.pop(OPS_INTAKE_AWAITING, None)
+    await save_session(session)
+
+    reason = fb_status.get("reason", "no_token")
+    detail = fb_status.get("detail", "")
+
+    # Skill-specific suffix (what user can do as workaround)
+    workaround = {
+        "competitor_spy": (
+            "*Workaround:* Paste ads tay — chạy lại task và điền vào ô *Paste ads tay* "
+            "(text 3-10 ads copy từ https://facebook.com/ads/library)."
+        ),
+        "ads_analytics": (
+            "*Workaround:* Chạy 📊 *Báo Cáo Ads* (`performance_audit`) thay vì "
+            "*Analytics tự động* — báo cáo cho phép sếp paste metric tay."
+        ),
+        "ads_optimizer": (
+            "*Workaround:* Task này BẮT BUỘC live FB API (cần campaign ID thật để "
+            "thao tác). Không thể paste tay. Phải fix env var trước."
+        ),
+    }.get(task_name, "")
+
+    # Reason-specific message
+    if reason == "no_token":
+        body = (
+            "🛑 *FB API chưa hoạt động.*\n\n"
+            "Server chưa có `FB_ACCESS_TOKEN`. ⚠️ *KHÔNG paste token vào chat* — "
+            "admin set trên Railway dashboard → Variables."
+        )
+    elif reason == "no_account":
+        body = (
+            "🛑 *FB Ad Account chưa cấu hình.*\n\n"
+            "Server chưa có `FB_AD_ACCOUNT_ID` env var. Admin set trên Railway "
+            "(dạng `act_1234567890`)."
+        )
+    elif reason == "page_not_found":
+        body = (
+            f"🛑 *Không tìm được Page trên FB.*\n\n"
+            f"_{detail}_\n\n"
+            "Sếp check lại link fanpage (URL công khai dạng `https://facebook.com/tenpage`)."
+        )
+    elif reason == "no_ads_in_country":
+        body = (
+            f"🛑 *Page không có ads đang chạy ở VN.*\n\n"
+            f"_{detail}_\n\n"
+            "Có thể đối thủ không chạy quảng cáo Meta hiện tại, hoặc chạy ở thị trường khác."
+        )
+    elif reason == "no_insights":
+        body = (
+            f"🛑 *Ad Account không có data trong khoảng thời gian này.*\n\n"
+            f"_{detail}_\n\n"
+            "Sếp check: account ID có đúng không, period có campaign chạy không, "
+            "hoặc đổi `date_range` sang khoảng dài hơn."
+        )
+    elif reason == "no_campaigns":
+        body = (
+            f"🛑 *Ad Account chưa có campaign nào.*\n\n"
+            f"_{detail}_\n\n"
+            "Task tối ưu cần campaign tồn tại trên FB. Tạo campaign trước trong Ads Manager."
+        )
+    elif reason == "api_error":
+        body = (
+            f"🛑 *FB API trả lỗi.*\n\n"
+            f"```\n{detail}\n```\n"
+            "Thường do: token hết hạn (user token 60 ngày), thiếu permission "
+            "(`ads_read` / `ads_management`), hoặc ad account ID sai."
+        )
+    elif reason == "no_input":
+        body = (
+            "🛑 *Em chưa có tên đối thủ hoặc link Page.*\n\n"
+            "Chạy lại task và điền *Tên đối thủ* (bắt buộc) hoặc *Link Facebook Page*."
+        )
+    else:
+        body = f"🛑 *FB API fail — {reason}*\n\n_{detail}_"
+
+    full = body + (f"\n\n{workaround}" if workaround else "") + "\n\n_Gõ /menu để chọn task khác._"
+    await message.reply_text(full, parse_mode=ParseMode.MARKDOWN)
+
+
 async def _prefetch_competitor_ads(message: Message, session) -> dict:
     """Pre-fetch FB Ads Library data cho competitor_spy skill.
     Ưu tiên link fanpage (search_by_page_id) → chính xác hơn search_terms.
@@ -3896,85 +3946,121 @@ async def _prefetch_competitor_ads(message: Message, session) -> dict:
     return {"ok": True, "reason": "ok", "detail": f"{len(ads)} ads fetched"}
 
 
-async def _prefetch_performance_data(message: Message, session):
-    """Pre-fetch FB Marketing API data cho performance_audit skill.
-    Lấy date range từ pending_intake, pull insights, inject vào _fb_data."""
+async def _prefetch_performance_data(message: Message, session) -> dict:
+    """Pre-fetch FB Marketing API data cho performance_audit / ads_analytics skill.
+    Lấy date range từ pending_intake, pull insights, inject vào _fb_data.
+
+    Returns dict: {"ok": bool, "reason": str, "detail": str}
+      reason ∈ {"ok", "no_token", "no_account", "no_insights", "api_error"}
+    """
+    from tools.fb_marketing import get_account_insights, format_insights_for_analysis, is_available
+    from config import FB_ACCESS_TOKEN, FB_AD_ACCOUNT_ID
+
+    if not FB_ACCESS_TOKEN:
+        return {"ok": False, "reason": "no_token", "detail": "FB_ACCESS_TOKEN chưa set trên server"}
+    if not FB_AD_ACCOUNT_ID:
+        return {"ok": False, "reason": "no_account", "detail": "FB_AD_ACCOUNT_ID chưa set trên server"}
+    if not is_available():
+        return {"ok": False, "reason": "no_token", "detail": "FB Marketing API không khả dụng"}
+
+    # Map date label → FB date_preset
+    period_raw = (
+        session.pending_intake.get("date_range")
+        or session.pending_intake.get("period")
+        or "30 ngày"
+    ).lower()
+
+    date_preset_map = {
+        "7":  "last_7d",  "7 ngày":  "last_7d",
+        "14": "last_14d", "14 ngày": "last_14d",
+        "30": "last_30d", "30 ngày": "last_30d",
+        "90": "last_90d", "90 ngày": "last_90d",
+        "tháng này": "this_month",
+        "tháng trước": "last_month",
+    }
+    date_preset = "last_30d"
+    for keyword, preset in date_preset_map.items():
+        if keyword in period_raw:
+            date_preset = preset
+            break
+
+    await message.reply_text(
+        "📊 Em đang pull data Facebook Ads của sếp...",
+        parse_mode=ParseMode.MARKDOWN,
+    )
+
+    level_raw = session.pending_intake.get("level", "campaign").lower()
+    level = level_raw if level_raw in ("campaign", "adset", "ad") else "campaign"
+
     try:
-        from tools.fb_marketing import get_account_insights, format_insights_for_analysis, is_available
-        if not is_available():
-            logger.info("FB Marketing API not configured (need FB_AD_ACCOUNT_ID) — skipping pre-fetch")
-            return
-
-        # Map date label → FB date_preset
-        period_raw = (
-            session.pending_intake.get("date_range")
-            or session.pending_intake.get("period")
-            or "30 ngày"
-        ).lower()
-
-        date_preset_map = {
-            "7":  "last_7d",  "7 ngày":  "last_7d",
-            "14": "last_14d", "14 ngày": "last_14d",
-            "30": "last_30d", "30 ngày": "last_30d",
-            "90": "last_90d", "90 ngày": "last_90d",
-            "tháng này": "this_month",
-            "tháng trước": "last_month",
-        }
-        date_preset = "last_30d"
-        for keyword, preset in date_preset_map.items():
-            if keyword in period_raw:
-                date_preset = preset
-                break
-
-        await message.reply_text(
-            "📊 Em đang pull data Facebook Ads của sếp...",
-            parse_mode=ParseMode.MARKDOWN,
-        )
-
-        level_raw = session.pending_intake.get("level", "campaign").lower()
-        level = level_raw if level_raw in ("campaign", "adset", "ad") else "campaign"
-
         insights = await get_account_insights(
             date_preset=date_preset,
             level=level,
         )
-        fb_data = format_insights_for_analysis(insights, period_raw)
-        session.pending_intake["_fb_data"] = fb_data
-        logger.info("FB Marketing API: fetched %d rows | preset=%s | level=%s", len(insights), date_preset, level)
-
     except Exception as e:
-        logger.warning("FB Marketing pre-fetch failed (non-blocking): %s", e)
-        # Non-blocking — skill vẫn chạy, user tự paste data
+        err = str(e)[:300]
+        logger.warning("FB Marketing API call failed: %s", err)
+        return {"ok": False, "reason": "api_error", "detail": err}
+
+    if not insights:
+        return {
+            "ok": False,
+            "reason": "no_insights",
+            "detail": f"Account {FB_AD_ACCOUNT_ID} không có data trong period={period_raw} (level={level})",
+        }
+
+    fb_data = format_insights_for_analysis(insights, period_raw)
+    session.pending_intake["_fb_data"] = fb_data
+    logger.info("FB Marketing API: fetched %d rows | preset=%s | level=%s", len(insights), date_preset, level)
+    return {"ok": True, "reason": "ok", "detail": f"{len(insights)} rows"}
 
 
-async def _prefetch_optimizer_data(message: Message, session):
+async def _prefetch_optimizer_data(message: Message, session) -> dict:
     """Pre-fetch campaign hierarchy cho ads_optimizer skill.
-    Load toàn bộ Campaign → AdSet tree, inject vào _optimizer_hierarchy."""
+    Load toàn bộ Campaign → AdSet tree, inject vào _optimizer_hierarchy.
+
+    Returns dict: {"ok": bool, "reason": str, "detail": str}
+      reason ∈ {"ok", "no_token", "no_account", "no_campaigns", "api_error"}
+    """
+    from tools.fb_marketing import (
+        get_campaigns_with_adsets, format_hierarchy_for_optimizer, is_available
+    )
+    from config import FB_ACCESS_TOKEN, FB_AD_ACCOUNT_ID
+
+    if not FB_ACCESS_TOKEN:
+        return {"ok": False, "reason": "no_token", "detail": "FB_ACCESS_TOKEN chưa set trên server"}
+    if not FB_AD_ACCOUNT_ID:
+        return {"ok": False, "reason": "no_account", "detail": "FB_AD_ACCOUNT_ID chưa set trên server"}
+    if not is_available():
+        return {"ok": False, "reason": "no_token", "detail": "FB Marketing API không khả dụng"}
+
+    await message.reply_text(
+        "⚡ Em đang load hierarchy Campaign → Ad Set từ tài khoản Ads...",
+        parse_mode=ParseMode.MARKDOWN,
+    )
+
+    account_id = FB_AD_ACCOUNT_ID or ""
     try:
-        from tools.fb_marketing import (
-            get_campaigns_with_adsets, format_hierarchy_for_optimizer, is_available
-        )
-        from config import FB_AD_ACCOUNT_ID
-        if not is_available():
-            logger.info("FB Marketing API not configured — skipping optimizer pre-fetch")
-            return
-
-        await message.reply_text(
-            "⚡ Em đang load hierarchy Campaign → Ad Set từ tài khoản Ads...",
-            parse_mode=ParseMode.MARKDOWN,
-        )
-
-        account_id = FB_AD_ACCOUNT_ID or ""
         campaigns = await get_campaigns_with_adsets(ad_account_id=account_id)
-        hierarchy_text = format_hierarchy_for_optimizer(campaigns, account_id)
-        session.pending_intake["_optimizer_hierarchy"] = hierarchy_text
-        session.pending_intake["_optimizer_account_id"] = (
-            account_id if account_id.startswith("act_") else f"act_{account_id}"
-        )
-        logger.info("Optimizer pre-fetch: %d campaigns loaded", len(campaigns))
-
     except Exception as e:
-        logger.warning("Optimizer pre-fetch failed (non-blocking): %s", e)
+        err = str(e)[:300]
+        logger.warning("Optimizer API call failed: %s", err)
+        return {"ok": False, "reason": "api_error", "detail": err}
+
+    if not campaigns:
+        return {
+            "ok": False,
+            "reason": "no_campaigns",
+            "detail": f"Account {account_id} không có campaign nào (cần campaign tồn tại để thao tác)",
+        }
+
+    hierarchy_text = format_hierarchy_for_optimizer(campaigns, account_id)
+    session.pending_intake["_optimizer_hierarchy"] = hierarchy_text
+    session.pending_intake["_optimizer_account_id"] = (
+        account_id if account_id.startswith("act_") else f"act_{account_id}"
+    )
+    logger.info("Optimizer pre-fetch: %d campaigns loaded", len(campaigns))
+    return {"ok": True, "reason": "ok", "detail": f"{len(campaigns)} campaigns"}
 
 
 _ACTION_RE = re.compile(
