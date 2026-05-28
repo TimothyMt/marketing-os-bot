@@ -405,6 +405,49 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
         return
 
+    # ─── Secret Paste Detector ───────────────────────────────────────
+    # User có thể paste FB token / API key vào chat (sau khi đọc gate
+    # message). KHÔNG được route vào advisor (sẽ lộ secret trong log
+    # và user confused). Detect → từ chối + hướng dẫn đúng cách.
+    _stripped = text.strip()
+    _looks_like_fb_token = (
+        _stripped.startswith("EAA")
+        and len(_stripped) > 100
+        and " " not in _stripped
+        and "\n" not in _stripped
+    )
+    _looks_like_long_key = (
+        len(_stripped) > 80
+        and " " not in _stripped
+        and "\n" not in _stripped
+        and sum(1 for c in _stripped if c.isalnum()) > len(_stripped) * 0.9
+    )
+    if _looks_like_fb_token or _looks_like_long_key:
+        logger.warning(
+            "User %d pasted what looks like a secret (len=%d, prefix=%s...) — refusing",
+            session.user_id, len(_stripped), _stripped[:6],
+        )
+        try:
+            # Best-effort: delete the message containing the secret
+            await update.message.delete()
+        except Exception:
+            pass
+        await context.bot.send_message(
+            chat_id=update.effective_chat.id,
+            text=(
+                "🛡️ *Em đã xoá tin nhắn vừa rồi — trông giống API token/secret.*\n\n"
+                "⚠️ KHÔNG paste token vào chat:\n"
+                "• Telegram lưu lại toàn bộ history\n"
+                "• Token có thể bị log lại bên server\n"
+                "• Bot không có cách dùng token gửi qua chat\n\n"
+                "*Cách đúng:* Admin set env var trên Railway dashboard "
+                "(Service → Variables → New Variable → `FB_ACCESS_TOKEN`).\n\n"
+                "_Nếu token này đã lộ → vào https://developers.facebook.com/tools/debug/accesstoken/ để revoke + tạo mới._"
+            ),
+            parse_mode=ParseMode.MARKDOWN,
+        )
+        return
+
     # ─── Universal Greeting Intercept ────────────────────────────────
     # Returning user (đã có business_name) gõ greeting → show menu ngay,
     # KHÔNG rơi vào intake/followup/advisor để tránh bot hỏi lại info đã có.
@@ -2767,7 +2810,7 @@ async def _handle_ops_intake_reply(update: Update, context: ContextTypes.DEFAULT
         from config import AGENT_TIMEOUT
         # Pre-fetch live FB data cho các skills cần
         if task_name == "competitor_spy":
-            await _prefetch_competitor_ads(update.message, session)
+            fb_status = await _prefetch_competitor_ads(update.message, session)
             # Merge pasted_ads (manual fallback) vào _fb_data nếu user paste tay
             pasted = (session.pending_intake.get("pasted_ads") or "").strip()
             if pasted and len(pasted) > 30:
@@ -2782,15 +2825,46 @@ async def _handle_ops_intake_reply(update: Update, context: ContextTypes.DEFAULT
                 session.stage = PipelineStage.TASK_SELECT
                 session.pending_intake.pop(OPS_INTAKE_AWAITING, None)
                 await save_session(session)
+                # Reason-specific message
+                reason = fb_status.get("reason", "no_token")
+                detail = fb_status.get("detail", "")
+                if reason == "no_token":
+                    body = (
+                        "🛑 *FB API chưa hoạt động.*\n\n"
+                        "Server chưa có `FB_ACCESS_TOKEN`. ⚠️ *KHÔNG paste token vào chat* — "
+                        "admin cần set trên Railway dashboard → Variables.\n\n"
+                        "Hoặc paste ads tay: chạy lại task này và điền vào ô *Paste ads tay*."
+                    )
+                elif reason == "page_not_found":
+                    body = (
+                        f"🛑 *Không tìm được Page trên FB.*\n\n"
+                        f"_{detail}_\n\n"
+                        "Sếp check lại link fanpage (phải là URL công khai dạng "
+                        "`https://facebook.com/tenpage`), hoặc paste ads tay."
+                    )
+                elif reason == "no_ads_in_country":
+                    body = (
+                        f"🛑 *Page không có ads đang chạy ở VN.*\n\n"
+                        f"_{detail}_\n\n"
+                        "Có thể đối thủ không chạy quảng cáo Meta hiện tại, hoặc chạy ở "
+                        "thị trường khác. Sếp paste ads tay nếu có ads từ thị trường khác."
+                    )
+                elif reason == "api_error":
+                    # Likely token expired or missing permission
+                    body = (
+                        f"🛑 *FB API trả lỗi.*\n\n"
+                        f"```\n{detail}\n```\n"
+                        "Thường do token hết hạn (60 ngày) hoặc thiếu permission `ads_read`. "
+                        "Admin cần generate token mới rồi update env var trên Railway."
+                    )
+                else:  # no_input
+                    body = (
+                        "🛑 *Em chưa có tên đối thủ hoặc link Page.*\n\n"
+                        "Chạy lại task và điền *Tên đối thủ* (bắt buộc) hoặc *Link Facebook Page*."
+                    )
                 await update.message.reply_text(
-                    "🛑 *Em chưa có data ads thật để phân tích.*\n\n"
-                    "Em không tự bịa được — sẽ ra phân tích vớ vẩn.\n\n"
-                    "*Sếp có 2 cách:*\n"
-                    "1. *Setup FB API* (admin set `FB_ACCESS_TOKEN` env) → em auto-fetch\n"
-                    "2. *Paste tay*: Vào https://www.facebook.com/ads/library/ → tìm đối thủ → copy text 3-10 ads → chạy lại task và điền vào ô *Paste ads tay*\n\n"
-                    "Gõ /menu để quay lại.",
+                    body + "\n\n_Gõ /menu để chọn task khác._",
                     parse_mode=ParseMode.MARKDOWN,
-                    reply_markup=MAIN_MENU_KEYBOARD,
                 )
                 return
         elif task_name in ("performance_audit", "ads_analytics"):
@@ -3736,50 +3810,57 @@ async def _log_feedback_to_db(session, skill_name: str, rating: int, feedback_te
 
 # ─── Facebook API pre-fetch helpers ─────────────────────────────
 
-async def _prefetch_competitor_ads(message: Message, session):
+async def _prefetch_competitor_ads(message: Message, session) -> dict:
     """Pre-fetch FB Ads Library data cho competitor_spy skill.
     Ưu tiên link fanpage (search_by_page_id) → chính xác hơn search_terms.
     Inject _fb_data + _fb_page_id (để dùng cho auto-monitor sau).
+
+    Returns dict: {"ok": bool, "reason": str, "detail": str}
+      reason ∈ {"ok", "no_token", "no_input", "page_not_found",
+                "no_ads_in_country", "api_error"}
     """
-    try:
-        from tools.fb_ads_library import (
-            search_competitor_ads, search_by_page_id,
-            format_ads_for_analysis, resolve_page_id_from_url, is_available,
-        )
-        if not is_available():
-            logger.info("FB Ads Library not configured — skipping pre-fetch")
-            return
+    from tools.fb_ads_library import (
+        search_competitor_ads, search_by_page_id,
+        format_ads_for_analysis, resolve_page_id_from_url, is_available,
+    )
+    if not is_available():
+        logger.info("FB Ads Library not configured — skipping pre-fetch")
+        return {"ok": False, "reason": "no_token", "detail": "FB_ACCESS_TOKEN chưa set trên server"}
 
-        competitor_name = (
-            session.pending_intake.get("competitor_name")
-            or session.pending_intake.get("competitor")
-            or session.profile.competitors
-            or ""
-        )
-        fanpage_url = session.pending_intake.get("fanpage_url", "").strip()
+    competitor_name = (
+        session.pending_intake.get("competitor_name")
+        or session.pending_intake.get("competitor")
+        or session.profile.competitors
+        or ""
+    )
+    fanpage_url = session.pending_intake.get("fanpage_url", "").strip()
 
-        if not competitor_name and not fanpage_url:
-            logger.info("No competitor name or URL — skipping Ads Library fetch")
-            return
+    if not competitor_name and not fanpage_url:
+        return {"ok": False, "reason": "no_input", "detail": "Không có tên đối thủ hoặc URL fanpage"}
 
-        # Try resolve page_id từ URL trước
-        page_id = None
-        if fanpage_url:
-            await message.reply_text(
-                f"🔗 Em đang resolve Page ID từ link {fanpage_url}...",
-                parse_mode=ParseMode.MARKDOWN,
-            )
-            page_id = await resolve_page_id_from_url(fanpage_url)
-            if page_id:
-                logger.info("Resolved page_id %s from URL %s", page_id, fanpage_url)
-
-        # Notify user
+    # Try resolve page_id từ URL trước
+    page_id = None
+    if fanpage_url:
         await message.reply_text(
-            f"🔍 Em đang tìm ads của *{competitor_name or fanpage_url}* trên Facebook Ads Library...",
+            f"🔗 Em đang resolve Page ID từ link {fanpage_url}...",
             parse_mode=ParseMode.MARKDOWN,
         )
+        try:
+            page_id = await resolve_page_id_from_url(fanpage_url)
+        except Exception as e:
+            logger.warning("resolve_page_id failed: %s", e)
+        if page_id:
+            logger.info("Resolved page_id %s from URL %s", page_id, fanpage_url)
+        else:
+            logger.info("Could not resolve page_id from URL %s", fanpage_url)
 
-        # Ưu tiên search by page_id (chính xác hơn) → fallback to text search
+    # Notify user
+    await message.reply_text(
+        f"🔍 Em đang tìm ads của *{competitor_name or fanpage_url}* trên Facebook Ads Library...",
+        parse_mode=ParseMode.MARKDOWN,
+    )
+
+    try:
         if page_id:
             ads = await search_by_page_id(page_id, country="VN", limit=20)
             session.pending_intake["_fb_page_id"] = page_id
@@ -3789,19 +3870,30 @@ async def _prefetch_competitor_ads(message: Message, session):
                 country="VN",
                 limit=20,
             )
-
-        if not ads:
-            logger.info("FB Ads Library returned 0 ads — not setting _fb_data")
-            return
-        fb_data = format_ads_for_analysis(ads, competitor_name or "đối thủ")
-        session.pending_intake["_fb_data"] = fb_data
-        # Lưu ad IDs cho monitor diff sau
-        session.pending_intake["_fb_ad_ids"] = ",".join(a.get("id", "") for a in ads if a.get("id"))
-        logger.info("FB Ads Library: fetched %d ads (page_id=%s)", len(ads), page_id)
-
     except Exception as e:
-        logger.warning("FB Ads Library pre-fetch failed (non-blocking): %s", e)
-        # Non-blocking — gate downstream sẽ block nếu không có _fb_data + pasted_ads
+        err = str(e)[:300]
+        logger.warning("FB Ads Library API call failed: %s", err)
+        return {"ok": False, "reason": "api_error", "detail": err}
+
+    if not ads:
+        if fanpage_url and not page_id:
+            return {
+                "ok": False,
+                "reason": "page_not_found",
+                "detail": f"Không resolve được Page ID từ {fanpage_url} (link sai hoặc page private)",
+            }
+        return {
+            "ok": False,
+            "reason": "no_ads_in_country",
+            "detail": f"Page tồn tại nhưng không có ads đang chạy ở VN (country=VN, limit=20)",
+        }
+
+    fb_data = format_ads_for_analysis(ads, competitor_name or "đối thủ")
+    session.pending_intake["_fb_data"] = fb_data
+    # Lưu ad IDs cho monitor diff sau
+    session.pending_intake["_fb_ad_ids"] = ",".join(a.get("id", "") for a in ads if a.get("id"))
+    logger.info("FB Ads Library: fetched %d ads (page_id=%s)", len(ads), page_id)
+    return {"ok": True, "reason": "ok", "detail": f"{len(ads)} ads fetched"}
 
 
 async def _prefetch_performance_data(message: Message, session):
