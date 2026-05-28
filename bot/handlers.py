@@ -427,41 +427,42 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
         )
     )
-    # Chỉ intercept nếu user đã có business_name (returning user thật sự)
-    # và không đang dở các flow đặc biệt (tone, post edit, campaign idea, image edit, biz context)
-    _in_special_flow = (
-        session.tone_calibration.get("stage") in ("checking_tone", "waiting_feedback")
-        or session.pending_intake.get("_post_editing")
-        or session.pending_intake.get("_awaiting_image_edit")
-        or session.pending_intake.get("_awaiting_campaign_idea")
-        or session.pending_intake.get("_awaiting_campaign_finalize")
-        or session.pending_intake.get("_awaiting_image_reference")
-        # BIZ_CONTEXT_AWAITING intentionally excluded: greeting must be able to abandon the form
-        or session.pending_intake.get("_workflow_awaiting_topic")
-    )
     # Returning user heuristic: bất kỳ field profile nào có data → coi như đã có context
     _p = session.profile
     _has_any_profile = bool(
         _p.business_name or _p.product_service or _p.industry
         or _p.target_customer or _p.primary_goal or _p.main_challenge
     )
-    # Hoặc user đã từng có results từ skill nào đó (returning power user)
     _has_any_results = bool(session.results)
-    # Hoặc user đã hoàn tất onboarding tên (đã tương tác trước đó — vd chỉ chạy
-    # brand_voice nên profile rỗng nhưng vẫn là returning user, không cần intake lại)
     _has_onboarded = bool(_get_user_name(session))
     _is_returning_user = _has_any_profile or _has_any_results or _has_onboarded
 
-    # Log để debug nếu lần sau vẫn lỗi
+    # Special-flow flags: only block greeting for brand-new users mid-onboarding.
+    # For returning users, greeting = intent to reset → always show menu and
+    # clear any stale flags from abandoned flows.
+    _STUCK_FLAGS = (
+        "_post_editing", "_awaiting_image_edit", "_awaiting_campaign_idea",
+        "_awaiting_campaign_finalize", "_awaiting_image_reference",
+        "_workflow_awaiting_topic", "_workflow_task",
+        OPS_INTAKE_AWAITING, "_awaiting_followup_for", "_advisor_mode",
+        BIZ_CONTEXT_AWAITING, BIZ_CONTEXT_PENDING_SKILL,
+        "_awaiting_feedback_for", "_awaiting_rating_for", "_pending_regen_skill",
+    )
+    _stuck_now = [k for k in _STUCK_FLAGS if session.pending_intake.get(k)]
+    _tone_stuck = session.tone_calibration.get("stage") in ("checking_tone", "waiting_feedback")
+    _in_special_flow = bool(_stuck_now) or _tone_stuck
+
     if _is_greeting:
         logger.info(
-            "Greeting detected (user=%d) | stage=%s | biz=%s | product=%s | industry=%s | results_keys=%s | in_special=%s",
-            session.user_id, session.stage.value,
-            bool(_p.business_name), bool(_p.product_service), bool(_p.industry),
-            list(session.results.keys())[:5], _in_special_flow,
+            "Greeting detected (user=%d) | stage=%s | returning=%s | in_special=%s | stuck_flags=%s | tone_stuck=%s | results_keys=%s",
+            session.user_id, session.stage.value, _is_returning_user,
+            _in_special_flow, _stuck_now, _tone_stuck,
+            list(session.results.keys())[:5],
         )
 
-    if _is_greeting and not _in_special_flow:
+    # Returning user greeting → always intercept (clear stuck flags, show menu).
+    # New user greeting → only intercept if not mid-onboarding.
+    if _is_greeting and (_is_returning_user or not _in_special_flow):
         if not _is_returning_user:
             # Brand-new user greeted before /start → start onboarding
             if not session.pending_intake.get("_awaiting_user_name"):
@@ -476,13 +477,13 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 )
             return
 
-        # Returning user — reset to menu
+        # Returning user — clear ALL stuck flags + tone state, reset stage, show menu.
         if session.stage not in (PipelineStage.IDLE, PipelineStage.TASK_SELECT, PipelineStage.COMPLETE):
             session.stage = PipelineStage.IDLE
-        # Clear all stale flags (including biz context gate)
-        for _k in (OPS_INTAKE_AWAITING, "_awaiting_followup_for", "_advisor_mode",
-                   BIZ_CONTEXT_AWAITING, BIZ_CONTEXT_PENDING_SKILL):
+        for _k in _STUCK_FLAGS:
             session.pending_intake.pop(_k, None)
+        if _tone_stuck:
+            session.tone_calibration = {}
         await save_session(session)
 
         addr = _addr(session)
