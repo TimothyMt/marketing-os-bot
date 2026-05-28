@@ -68,33 +68,6 @@ ADS_FORMAT_KEYBOARD = InlineKeyboardMarkup([
     [InlineKeyboardButton("🖼️ Ảnh tĩnh",  callback_data="ads_format_image")],
 ])
 
-# Sprint 5 v2: Sau copy xong (format=image) — hỏi có upload ảnh mẫu không
-IMAGE_REFERENCE_KEYBOARD = InlineKeyboardMarkup([
-    [InlineKeyboardButton("📤 Upload ảnh mẫu",          callback_data="img_ref_upload")],
-    [InlineKeyboardButton("🎨 Tự gen theo brief",       callback_data="img_ref_skip")],
-    [InlineKeyboardButton("⏭️ Chỉ lấy copy, không gen", callback_data="img_ref_no_gen")],
-])
-
-# Sprint 5 v2: Hỏi số lượng ảnh (bỏ cost display)
-IMAGE_GEN_PROMPT_KEYBOARD = InlineKeyboardMarkup([
-    [InlineKeyboardButton("🎨 Tạo 1 ảnh",        callback_data="img_gen_1")],
-    [InlineKeyboardButton("🎨 Tạo 3 variants",   callback_data="img_gen_3")],
-    [InlineKeyboardButton("⏭️ Bỏ qua",           callback_data="img_gen_skip")],
-])
-
-# Sprint 5: Chọn size ảnh
-IMAGE_SIZE_KEYBOARD = InlineKeyboardMarkup([
-    [InlineKeyboardButton("📱 Vertical (Story/Reels)",  callback_data="img_size_vertical")],
-    [InlineKeyboardButton("🖼️ Square (Feed)",            callback_data="img_size_square")],
-    [InlineKeyboardButton("🖥️ Horizontal (Landscape)",  callback_data="img_size_horizontal")],
-])
-
-# Sprint 5 v2: Sau khi gen ảnh xong — Sửa hoặc Chốt
-IMAGE_REVIEW_KEYBOARD = InlineKeyboardMarkup([
-    [InlineKeyboardButton("✏️ Sửa ảnh này",          callback_data="img_edit")],
-    [InlineKeyboardButton("✅ Chốt ảnh này",          callback_data="img_confirm")],
-    [InlineKeyboardButton("🔁 Gen ảnh khác",          callback_data="img_regen")],
-])
 
 
 # ─────────────────────────────────────────────────────────────────
@@ -229,31 +202,5 @@ OFFER_LEVER_KEYBOARD = InlineKeyboardMarkup([
     [InlineKeyboardButton("🔄 Đề xuất 4 levers khác", callback_data="lever_propose_again")],
     [InlineKeyboardButton("⏭️ Hủy, quay lại đánh giá", callback_data="az_skip_campaign")],
 ])
-
-
-# ─────────────────────────────────────────────────────────────────
-# Auto monitor — interval picker
-# ─────────────────────────────────────────────────────────────────
-
-MONITOR_PROMPT_KEYBOARD = InlineKeyboardMarkup([
-    [InlineKeyboardButton("🔔 Có, theo dõi tự động",  callback_data="monitor_yes")],
-    [InlineKeyboardButton("⏭️ Không cần",              callback_data="monitor_no")],
-])
-
-MONITOR_INTERVAL_KEYBOARD = InlineKeyboardMarkup([
-    [
-        InlineKeyboardButton("⚡ 3 giờ",   callback_data="monitor_iv_3"),
-        InlineKeyboardButton("🕐 6 giờ",   callback_data="monitor_iv_6"),
-    ],
-    [
-        InlineKeyboardButton("🕔 12 giờ",  callback_data="monitor_iv_12"),
-        InlineKeyboardButton("📅 1 ngày",  callback_data="monitor_iv_24"),
-    ],
-    [InlineKeyboardButton("📆 1 tuần",     callback_data="monitor_iv_168")],
-])
-
-# Note: New-ads notification keyboard được build động trong worker
-# (workers/monitor_competitors.py:55-60) với callback_data="monitor_diff_{page_id}"
-# vì cần inject page_id. Không define keyboard tĩnh ở đây.
 
 

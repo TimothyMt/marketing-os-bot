@@ -20,7 +20,6 @@ from bot.handlers import (
     cmd_settings,
     handle_message,
     handle_callback,
-    handle_photo,
     cmd_admin_addquota,
     cmd_admin_setquota,
     cmd_admin_resetusage,
@@ -41,10 +40,6 @@ async def post_init(application: Application):
     await init_db()
     logger.info("DB pool ready.")
 
-    # Start competitor monitor as background asyncio task (checks every hour)
-    import asyncio
-    from workers.monitor_competitors import start_background_monitor
-    asyncio.create_task(start_background_monitor(application.bot, interval_seconds=3600))
 
 
 def main():
@@ -80,9 +75,6 @@ def main():
 
     # Inline keyboard callbacks
     app.add_handler(CallbackQueryHandler(handle_callback))
-
-    # Photo messages (image reference upload for Ads Gen)
-    app.add_handler(MessageHandler(filters.PHOTO, handle_photo))
 
     # Text messages
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
