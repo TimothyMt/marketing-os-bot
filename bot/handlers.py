@@ -603,12 +603,18 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # Advisor mode chain — sau khi user click "Hỏi tiếp"
     if session.pending_intake.get("_advisor_mode"):
+        # FB URL intercept — recognize competitor intent before persona advisor
+        if await _try_fb_url_intercept(update, context, session, text):
+            return
         if await _try_persona_route(update, context, session, text):
             return
         await _claude_advisor_fallback(update, context, session, text)
         return
 
     if session.stage in (PipelineStage.IDLE, PipelineStage.TASK_SELECT):
+        # FB URL intercept — recognize competitor intent before persona advisor
+        if await _try_fb_url_intercept(update, context, session, text):
+            return
         # User typed free-form text → try persona routing first, then generic advisor
         if await _try_persona_route(update, context, session, text):
             return
@@ -2747,8 +2753,9 @@ async def _handle_ops_intake_reply(update: Update, context: ContextTypes.DEFAULT
     # → bỏ qua parse, dùng defaults đã pre-fill trong _strategy_aware form
     text_lower = text.strip().lower()
     SKIP_KEYWORDS = ("mặc định", "mac dinh", "default", "chạy luôn", "chay luon",
-                     "ok chạy", "ok chay", "ok luôn", "ok luon", "chạy đi", "chay di")
-    if any(kw == text_lower or text_lower.startswith(kw) for kw in SKIP_KEYWORDS):
+                     "ok chạy", "ok chay", "ok luôn", "ok luon", "chạy đi", "chay di",
+                     "ok", "yes", "có", "đồng ý", "dong y", "ừ", "uh", "okela")
+    if text_lower in SKIP_KEYWORDS or any(text_lower.startswith(kw + " ") for kw in SKIP_KEYWORDS):
         # Defaults đã được pre-fill ở _send_strategy_aware_form, dùng nguyên
         parsed = {}
     else:
@@ -3448,6 +3455,73 @@ def _sanitize_telegram_md(text: str) -> str:
             continue
         out_lines.append(line)
     return "\n".join(out_lines).strip()
+
+
+# Regex: matches facebook.com / fb.com / m.facebook.com URLs
+_FB_URL_RE = re.compile(
+    r"(?i)\b(?:https?://)?(?:www\.|m\.)?(?:facebook|fb)\.com/(\S+)"
+)
+
+
+async def _try_fb_url_intercept(update, context, session, text: str) -> bool:
+    """Detect FB URL in user message → route to competitor_spy with URL pre-filled.
+
+    Handles 3 cases:
+    1. Page URL (facebook.com/tenpage hoặc /pages/Name/123) → pre-fill + dispatch
+    2. Personal profile (profile.php?id=...) → reject, explain Ads Library
+       chỉ phân tích Page
+    3. Group/event/marketplace → reject với lý do tương tự
+
+    Returns True nếu đã handle.
+    """
+    m = _FB_URL_RE.search(text)
+    if not m:
+        return False
+
+    full_url = m.group(0)
+    if not full_url.startswith("http"):
+        full_url = "https://" + full_url
+
+    slug = m.group(1).rstrip("/?#").split("?")[0].split("#")[0]
+
+    # Personal profile or non-page paths
+    if slug.lower().startswith("profile.php") or slug.lower() in (
+        "people", "groups", "events", "watch", "marketplace", "messages",
+    ):
+        await update.message.reply_text(
+            "🛑 *Link này không phải Facebook Page.*\n\n"
+            f"`{full_url}` trông như profile cá nhân / group / event.\n\n"
+            "*Facebook Ads Library chỉ phân tích Pages*, không phân tích user "
+            "profile. Sếp đưa link Page của đối thủ (dạng `facebook.com/tenpage`) "
+            "thì em mới pull được ads ạ.\n\n"
+            "_Nếu đối thủ không có Page (chỉ chạy profile cá nhân) thì không có "
+            "data Ads Library — em không phân tích được._",
+            parse_mode=ParseMode.MARKDOWN,
+        )
+        return True
+
+    # Looks like a Page slug → pre-fill and launch competitor_spy
+    session.pending_intake["fanpage_url"] = full_url
+    # Derive a competitor_name candidate from slug (best-effort)
+    derived_name = slug.replace("-", " ").replace(".", " ").strip()
+    if derived_name and "competitor_name" not in session.pending_intake:
+        session.pending_intake["competitor_name"] = derived_name
+    session.pending_intake[OPS_INTAKE_AWAITING] = "competitor_spy"
+    session.selected_task = "competitor_spy"
+    session.stage = PipelineStage.INTAKE
+    # Clear advisor flags so the run path is clean
+    session.pending_intake.pop("_advisor_mode", None)
+    session.pending_intake.pop("_active_persona", None)
+    await save_session(session)
+
+    await update.message.reply_text(
+        f"🔍 *Em nhận link Page:* `{full_url}`\n\n"
+        f"Em chạy *Theo Dõi Đối Thủ* trên link này luôn nhé sếp? "
+        f"Gõ *ok* để em pull ads từ Facebook Ads Library, "
+        f"hoặc bổ sung thêm `Sếp muốn em focus phân tích gì:` (vd hook / offer).",
+        parse_mode=ParseMode.MARKDOWN,
+    )
+    return True
 
 
 async def _try_persona_route(update, context, session, text: str) -> bool:
