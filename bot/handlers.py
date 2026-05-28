@@ -3464,13 +3464,9 @@ _FB_URL_RE = re.compile(
 
 
 async def _try_fb_url_intercept(update, context, session, text: str) -> bool:
-    """Detect FB URL in user message → route to competitor_spy with URL pre-filled.
-
-    Handles 3 cases:
-    1. Page URL (facebook.com/tenpage hoặc /pages/Name/123) → pre-fill + dispatch
-    2. Personal profile (profile.php?id=...) → reject, explain Ads Library
-       chỉ phân tích Page
-    3. Group/event/marketplace → reject với lý do tương tự
+    """Detect FB URL in user message → pre-fill fanpage_url and route to
+    competitor_spy. KHÔNG pre-judge URL pattern — chỉ extract, để Graph API
+    quyết định xem URL có truy cập được không (qua resolve_fb_url ở prefetch).
 
     Returns True nếu đã handle.
     """
@@ -3482,43 +3478,21 @@ async def _try_fb_url_intercept(update, context, session, text: str) -> bool:
     if not full_url.startswith("http"):
         full_url = "https://" + full_url
 
-    slug = m.group(1).rstrip("/?#").split("?")[0].split("#")[0]
-
-    # Personal profile or non-page paths
-    if slug.lower().startswith("profile.php") or slug.lower() in (
-        "people", "groups", "events", "watch", "marketplace", "messages",
-    ):
-        await update.message.reply_text(
-            "🛑 *Link này không phải Facebook Page.*\n\n"
-            f"`{full_url}` trông như profile cá nhân / group / event.\n\n"
-            "*Facebook Ads Library chỉ phân tích Pages*, không phân tích user "
-            "profile. Sếp đưa link Page của đối thủ (dạng `facebook.com/tenpage`) "
-            "thì em mới pull được ads ạ.\n\n"
-            "_Nếu đối thủ không có Page (chỉ chạy profile cá nhân) thì không có "
-            "data Ads Library — em không phân tích được._",
-            parse_mode=ParseMode.MARKDOWN,
-        )
-        return True
-
-    # Looks like a Page slug → pre-fill and launch competitor_spy
+    # Save URL — competitor_name placeholder; prefetch sẽ override bằng tên
+    # thật từ Graph API nếu resolve OK.
     session.pending_intake["fanpage_url"] = full_url
-    # Derive a competitor_name candidate from slug (best-effort)
-    derived_name = slug.replace("-", " ").replace(".", " ").strip()
-    if derived_name and "competitor_name" not in session.pending_intake:
-        session.pending_intake["competitor_name"] = derived_name
+    if "competitor_name" not in session.pending_intake:
+        session.pending_intake["competitor_name"] = "(em sẽ pull tên thật từ Graph API)"
     session.pending_intake[OPS_INTAKE_AWAITING] = "competitor_spy"
     session.selected_task = "competitor_spy"
     session.stage = PipelineStage.INTAKE
-    # Clear advisor flags so the run path is clean
     session.pending_intake.pop("_advisor_mode", None)
     session.pending_intake.pop("_active_persona", None)
     await save_session(session)
 
     await update.message.reply_text(
-        f"🔍 *Em nhận link Page:* `{full_url}`\n\n"
-        f"Em chạy *Theo Dõi Đối Thủ* trên link này luôn nhé sếp? "
-        f"Gõ *ok* để em pull ads từ Facebook Ads Library, "
-        f"hoặc bổ sung thêm `Sếp muốn em focus phân tích gì:` (vd hook / offer).",
+        f"🔍 *Em nhận link:* `{full_url}`\n\n"
+        f"Gõ *ok* để em verify qua Graph API và pull ads từ Facebook Ads Library.",
         parse_mode=ParseMode.MARKDOWN,
     )
     return True
@@ -3923,6 +3897,26 @@ async def _abort_with_fb_error(message: Message, session, task_name: str, fb_sta
             f"_{detail}_\n\n"
             "Sếp check lại link fanpage (URL công khai dạng `https://facebook.com/tenpage`)."
         )
+    elif reason == "is_user":
+        body = (
+            f"🛑 *Link này là user profile cá nhân, không phải Page.*\n\n"
+            f"_{detail}_\n\n"
+            "FB Ads Library *chỉ phân tích Pages* (Page có `category`, user thì không). "
+            "Nếu đối thủ chạy quảng cáo từ user profile thì sẽ không có data Ads Library."
+        )
+    elif reason == "private":
+        body = (
+            f"🛑 *FB API không có quyền truy cập link này.*\n\n"
+            f"```\n{detail}\n```\n"
+            "Page có thể private/restricted, hoặc token thiếu permission. "
+            "Admin check token có `pages_read_engagement` + `ads_read` không."
+        )
+    elif reason == "invalid_url":
+        body = (
+            f"🛑 *URL không hợp lệ.*\n\n"
+            f"_{detail}_\n\n"
+            "Sếp gửi URL Facebook đầy đủ (vd `https://facebook.com/cocoonvn`)."
+        )
     elif reason == "no_ads_in_country":
         body = (
             f"🛑 *Page không có ads đang chạy ở VN.*\n\n"
@@ -3972,7 +3966,7 @@ async def _prefetch_competitor_ads(message: Message, session) -> dict:
     """
     from tools.fb_ads_library import (
         search_competitor_ads, search_by_page_id,
-        format_ads_for_analysis, resolve_page_id_from_url, is_available,
+        format_ads_for_analysis, resolve_fb_url, is_available,
     )
     if not is_available():
         logger.info("FB Ads Library not configured — skipping pre-fetch")
@@ -3989,21 +3983,32 @@ async def _prefetch_competitor_ads(message: Message, session) -> dict:
     if not competitor_name and not fanpage_url:
         return {"ok": False, "reason": "no_input", "detail": "Không có tên đối thủ hoặc URL fanpage"}
 
-    # Try resolve page_id từ URL trước
+    # Resolve URL → ask Graph API what it actually is (Page / User / 404 / private)
     page_id = None
     if fanpage_url:
         await message.reply_text(
-            f"🔗 Em đang resolve Page ID từ link {fanpage_url}...",
+            f"🔗 Em đang verify link {fanpage_url} qua Graph API...",
             parse_mode=ParseMode.MARKDOWN,
         )
-        try:
-            page_id = await resolve_page_id_from_url(fanpage_url)
-        except Exception as e:
-            logger.warning("resolve_page_id failed: %s", e)
-        if page_id:
-            logger.info("Resolved page_id %s from URL %s", page_id, fanpage_url)
+        resolution = await resolve_fb_url(fanpage_url)
+        logger.info(
+            "resolve_fb_url(%s) → ok=%s reason=%s detail=%s",
+            fanpage_url, resolution["ok"], resolution["reason"], resolution["detail"],
+        )
+        if resolution["ok"]:
+            page_id = resolution["page_id"]
+            session.pending_intake["_fb_page_id"] = page_id
+            # Override placeholder competitor_name with real page name
+            if resolution.get("page_name"):
+                session.pending_intake["competitor_name"] = resolution["page_name"]
+                competitor_name = resolution["page_name"]
         else:
-            logger.info("Could not resolve page_id from URL %s", fanpage_url)
+            # Link không phải Page khả dụng — surface real reason
+            return {
+                "ok": False,
+                "reason": resolution["reason"],
+                "detail": resolution["detail"],
+            }
 
     # Notify user
     await message.reply_text(
@@ -4014,7 +4019,6 @@ async def _prefetch_competitor_ads(message: Message, session) -> dict:
     try:
         if page_id:
             ads = await search_by_page_id(page_id, country="VN", limit=20)
-            session.pending_intake["_fb_page_id"] = page_id
         else:
             ads = await search_competitor_ads(
                 search_terms=competitor_name or fanpage_url,
@@ -4031,7 +4035,7 @@ async def _prefetch_competitor_ads(message: Message, session) -> dict:
             return {
                 "ok": False,
                 "reason": "page_not_found",
-                "detail": f"Không resolve được Page ID từ {fanpage_url} (link sai hoặc page private)",
+                "detail": f"Không resolve được Page ID từ {fanpage_url}",
             }
         return {
             "ok": False,

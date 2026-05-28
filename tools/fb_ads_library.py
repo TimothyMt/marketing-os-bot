@@ -202,55 +202,122 @@ def is_available() -> bool:
 # URL → page_id extraction
 # ─────────────────────────────────────────────────────────────────
 
-async def resolve_page_id_from_url(url: str, access_token: Optional[str] = None) -> Optional[str]:
-    """Best-effort extract page_id từ Facebook URL.
+def _extract_fb_candidate(url: str) -> Optional[str]:
+    """Extract the candidate identifier (slug or numeric id) from a FB URL.
+    Does NOT pre-judge what it is — that's done by Graph API in resolve_fb_url.
 
-    Supports:
-    - https://facebook.com/{page_name}
-    - https://www.facebook.com/{page_name}
-    - https://facebook.com/{page_id} (numeric)
-    - https://facebook.com/pages/{name}/{id}
-    - https://m.facebook.com/{page_name}
-
-    Returns numeric page_id or None.
+    Examples:
+      facebook.com/cocoonvn                  → "cocoonvn"
+      facebook.com/profile.php?id=123        → "123"
+      facebook.com/pages/Name/123            → "123"
+      facebook.com/123456789                 → "123456789"
+      facebook.com/groups/xyz                → "groups"  (caller checks via API)
     """
     import re as _re
     if not url:
         return None
+    url = url.strip().rstrip("/")
 
-    url = url.strip().rstrip('/')
+    # profile.php?id=NUMERIC — used by New Pages Experience (FB ≥2022)
+    # and also by user profiles. Both resolve via Graph API; numeric id is
+    # the candidate.
+    m = _re.search(r"profile\.php\?id=(\d+)", url)
+    if m:
+        return m.group(1)
 
-    # Pattern: /pages/Name/123456789
+    # /pages/Name/NUMERIC
     m = _re.search(r"/pages/[^/]+/(\d+)", url)
     if m:
         return m.group(1)
 
-    # Extract slug (last path segment), strip query string
-    m = _re.search(r"facebook\.com/([^/?#]+)", url)
+    # /{slug}  (first path segment after facebook.com/ or fb.com/)
+    m = _re.search(r"(?:facebook|fb)\.com/([^/?#]+)", url)
     if not m:
         return None
-    slug = m.group(1)
+    return m.group(1)
 
-    # Skip known non-page paths
-    if slug.lower() in ("profile.php", "people", "groups", "events", "watch", "marketplace"):
-        return None
 
-    # Already numeric → it IS the page_id
-    if slug.isdigit():
-        return slug
+async def resolve_fb_url(url: str, access_token: Optional[str] = None) -> dict:
+    """Resolve a Facebook URL via Graph API — distinguishes Page vs User vs
+    missing. NEVER pre-judges based on URL pattern alone.
 
-    # Lookup page_id from slug via Graph API
+    Returns dict:
+      {"ok": bool, "page_id": str|None, "page_name": str|None,
+       "category": str|None, "reason": str, "detail": str}
+
+    reason ∈ {"ok", "is_user", "not_found", "private", "no_token",
+              "api_error", "invalid_url"}
+    """
+    if not url:
+        return {"ok": False, "reason": "invalid_url", "detail": "URL rỗng",
+                "page_id": None, "page_name": None, "category": None}
+
+    candidate = _extract_fb_candidate(url)
+    if not candidate:
+        return {"ok": False, "reason": "invalid_url",
+                "detail": f"Không extract được ID/slug từ {url}",
+                "page_id": None, "page_name": None, "category": None}
+
     token = access_token or FB_ACCESS_TOKEN
     if not token:
-        return None
+        return {"ok": False, "reason": "no_token",
+                "detail": "FB_ACCESS_TOKEN chưa set",
+                "page_id": None, "page_name": None, "category": None}
+
+    # Ask Graph API what this thing is. `category` is the discriminator:
+    # Pages have it, users don't.
+    params = {
+        "fields": "id,name,category,link,fan_count,verification_status",
+        "access_token": token,
+    }
+    try:
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            response = await client.get(f"{FB_BASE_URL}/{candidate}", params=params)
+    except Exception as e:
+        return {"ok": False, "reason": "api_error",
+                "detail": f"Network/timeout khi gọi Graph API: {e}",
+                "page_id": None, "page_name": None, "category": None}
 
     try:
-        params = {"fields": "id,name", "access_token": token}
-        async with httpx.AsyncClient(timeout=10.0) as client:
-            response = await client.get(f"{FB_BASE_URL}/{slug}", params=params)
-        if response.status_code == 200:
-            data = response.json()
-            return data.get("id")
-    except Exception as e:
-        logger.warning("Resolve page_id from URL failed: %s", e)
-    return None
+        data = response.json()
+    except Exception:
+        data = {}
+
+    if response.status_code == 200 and data.get("id"):
+        category = data.get("category")
+        page_name = data.get("name")
+        page_id = data.get("id")
+        if category:
+            return {"ok": True, "reason": "ok",
+                    "detail": f"Page '{page_name}' — {category}",
+                    "page_id": page_id, "page_name": page_name,
+                    "category": category}
+        # 200 nhưng không có category → đây là user profile, không phải Page
+        return {"ok": False, "reason": "is_user",
+                "detail": f"`{page_name}` là user profile, không phải Page. "
+                          "FB Ads Library chỉ phân tích Page (Page có category, "
+                          "user không có).",
+                "page_id": page_id, "page_name": page_name, "category": None}
+
+    # Error path — surface real FB error
+    error = (data or {}).get("error", {})
+    err_msg = error.get("message") or response.text[:300]
+    err_code = error.get("code")
+    err_subcode = error.get("error_subcode")
+    detail = f"FB Graph API: {err_msg} (code={err_code}, subcode={err_subcode})"
+
+    if response.status_code == 404 or err_code == 803:
+        return {"ok": False, "reason": "not_found", "detail": detail,
+                "page_id": None, "page_name": None, "category": None}
+    if response.status_code in (401, 403) or err_code in (10, 200, 190):
+        return {"ok": False, "reason": "private", "detail": detail,
+                "page_id": None, "page_name": None, "category": None}
+    return {"ok": False, "reason": "api_error", "detail": detail,
+            "page_id": None, "page_name": None, "category": None}
+
+
+async def resolve_page_id_from_url(url: str, access_token: Optional[str] = None) -> Optional[str]:
+    """Backwards-compat wrapper — returns page_id only, or None on any failure.
+    New callers should use resolve_fb_url for structured errors."""
+    result = await resolve_fb_url(url, access_token=access_token)
+    return result["page_id"] if result.get("ok") else None
