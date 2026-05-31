@@ -6,6 +6,7 @@ load_dotenv()
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
 ANTHROPIC_API_KEY  = os.getenv("ANTHROPIC_API_KEY", "")
 OPENAI_API_KEY     = os.getenv("OPENAI_API_KEY", "")  # cho image gen (gpt-image-1)
+GEMINI_API_KEY     = os.getenv("GEMINI_API_KEY", "")  # multi-provider router fallback (from three-tier)
 
 # Admin Telegram user IDs — phân cách bằng dấu phẩy: "123456789,987654321"
 ADMIN_IDS: set[int] = {
@@ -17,6 +18,10 @@ FB_ACCESS_TOKEN    = os.getenv("FB_ACCESS_TOKEN", "")   # User/System token (ads
 FB_APP_ID          = os.getenv("FB_APP_ID", "")         # App ID
 FB_APP_SECRET      = os.getenv("FB_APP_SECRET", "")     # App Secret
 FB_AD_ACCOUNT_ID   = os.getenv("FB_AD_ACCOUNT_ID", "")  # act_XXXXXXXXXX (để pull data ads của sếp)
+GRAPH_API_VERSION  = os.getenv("GRAPH_API_VERSION", "v19.0")  # FB Graph API version (from three-tier)
+
+# Competitor monitoring (hybrid: nguồn fb_ads_library + interval user-set từ Spy Radar)
+SPY_CHECK_INTERVAL_MINUTES = int(os.getenv("SPY_CHECK_INTERVAL_MINUTES", "15"))
 
 # Supabase — dùng HTTPS (port 443), không bao giờ bị block
 SUPABASE_URL       = os.getenv("SUPABASE_URL", "")
@@ -71,8 +76,4 @@ DB_V2_READ  = os.getenv("DB_V2_READ",  "true").lower()  in ("true", "1", "yes") 
 # Legacy compat
 USE_DB_V2 = DB_V2_READ  # backward-compat nếu code khác đang đọc
 
-INDUSTRIES = [
-    "fnb", "tech_saas", "ecommerce", "education",
-    "health_beauty", "retail", "b2b_service", "real_estate",
-]
 STAGES = ["idea", "mvp", "growth", "scale"]
