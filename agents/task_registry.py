@@ -496,6 +496,28 @@ OPERATIONAL_TASKS: dict[str, TaskConfig] = {
             {"key": "reason",     "label": "Lý do / metric tham chiếu (tuỳ chọn)",   "example": "Frequency 6.5, CPM 180K > benchmark", "required": False},
         ],
     ),
+    "viral_video_analyzer": TaskConfig(
+        name="viral_video_analyzer",
+        label="Phân Tích Video Viral",
+        button_emoji="🎥",
+        category="analysis",
+        description="Reverse-engineer kịch bản video viral → công thức replicate + production brief shoot-ready",
+        skill_class_name="ViralVideoAnalyzerSkill",
+        intake_fields=[
+            {"key": "video_source",      "label": "Link video HOẶC paste transcript",
+             "example": "https://www.tiktok.com/@xyz/video/123  HOẶC paste lời thoại nếu không có link", "required": True},
+            {"key": "platform",          "label": "Platform",
+             "example": "TikTok / Reels / Shorts / YouTube", "required": True},
+            {"key": "niche_context",     "label": "Niche / chủ đề video (để Max so sánh với business sếp)",
+             "example": "Review skincare cho da dầu — tệp nữ 22-30", "required": True},
+            {"key": "creator_persona",   "label": "Ai sẽ quay (để Max tailor shot list + script)",
+             "example": "Em founder nữ 30t, ngại lên hình / Có nhân viên nữ 24t sweet vibe / Sẽ thuê KOC", "required": True},
+            {"key": "engagement_data",   "label": "Số liệu video (view / like / comment / share — nếu biết)",
+             "example": "2.4M view, 180K like, 5K comment — hoặc 'không rõ'", "required": False},
+            {"key": "why_picked",        "label": "Vì sao sếp chọn video này để phân tích",
+             "example": "Hook 3s đầu rất mạnh, muốn học công thức", "required": False},
+        ],
+    ),
 }
 
 

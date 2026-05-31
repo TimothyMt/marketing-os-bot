@@ -236,6 +236,7 @@ visual brief cho designer, SEO content, content repurposing.
         owns_skills=[
             "video_scripts", "post_adapt",
             "post_hooks", "post_batch",
+            "viral_video_analyzer",
         ],
         trigger_keywords=[
             "tiktok", "tik tok", "reels", "short video", "video ngắn",
