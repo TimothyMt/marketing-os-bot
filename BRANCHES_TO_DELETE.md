@@ -1,10 +1,15 @@
-# Branch đã xoá khi hợp nhất (2026-05-31)
+# Branch cần xoá thủ công (2026-05-31)
 
-> Sau khi hợp nhất về `master` (= nice-gates + viral analyzer + kpi 14 ngành),
-> các branch sau đã xoá khỏi remote. SHA tip lưu lại để khôi phục nếu cần:
-> `git fetch origin <SHA>` rồi `git branch <ten> <SHA>`.
+> ⚠️ Môi trường Claude Code on web KHÔNG xoá được branch remote
+> (git push --delete bị chặn 403; GitHub MCP không có tool delete branch).
+> Bạn cần xoá thủ công qua **GitHub web UI** (tab Branches → icon thùng rác)
+> hoặc `git push origin --delete <branch>` từ máy bạn (có quyền).
 
-| Branch (đã xoá) | SHA tip | Lý do |
+Sau khi đã hợp nhất về `master` (= nice-gates + viral analyzer + kpi 14 ngành),
+11 branch sau là thừa. SHA tip lưu lại để khôi phục nếu cần
+(`git branch <ten> <SHA>`):
+
+| Branch cần xoá | SHA tip | Lý do |
 |---|---|---|
 | claude/jolly-goodall-X8fnk | b4ccfc3e3bfd6ec1ae254d9072b15e85fc11d53f | subset nice-gates (deletion refactor) |
 | claude/nice-bell-KugwP | 7efb94bf67452a5e9bcb479afe27bf1fe0c4b7b5 | subset nice-gates |
@@ -18,7 +23,17 @@
 | claude/nice-gates-KcHRC | 75cd9eae439036c6f8c7d6c38084348db06be551 | đã nằm trong master |
 | claude/viral-video-analyzer-skill | b82fbe64a739d049e2c8a922d29d54a6462906b7 | đã merge vào master |
 
-## Branch còn giữ
+## Branch GIỮ LẠI
 - `master` — default, = nội dung hợp nhất
 - `integration/consolidated` — branch làm việc (= master)
-- `claude/marketing-os-three-tier-RHBLx` — nguồn code three-tier (đã backup 1 phần ở `_pending_three_tier/`)
+- `claude/marketing-os-three-tier-RHBLx` — nguồn code three-tier (backup 1 phần ở `_pending_three_tier/`)
+
+## Lệnh xoá nhanh (chạy từ máy có quyền)
+```bash
+for b in claude/jolly-goodall-X8fnk claude/nice-bell-KugwP coming-soon \
+  content-gen-suite feature/operational-layer fix/critical-issues \
+  fix/greeting-intercept refactor/db-v2-normalize test-prompt-upgrades \
+  claude/nice-gates-KcHRC claude/viral-video-analyzer-skill; do
+  git push origin --delete "$b"
+done
+```
