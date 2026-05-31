@@ -66,7 +66,31 @@ Vì nice-gates đã làm tốt/đầy đủ hơn ở hầu hết feature, hợp 
 
 ---
 
-## 2 câu hỏi cần bạn trả lời
+## 2 câu hỏi cần bạn trả lời → ĐÃ QUYẾT
 
-**Q1 — Theo dõi đối thủ:** giữ Spy Radar (three-tier) hay monitor_competitors (nice-gates)?
-**Q2 — Multi-campaign:** giữ campaign_store (three-tier) hay campaign_history/v2 (nice-gates)?
+**Q1 — Theo dõi đối thủ:** "gộp cả hai" → KẾT QUẢ: `monitor_competitors` của nice-gates
+ĐÃ là hybrid mong muốn (nguồn fb_ads_library/Graph API + interval user chọn
+3/6/12/24/168h + alert Telegram + nút phân tích sâu on-demand). KHÔNG cần port.
+Spy Radar three-tier thừa.
+**Q2 — Multi-campaign:** giữ nice-gates campaign_history/v2. Bỏ campaign_store.
+
+---
+
+## ✅ TRẠNG THÁI CUỐI (branch integration/consolidated)
+
+| # | Việc | Kết quả |
+|---|---|---|
+| 1 | kpi_library 7→14 ngành | ✅ Port xong (data thuần) |
+| 2 | Union config | ✅ +GEMINI_API_KEY, +GRAPH_API_VERSION, +SPY_CHECK_INTERVAL |
+| 3 | Viral Video Analyzer | ✅ Port xong (2 tool + skill + registry + persona TikTok) |
+| 4 | Theo dõi đối thủ | ✅ Không cần làm — nice-gates đã là hybrid |
+| 5 | Multi-campaign | ✅ Không cần làm — giữ nice-gates |
+
+**Đã BỎ (reimplementation thừa của three-tier):** llm_router, ads_operator (MCP chưa
+verify), campaign_intake (87 dòng), tier2/3 pipeline, campaign_store, spy_store/
+poller/worker, crypto, mcp_client, migrations 000-002.
+
+**Master:** đóng góp 0 file. Không merge gì.
+
+→ Consolidation hoàn tất. Branch `integration/consolidated` = nice-gates đầy đủ
+  + 14 ngành KPI + Viral Analyzer. Sẵn sàng để trỏ thành master khi bạn duyệt.
