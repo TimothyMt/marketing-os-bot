@@ -22,8 +22,19 @@ from bot.handlers import (
     cmd_start,
     cmd_reset,
     cmd_help,
+    cmd_settings,
+    cmd_connect_ads,
+    cmd_disconnect_ads,
+    cmd_ads_settings,
     handle_message,
     handle_callback,
+    handle_photo,
+    cmd_admin_addquota,
+    cmd_admin_setquota,
+    cmd_admin_resetusage,
+    cmd_admin_userinfo,
+    cmd_history,
+    cmd_post,
 )
 
 logging.basicConfig(
@@ -52,10 +63,26 @@ def main():
         .build()
     )
 
-    app.add_handler(CommandHandler("start", cmd_start))
-    app.add_handler(CommandHandler("reset", cmd_reset))
-    app.add_handler(CommandHandler("help", cmd_help))
+    app.add_handler(CommandHandler("start",        cmd_start))
+    app.add_handler(CommandHandler("reset",        cmd_reset))
+    app.add_handler(CommandHandler("help",         cmd_help))
+    app.add_handler(CommandHandler("settings",     cmd_settings))
+    app.add_handler(CommandHandler("setting",      cmd_settings))
+    app.add_handler(CommandHandler("config",       cmd_settings))
+    app.add_handler(CommandHandler("connect_ads",  cmd_connect_ads))
+    app.add_handler(CommandHandler("disconnect_ads", cmd_disconnect_ads))
+    app.add_handler(CommandHandler("ads_settings", cmd_ads_settings))
+
+    app.add_handler(CommandHandler("addquota",     cmd_admin_addquota))
+    app.add_handler(CommandHandler("setquota",     cmd_admin_setquota))
+    app.add_handler(CommandHandler("resetusage",   cmd_admin_resetusage))
+    app.add_handler(CommandHandler("userinfo",     cmd_admin_userinfo))
+
+    app.add_handler(CommandHandler("history",      cmd_history))
+    app.add_handler(CommandHandler("post",         cmd_post))
+
     app.add_handler(CallbackQueryHandler(handle_callback))
+    app.add_handler(MessageHandler(filters.PHOTO, handle_photo))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
     app.run_polling(drop_pending_updates=True)
