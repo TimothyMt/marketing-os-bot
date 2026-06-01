@@ -1,8 +1,19 @@
 """
 Entry point — Marketing OS Telegram Bot (Webhook mode).
 Designed for Railway + Supabase deployment.
+
+Dùng starlette + uvicorn trực tiếp (thay vì app.run_webhook) để có thể
+gắn custom route /oauth/fb/callback vào cùng 1 server + 1 port.
 """
+import asyncio
 import logging
+
+import uvicorn
+from starlette.applications import Starlette
+from starlette.requests import Request
+from starlette.responses import PlainTextResponse
+from starlette.routing import Route
+from telegram import Update
 from telegram.ext import (
     Application,
     CommandHandler,
@@ -18,6 +29,9 @@ from bot.handlers import (
     cmd_reset,
     cmd_help,
     cmd_settings,
+    cmd_connect_ads,
+    cmd_disconnect_ads,
+    cmd_ads_settings,
     handle_message,
     handle_callback,
     handle_photo,
@@ -35,17 +49,103 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+# ── Build PTB Application ────────────────────────────────────────
 
-async def post_init(application: Application):
-    """Called once after Application is built — init DB pool here."""
+def _build_app() -> Application:
+    app = (
+        Application.builder()
+        .token(TELEGRAM_BOT_TOKEN)
+        .concurrent_updates(True)
+        .build()
+    )
+
+    app.add_handler(CommandHandler("start",        cmd_start))
+    app.add_handler(CommandHandler("reset",        cmd_reset))
+    app.add_handler(CommandHandler("help",         cmd_help))
+    app.add_handler(CommandHandler("settings",     cmd_settings))
+    app.add_handler(CommandHandler("setting",      cmd_settings))
+    app.add_handler(CommandHandler("config",       cmd_settings))
+    app.add_handler(CommandHandler("connect_ads",  cmd_connect_ads))
+    app.add_handler(CommandHandler("disconnect_ads", cmd_disconnect_ads))
+    app.add_handler(CommandHandler("ads_settings", cmd_ads_settings))
+
+    app.add_handler(CommandHandler("addquota",     cmd_admin_addquota))
+    app.add_handler(CommandHandler("setquota",     cmd_admin_setquota))
+    app.add_handler(CommandHandler("resetusage",   cmd_admin_resetusage))
+    app.add_handler(CommandHandler("userinfo",     cmd_admin_userinfo))
+
+    app.add_handler(CommandHandler("history",      cmd_history))
+    app.add_handler(CommandHandler("post",         cmd_post))
+
+    app.add_handler(CallbackQueryHandler(handle_callback))
+    app.add_handler(MessageHandler(filters.PHOTO, handle_photo))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+
+    return app
+
+
+ptb_app = _build_app()
+
+
+# ── Starlette route handlers ─────────────────────────────────────
+
+async def telegram_webhook(request: Request) -> PlainTextResponse:
+    """Nhận Telegram updates và đẩy vào PTB update queue."""
+    data = await request.json()
+    update = Update.de_json(data, ptb_app.bot)
+    await ptb_app.update_queue.put(update)
+    return PlainTextResponse("OK")
+
+
+async def oauth_fb_callback(request: Request):
+    """FB OAuth 2.0 callback — exchange code → lưu token → notify user."""
+    from services.fb_oauth import handle_callback
+    return await handle_callback(request, ptb_app.bot)
+
+
+# ── Startup / shutdown lifecycle ─────────────────────────────────
+
+async def on_startup() -> None:
     await init_pool()
     await init_db()
     logger.info("DB pool ready.")
 
-    # Start competitor monitor as background asyncio task (checks every hour)
-    import asyncio
+    await ptb_app.initialize()
+    await ptb_app.bot.set_webhook(
+        url=f"{WEBHOOK_URL}/{TELEGRAM_BOT_TOKEN}",
+        drop_pending_updates=True,
+    )
+    await ptb_app.start()
+    logger.info("PTB webhook registered: %s", f"{WEBHOOK_URL}/{TELEGRAM_BOT_TOKEN}")
+
+    # Background tasks
+    asyncio.create_task(_start_background_tasks())
+
+
+async def _start_background_tasks() -> None:
     from workers.monitor_competitors import start_background_monitor
-    asyncio.create_task(start_background_monitor(application.bot, interval_seconds=3600))
+    from services.ads_scheduler import start_ads_scheduler
+    asyncio.create_task(start_background_monitor(ptb_app.bot, interval_seconds=3600))
+    asyncio.create_task(start_ads_scheduler(ptb_app.bot))
+    logger.info("Background tasks started (competitor monitor + ads scheduler).")
+
+
+async def on_shutdown() -> None:
+    await ptb_app.stop()
+    await ptb_app.shutdown()
+    logger.info("PTB shutdown complete.")
+
+
+# ── Starlette app ────────────────────────────────────────────────
+
+starlette_app = Starlette(
+    routes=[
+        Route(f"/{TELEGRAM_BOT_TOKEN}", telegram_webhook, methods=["POST"]),
+        Route("/oauth/fb/callback",     oauth_fb_callback, methods=["GET"]),
+    ],
+    on_startup=[on_startup],
+    on_shutdown=[on_shutdown],
+)
 
 
 def main():
@@ -54,55 +154,8 @@ def main():
     if not WEBHOOK_URL:
         raise ValueError("WEBHOOK_URL is not set.")
 
-    app = (
-        Application.builder()
-        .token(TELEGRAM_BOT_TOKEN)
-        .post_init(post_init)
-        .concurrent_updates(True)
-        .build()
-    )
-
-    # Commands
-    app.add_handler(CommandHandler("start", cmd_start))
-    app.add_handler(CommandHandler("reset", cmd_reset))
-    app.add_handler(CommandHandler("help", cmd_help))
-    app.add_handler(CommandHandler("settings", cmd_settings))
-    app.add_handler(CommandHandler("setting",  cmd_settings))  # alias
-    app.add_handler(CommandHandler("config",   cmd_settings))  # alias
-
-    # Admin commands (chỉ ADMIN_IDS mới dùng được)
-    app.add_handler(CommandHandler("addquota",   cmd_admin_addquota))
-    app.add_handler(CommandHandler("setquota",   cmd_admin_setquota))
-    app.add_handler(CommandHandler("resetusage", cmd_admin_resetusage))
-    app.add_handler(CommandHandler("userinfo",   cmd_admin_userinfo))
-
-    # Sprint 8 — Campaign History + Semantic Search
-    app.add_handler(CommandHandler("history", cmd_history))
-
-    # Sprint 7 — Per-post Actions
-    app.add_handler(CommandHandler("post", cmd_post))
-
-    # Inline keyboard callbacks
-    app.add_handler(CallbackQueryHandler(handle_callback))
-
-    # Photo messages (image reference upload for Ads Gen)
-    app.add_handler(MessageHandler(filters.PHOTO, handle_photo))
-
-    # Text messages
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
-
-    # Webhook endpoint path = /TOKEN (keeps Telegram updates private)
-    webhook_path = TELEGRAM_BOT_TOKEN
-
-    logger.info(f"Starting webhook on port {PORT} → {WEBHOOK_URL}/{webhook_path}")
-
-    app.run_webhook(
-        listen="0.0.0.0",
-        port=PORT,
-        url_path=webhook_path,
-        webhook_url=f"{WEBHOOK_URL}/{webhook_path}",
-        drop_pending_updates=True,
-    )
+    logger.info("Starting server on port %d", PORT)
+    uvicorn.run(starlette_app, host="0.0.0.0", port=PORT, log_level="info")
 
 
 if __name__ == "__main__":

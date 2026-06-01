@@ -598,6 +598,11 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await _handle_brief_edit_text(update, context, session, text)
         return
 
+    # Ads Scheduler: user đang nhập ngưỡng alert
+    if session.pending_intake.get("_awaiting_ads_thresholds"):
+        await _handle_ads_threshold_text(update, session, text)
+        return
+
     # Post A→Z: User mô tả idea campaign → refine với customer + market
     if session.pending_intake.get("_awaiting_campaign_idea"):
         await _handle_campaign_idea_text(update, context, session, text)
@@ -953,6 +958,99 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def _handle_callback_inner(update, context, query, session, data, user_id):
+
+    # ── Ads Scheduler callbacks ───────────────────────────────────
+    if data == "noop":
+        return
+
+    if data == "ads_toggle_notify":
+        from storage.fb_connections import get_connection, update_notification_settings
+        conn = await get_connection(user_id)
+        if conn:
+            new_state = not conn.get("notification_enabled", True)
+            await update_notification_settings(user_id, notification_enabled=new_state)
+            state_text = "🟢 Đã bật" if new_state else "🔴 Đã tắt"
+            await query.edit_message_text(
+                f"{state_text} báo cáo ads hàng ngày.\n\nDùng /ads\\_settings để chỉnh thêm.",
+                parse_mode=ParseMode.MARKDOWN,
+            )
+        return
+
+    if data.startswith("ads_toggle_metric:"):
+        metric = data.split(":", 1)[1]
+        from storage.fb_connections import get_connection, update_notification_settings
+        from services.ads_notifier import AVAILABLE_METRICS
+        conn = await get_connection(user_id)
+        if conn and metric in AVAILABLE_METRICS:
+            tracked = list(conn.get("tracked_metrics") or ["spend", "roas", "cpl", "frequency"])
+            if metric in tracked:
+                tracked.remove(metric)
+            else:
+                tracked.append(metric)
+            await update_notification_settings(user_id, tracked_metrics=tracked)
+            await query.answer(f"{'✅ Thêm' if metric in tracked else '☐ Bỏ'} {metric}", show_alert=False)
+        return
+
+    if data == "ads_set_thresholds":
+        await query.edit_message_text(
+            "⚠️ *Đặt ngưỡng cảnh báo*\n\n"
+            "Gửi cho em 3 dòng theo format:\n"
+            "`frequency: 5.0`\n"
+            "`roas_drop: 20`\n"
+            "`cpm_spike: 30`\n\n"
+            "Bỏ trống dòng nào = Max tự dùng benchmark ngành.",
+            parse_mode=ParseMode.MARKDOWN,
+        )
+        session.pending_intake["_awaiting_ads_thresholds"] = True
+        from storage import save_session as _sv
+        await _sv(session)
+        return
+
+    if data == "ads_setup_metrics":
+        # Redirect to /ads_settings flow
+        from services.ads_notifier import METRIC_LABELS, RECOMMENDED_METRICS
+        from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+        from storage.fb_connections import get_connection
+        conn = await get_connection(user_id)
+        tracked = (conn or {}).get("tracked_metrics") or RECOMMENDED_METRICS
+
+        recommended = ["spend", "roas", "cpl", "frequency"]
+        advanced    = ["cpm", "ctr", "vtr_3s", "reach"]
+        deep        = ["purchases", "cpa", "cpc", "leads"]
+
+        def _btn(key):
+            icon, label, _ = METRIC_LABELS[key]
+            tick = "✅" if key in tracked else "☐"
+            return InlineKeyboardButton(f"{tick} {icon} {label}", callback_data=f"ads_toggle_metric:{key}")
+
+        keyboard = InlineKeyboardMarkup([
+            [InlineKeyboardButton("── ⭐ Khuyến nghị ──", callback_data="noop")],
+            [_btn(k) for k in recommended],
+            [InlineKeyboardButton("── 📊 Hiệu quả ads ──", callback_data="noop")],
+            [_btn(k) for k in advanced],
+            [InlineKeyboardButton("── 💡 Chuyên sâu ──", callback_data="noop")],
+            [_btn(k) for k in deep],
+            [InlineKeyboardButton("✅ Xong — dùng mặc định cho ngưỡng alert", callback_data="ads_setup_default")],
+        ])
+        await query.edit_message_text(
+            "📊 *Chọn chỉ số theo dõi hàng ngày:*\n\n"
+            "Nhấn để bật/tắt. ⭐ Recommended = 4 chỉ số thiết yếu nhất.\n\n"
+            "_Ngưỡng alert: bỏ trống = Max tự theo benchmark ngành._",
+            parse_mode=ParseMode.MARKDOWN,
+            reply_markup=keyboard,
+        )
+        return
+
+    if data == "ads_setup_default":
+        await query.edit_message_text(
+            "✅ *Cài đặt mặc định đã áp dụng.*\n\n"
+            "📊 Theo dõi: Spend · ROAS · CPL · Frequency\n"
+            "⚠️ Ngưỡng alert: Max tự theo benchmark ngành\n"
+            "🕗 Báo cáo: 8:00 sáng mỗi ngày, Thứ Hai = weekly report\n\n"
+            "Dùng /ads\\_settings bất kỳ lúc nào để chỉnh.",
+            parse_mode=ParseMode.MARKDOWN,
+        )
+        return
 
     # ── Sprint 6: Tone Calibration ────────────────────────────────
     if data.startswith("tone_"):
@@ -5783,3 +5881,198 @@ async def _handle_basic_business_text(update, context, session, text: str):
 
     # Chain to pending skill
     await _send_single_shot_form(update.message, session, pending_skill)
+
+
+# ─────────────────────────────────────────────────────────────────
+# FB ADS SCHEDULER — /connect_ads · /disconnect_ads · /ads_settings
+# ─────────────────────────────────────────────────────────────────
+
+async def cmd_connect_ads(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """/connect_ads — bắt đầu OAuth flow để kết nối FB Ad Account."""
+    user_id = update.effective_user.id
+    from config import FB_APP_ID, FB_APP_SECRET, WEBHOOK_BASE_URL
+
+    if not FB_APP_ID or not FB_APP_SECRET:
+        await update.message.reply_text(
+            "⚠️ *FB App chưa được cấu hình.*\n\n"
+            "Admin cần set các env vars:\n"
+            "`FB_APP_ID`, `FB_APP_SECRET`, `ENCRYPTION_KEY`\n\n"
+            "Sau khi admin setup xong, sếp dùng lại lệnh này nhé.",
+            parse_mode=ParseMode.MARKDOWN,
+        )
+        return
+
+    from config import ENCRYPTION_KEY
+    if not ENCRYPTION_KEY:
+        await update.message.reply_text(
+            "⚠️ *ENCRYPTION_KEY chưa set.*\n\n"
+            "Admin tạo key:\n"
+            "`python -c \"from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())\"`\n"
+            "rồi set vào env var `ENCRYPTION_KEY`.",
+            parse_mode=ParseMode.MARKDOWN,
+        )
+        return
+
+    # Kiểm tra đã kết nối chưa
+    from storage.fb_connections import get_connection
+    existing = await get_connection(user_id)
+    if existing and existing.get("notification_enabled"):
+        name = existing.get("account_name") or existing.get("ad_account_id")
+        await update.message.reply_text(
+            f"✅ *Đã kết nối:* {name}\n\n"
+            "Muốn kết nối lại tài khoản khác? Dùng /disconnect\\_ads trước.",
+            parse_mode=ParseMode.MARKDOWN,
+        )
+        return
+
+    await update.message.reply_text(
+        "🔗 *Kết nối Facebook Ads*\n\n"
+        "Em đang tạo link OAuth... (hết hạn sau 15 phút)",
+        parse_mode=ParseMode.MARKDOWN,
+    )
+    try:
+        from services.fb_oauth import build_oauth_url
+        from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+        url = await build_oauth_url(user_id)
+        keyboard = InlineKeyboardMarkup([[
+            InlineKeyboardButton("🔗 Kết nối Facebook Ads", url=url)
+        ]])
+        await update.message.reply_text(
+            "Bấm nút bên dưới để authorize FB Ads của sếp.\n\n"
+            "Bot sẽ yêu cầu quyền `ads_read` + `read_insights` + `ads_management`.",
+            reply_markup=keyboard,
+            parse_mode=ParseMode.MARKDOWN,
+        )
+    except Exception as e:
+        logger.error("cmd_connect_ads failed user=%d: %s", user_id, e)
+        await update.message.reply_text("❌ Lỗi tạo link OAuth. Admin kiểm tra log.")
+
+
+async def cmd_disconnect_ads(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """/disconnect_ads — ngắt kết nối, xóa token."""
+    user_id = update.effective_user.id
+    from storage.fb_connections import get_connection, delete_connection
+
+    conn = await get_connection(user_id)
+    if not conn:
+        await update.message.reply_text("Chưa kết nối FB Ads nào cả sếp ơi.")
+        return
+
+    name = conn.get("account_name") or conn.get("ad_account_id")
+    await delete_connection(user_id)
+    await update.message.reply_text(
+        f"✅ Đã ngắt kết nối *{name}*.\n\nToken đã được xóa khỏi hệ thống.",
+        parse_mode=ParseMode.MARKDOWN,
+    )
+
+
+async def cmd_ads_settings(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """/ads_settings — xem + chỉnh cài đặt báo cáo ads.
+
+    Cho phép user:
+    - Bật/tắt notification
+    - Chọn chỉ số theo dõi (multi-select inline keyboard)
+    - Đặt ngưỡng alert (Frequency / ROAS drop / CPM spike)
+    """
+    user_id = update.effective_user.id
+    from storage.fb_connections import get_connection
+    from services.ads_notifier import METRIC_LABELS, RECOMMENDED_METRICS, AVAILABLE_METRICS
+    from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+
+    conn = await get_connection(user_id)
+    if not conn:
+        await update.message.reply_text(
+            "Chưa kết nối FB Ads. Dùng /connect\\_ads trước nhé sếp.",
+            parse_mode=ParseMode.MARKDOWN,
+        )
+        return
+
+    name      = conn.get("account_name") or conn.get("ad_account_id")
+    enabled   = conn.get("notification_enabled", True)
+    tracked   = conn.get("tracked_metrics") or RECOMMENDED_METRICS
+    freq_max  = conn.get("alert_frequency_max")
+    roas_drop = conn.get("alert_roas_drop_pct")
+    cpm_spike = conn.get("alert_cpm_spike_pct")
+
+    status_icon = "🟢" if enabled else "🔴"
+    tracked_labels = " · ".join(METRIC_LABELS[m][1] for m in tracked if m in METRIC_LABELS)
+
+    text = (
+        f"⚙️ *Cài đặt Ads Scheduler — {name}*\n\n"
+        f"{status_icon} Báo cáo: {'Đang bật' if enabled else 'Đang tắt'} (8:00 sáng hàng ngày)\n"
+        f"📊 Theo dõi: {tracked_labels}\n\n"
+        f"*Ngưỡng cảnh báo:*\n"
+        f"• Frequency > {freq_max if freq_max else 'benchmark ngành (5.0)'}\n"
+        f"• ROAS giảm > {f'{roas_drop:.0f}%' if roas_drop else 'benchmark ngành (20%)'}\n"
+        f"• CPM tăng > {f'{cpm_spike:.0f}%' if cpm_spike else 'benchmark ngành (30%)'}\n"
+    )
+
+    # Build metric selection keyboard (⭐ Recommended + các nhóm khác)
+    recommended = ["spend", "roas", "cpl", "frequency"]
+    advanced    = ["cpm", "ctr", "vtr_3s", "reach"]
+    deep        = ["purchases", "cpa", "cpc", "leads"]
+
+    def _metric_btn(key: str) -> InlineKeyboardButton:
+        icon, label, _ = METRIC_LABELS[key]
+        tick = "✅" if key in tracked else "☐"
+        return InlineKeyboardButton(f"{tick} {icon} {label}", callback_data=f"ads_toggle_metric:{key}")
+
+    keyboard = InlineKeyboardMarkup([
+        [InlineKeyboardButton("── ⭐ Khuyến nghị ──", callback_data="noop")],
+        [_metric_btn(k) for k in recommended],
+        [InlineKeyboardButton("── 📊 Hiệu quả ads ──", callback_data="noop")],
+        [_metric_btn(k) for k in advanced],
+        [InlineKeyboardButton("── 💡 Chuyên sâu ──", callback_data="noop")],
+        [_metric_btn(k) for k in deep],
+        [
+            InlineKeyboardButton(
+                "🔴 Tắt báo cáo" if enabled else "🟢 Bật báo cáo",
+                callback_data="ads_toggle_notify",
+            ),
+            InlineKeyboardButton("⚠️ Đặt ngưỡng alert", callback_data="ads_set_thresholds"),
+        ],
+    ])
+
+    await update.message.reply_text(text, parse_mode=ParseMode.MARKDOWN, reply_markup=keyboard)
+
+
+async def _handle_ads_threshold_text(update: Update, session, text: str) -> None:
+    """Parse ngưỡng alert user nhập theo format 'key: value' mỗi dòng."""
+    import re
+    from storage.fb_connections import update_notification_settings
+    from storage import save_session as _sv
+
+    session.pending_intake.pop("_awaiting_ads_thresholds", None)
+    await _sv(session)
+
+    user_id = update.effective_user.id
+    updates = {}
+    lines = text.strip().lower().splitlines()
+
+    for line in lines:
+        m = re.match(r"(frequency|roas_drop|cpm_spike)\s*[:=]\s*([\d.]+)", line)
+        if m:
+            key, val = m.group(1), float(m.group(2))
+            if key == "frequency":
+                updates["alert_frequency_max"] = val
+            elif key == "roas_drop":
+                updates["alert_roas_drop_pct"] = val
+            elif key == "cpm_spike":
+                updates["alert_cpm_spike_pct"] = val
+
+    if updates:
+        await update_notification_settings(user_id, **updates)
+        summary = []
+        if "alert_frequency_max"  in updates: summary.append(f"Frequency > {updates['alert_frequency_max']}")
+        if "alert_roas_drop_pct" in updates: summary.append(f"ROAS giảm > {updates['alert_roas_drop_pct']:.0f}%")
+        if "alert_cpm_spike_pct" in updates: summary.append(f"CPM tăng > {updates['alert_cpm_spike_pct']:.0f}%")
+        await update.message.reply_text(
+            f"✅ *Ngưỡng alert đã lưu:*\n" + "\n".join(f"• {s}" for s in summary),
+            parse_mode=ParseMode.MARKDOWN,
+        )
+    else:
+        await update.message.reply_text(
+            "Không parse được ngưỡng. Format đúng:\n"
+            "`frequency: 5.0`\n`roas_drop: 20`\n`cpm_spike: 30`",
+            parse_mode=ParseMode.MARKDOWN,
+        )

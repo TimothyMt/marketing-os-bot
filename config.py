@@ -77,3 +77,9 @@ DB_V2_READ  = os.getenv("DB_V2_READ",  "true").lower()  in ("true", "1", "yes") 
 USE_DB_V2 = DB_V2_READ  # backward-compat nếu code khác đang đọc
 
 STAGES = ["idea", "mvp", "growth", "scale"]
+
+# FB OAuth per-user — Ads Scheduler
+# ENCRYPTION_KEY: Fernet 32-byte key base64. Gen: python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+ENCRYPTION_KEY   = os.getenv("ENCRYPTION_KEY", "")
+# Base URL của server (no trailing slash) — dùng cho OAuth redirect_uri
+WEBHOOK_BASE_URL = WEBHOOK_URL  # dùng lại WEBHOOK_URL đã có
