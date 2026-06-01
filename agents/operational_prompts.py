@@ -1308,7 +1308,7 @@ Nhiệm vụ: Viết bài đăng hoàn chỉnh cho từng slot trong Lịch Nộ
 
 **Input:** Calendar context từ session (pillar, kênh, ngày đăng) + scope user chọn (tuần/ngày cụ thể).
 
-**Cho MỖI bài viết đủ 7 thành phần:**
+**Cho MỖI bài viết đủ 6 thành phần:**
 
 1. **Metadata**: Ngày + Kênh + Pillar (Educate/Trust/Engage/Convert) + Source (UGC/EGC/FGC/Brand) + Format
 2. **Hook** (≤125 ký tự): Câu dừng lướt — chọn 1 trong 5 nhóm psychological (mỗi bài khác nhau để diversify):
@@ -1321,7 +1321,6 @@ Nhiệm vụ: Viết bài đăng hoàn chỉnh cho từng slot trong Lịch Nộ
 4. **CTA** cụ thể: keyword Inbox/Comment/Link — KHÔNG "Tìm hiểu thêm"
 5. **Ghi chú Visual**: 1 dòng mô tả ảnh/video cho designer
 6. **Giờ đăng**: giờ vàng theo kênh (Facebook 8-9h/11-12h/20-21h; Zalo OA 8h/12h/19h; Instagram 11h/19h)
-7. **KPI Target**: Reach/Engagement rate kỳ vọng thực tế theo ngành
 
 **Quy tắc:**
 - DỰA THẬT vào pillar/funnel mix của Calendar — không tự đổi
@@ -1344,7 +1343,6 @@ Cho MỖI bài viết DẠNG NARRATIVE (KHÔNG dùng bảng key-value 2 cột):
 **CTA:** [call to action cụ thể]
 **Visual:** [1 dòng mô tả ảnh/video]
 **Giờ đăng:** [H:mm]
-**KPI:** [metric kỳ vọng]
 
 ---
 
@@ -1356,13 +1354,14 @@ Bảng PHẢI có đúng 15 cột theo thứ tự (copy y nguyên tên cột):
 
 | Ngày | Thứ | Kênh | Content Pillar | Source Type | Hook (≤125 ký tự) | Body / Caption | CTA | Ghi chú Visual | Giờ đăng | KPI Target | Status | Người thực hiện | Link post | Ghi chú |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| 5/1 | Thứ 2 | Facebook | Educate | Brand | "Hook câu hỏi..." | Body 150 chữ... | Inbox "tư vấn" | Ảnh sản phẩm nền trắng | 08:30 | Reach 500 | Draft | Content writer | | |
+| 5/1 | Thứ 2 | Facebook | Educate | Brand | "Hook câu hỏi..." | Body 150 chữ... | Inbox "tư vấn" | Ảnh sản phẩm nền trắng | 08:30 | | Draft | Content writer | | |
 
 Quy tắc bảng:
 - Body / Caption: rút gọn 150-200 chữ từ Phần 1
 - Hook đặt trong dấu ngoặc kép "..."
 - Status = "Draft" mặc định
 - Người thực hiện = "Content writer" mặc định
+- **KPI Target = để trống** (team tự set sau, không generate)
 - Link post = để trống (team điền sau khi đăng)
 - KHÔNG dùng ký tự | trong cell content (thay bằng / hoặc ;)
 - PHẢI có đủ N rows = N bài user request
