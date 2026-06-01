@@ -198,15 +198,33 @@ def make_email_zalo_sequence_skill() -> OperationalSkill:
     ))
 
 
-def make_social_posts_skill() -> OperationalSkill:
-    """Bài đăng hữu cơ (Facebook/Zalo/Instagram) → 📅 Content Calendar sheet."""
-    return OperationalSkill(_config_for(
-        "social_posts",
-        SOCIAL_POSTS_SYSTEM,
-        max_tokens=12000,
-        context_strategy=ContextStrategy.PROFILE_PLUS_CAMPAIGN,
-        primary_deliverable=PrimaryDeliverable.EXCEL,
-    ))
+class SocialPostsSkill(OperationalSkill):
+    """Bài đăng hữu cơ (Facebook/Zalo/Instagram) → 📅 Content Calendar sheet.
+
+    Multi-industry skill: 1 skill duy nhất, tự detect session.profile.industry
+    rồi nạp "bộ não ngành" tương ứng (hook pattern, tone, kênh, CTA, angle đặc thù)
+    vào prompt. KHÔNG tách thành nhiều skill rời.
+    """
+
+    def __init__(self):
+        super().__init__(_config_for(
+            "social_posts",
+            SOCIAL_POSTS_SYSTEM,
+            max_tokens=12000,
+            context_strategy=ContextStrategy.PROFILE_PLUS_CAMPAIGN,
+            primary_deliverable=PrimaryDeliverable.EXCEL,
+        ))
+
+    def build_user_msg(self, session: Session) -> str:
+        from agents.social_industry_profiles import get_social_industry_profile
+        base_msg = super().build_user_msg(session)
+        profile_block = get_social_industry_profile(session.profile.industry or "")
+        return (
+            base_msg
+            + "\n\n---\n\n"
+            + "**CHUYÊN MÔN NGÀNH (áp dụng CHẶT cho mọi bài viết dưới đây):**\n\n"
+            + profile_block
+        )
 
 
 def make_ugc_brief_skill() -> OperationalSkill:
@@ -800,7 +818,7 @@ OPS_SKILL_FACTORIES: dict[str, callable] = {
     "campaign_brief":      make_campaign_brief_skill,
     "content_calendar":    ContentCalendarDynamicSkill,  # Sprint 3.4 — Pillar dynamic
     "content_generator":   ContentGeneratorPipeline,
-    "social_posts":        make_social_posts_skill,
+    "social_posts":        SocialPostsSkill,
     "ugc_brief":           make_ugc_brief_skill,
     "competitor_spy":      make_competitor_spy_skill,
     "competitor_comparison": make_competitor_comparison_skill,
