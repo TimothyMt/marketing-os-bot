@@ -193,6 +193,18 @@ BRAND_VOICE_PROMPT_KEYBOARD = InlineKeyboardMarkup([
     [InlineKeyboardButton("🔙 Quay lại menu",                   callback_data="menu_main")],
 ])
 
+# Sau khi A→Z xong — XÁC NHẬN strategy trước khi sang campaign
+CONFIRM_STRATEGY_KEYBOARD = InlineKeyboardMarkup([
+    [InlineKeyboardButton("✅ Chuẩn rồi — sang lên kế hoạch", callback_data="strategy_confirm")],
+    [InlineKeyboardButton("✏️ Cần sửa/bổ sung phần nào đó",   callback_data="strategy_edit")],
+])
+
+# Sau khi Campaign Brief xong — XÁC NHẬN brief trước khi gen calendar
+CONFIRM_BRIEF_KEYBOARD = InlineKeyboardMarkup([
+    [InlineKeyboardButton("✅ Duyệt — tạo Lịch Nội Dung", callback_data="brief_confirm")],
+    [InlineKeyboardButton("✏️ Cần thêm/bớt gì đó",         callback_data="brief_edit")],
+])
+
 # Sau khi A→Z xong — hỏi có muốn triển khai campaign ngay không
 POST_AZ_CAMPAIGN_KEYBOARD = InlineKeyboardMarkup([
     [InlineKeyboardButton("💡 Tôi đã có ý tưởng campaign",      callback_data="az_have_idea")],

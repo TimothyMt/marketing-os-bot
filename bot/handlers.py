@@ -42,6 +42,8 @@ from bot.keyboards import (
     MONITOR_PROMPT_KEYBOARD,
     MONITOR_INTERVAL_KEYBOARD,
     POST_AZ_CAMPAIGN_KEYBOARD,
+    CONFIRM_STRATEGY_KEYBOARD,
+    CONFIRM_BRIEF_KEYBOARD,
     CAMPAIGN_OPTION_KEYBOARD,
     CAMPAIGN_IDEA_CONFIRM_KEYBOARD,
     OFFER_LEVER_KEYBOARD,
@@ -586,6 +588,11 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await _handle_image_edit_text(update, context, session, text)
         return
 
+    # Layer 2: User mô tả phần cần sửa trong strategy → surgical edit
+    if session.pending_intake.get("_awaiting_strategy_edit"):
+        await _handle_strategy_edit_text(update, context, session, text)
+        return
+
     # Post A→Z: User mô tả idea campaign → refine với customer + market
     if session.pending_intake.get("_awaiting_campaign_idea"):
         await _handle_campaign_idea_text(update, context, session, text)
@@ -1004,6 +1011,39 @@ async def _handle_callback_inner(update, context, query, session, data, user_id)
         await query.message.reply_text(
             "OK ạ! Sếp đánh giá Lịch Nội Dung em vừa làm thế nào ạ?",
             reply_markup=RATING_KEYBOARD,
+        )
+        return
+
+    # ── Layer 2: Xác nhận / Surgical edit strategy ──────────────
+    if data == "strategy_confirm":
+        await query.edit_message_reply_markup(reply_markup=None)
+        session.pending_intake.pop("_awaiting_strategy_edit", None)
+        await save_session(session)
+        addr = _addr(session)
+        await query.message.reply_text(
+            f"👍 Tuyệt! Strategy đã chốt.\n\n"
+            f"🚀 *Bước tiếp theo: triển khai campaign cụ thể*\n\n"
+            f"Giờ {addr} muốn chạy campaign gì?\n"
+            f"💡 *Đã có ý tưởng* → em validate + refine với Customer + Market\n"
+            f"🔍 *Chưa biết chạy gì* → em đề xuất 3 options phù hợp",
+            parse_mode=ParseMode.MARKDOWN,
+            reply_markup=POST_AZ_CAMPAIGN_KEYBOARD,
+        )
+        return
+
+    if data == "strategy_edit":
+        await query.edit_message_reply_markup(reply_markup=None)
+        session.pending_intake["_awaiting_strategy_edit"] = "1"
+        session.pending_intake.pop("_awaiting_rating_for", None)
+        await save_session(session)
+        addr = _addr(session)
+        await query.message.reply_text(
+            f"✏️ OK {addr}! Sếp nói rõ giúp em cần *sửa/bổ sung phần nào* và *đổi thành hướng nào* ạ.\n\n"
+            f"_Vd: \"USP nên nhấn Đông y thay vì công nghệ Hàn\", "
+            f"\"Roadmap tháng 1 thêm bước chạy thử ads ngân sách nhỏ\", "
+            f"\"Budget allocation cho TikTok nên cao hơn\"..._\n\n"
+            f"Em chỉ chỉnh đúng phần đó, giữ nguyên các phần còn lại.",
+            parse_mode=ParseMode.MARKDOWN,
         )
         return
 
@@ -3349,18 +3389,18 @@ async def _run_pipeline_sequentially(message: Message, session):
         await save_session(session)
 
         if total_stages > 1:
-            # A→Z xong — hỏi xác định campaign để triển khai
+            # A→Z xong — XÁC NHẬN strategy trước khi sang campaign planning.
+            # User duyệt → POST_AZ_CAMPAIGN; user sửa → surgical edit loop.
             addr = _addr(session)
             await message.reply_text(
                 f"✅ *Hoàn thành A→Z!* Mở file HTML để xem báo cáo đầy đủ.\n\n"
                 f"─────────────────────\n"
-                f"🚀 *Bước tiếp theo: triển khai campaign cụ thể*\n\n"
-                f"Strategy đã sẵn sàng. Giờ {addr} muốn chạy campaign gì?\n\n"
-                f"💡 *Đã có ý tưởng* → em validate + refine với Customer + Market\n"
-                f"🔍 *Chưa biết chạy gì* → em đề xuất 3 options phù hợp\n\n"
-                f"_Sau khi xác định campaign → Brief Campaign → Lịch Nội Dung._",
+                f"🔎 *{addr.capitalize()} xem qua giúp em:* những phân tích & chiến lược ở trên "
+                f"đã chính xác chưa ạ? Có chỗ nào cần sửa hoặc bổ sung không?\n\n"
+                f"• *Chuẩn rồi* → em chuyển sang lên kế hoạch campaign cụ thể.\n"
+                f"• *Cần sửa* → {addr} chỉ rõ phần nào, em chỉnh đúng chỗ đó (không làm lại từ đầu).",
                 parse_mode=ParseMode.MARKDOWN,
-                reply_markup=POST_AZ_CAMPAIGN_KEYBOARD,
+                reply_markup=CONFIRM_STRATEGY_KEYBOARD,
             )
         else:
             await message.reply_text(
@@ -4274,6 +4314,89 @@ async def _execute_optimizer_actions(session) -> str:
 
     await save_session(session)
     return "\n".join(results)
+
+
+async def _handle_strategy_edit_text(update, context, session, text: str):
+    """Surgical edit: sửa đúng section/sub-point trong synthesis theo comment user.
+
+    Hybrid: comment rõ → patch luôn (b); comment mơ hồ → hỏi lại (a).
+    Re-render HTML chỉ phần strategy đã cập nhật, giữ flag để lặp tới khi user chốt.
+    """
+    comment = (text or "").strip()
+    if len(comment) < 4:
+        await update.message.reply_text(
+            "⚠️ Sếp nói rõ hơn chút giúp em: cần sửa phần nào, đổi thành hướng nào ạ?",
+        )
+        return
+
+    synthesis = session.get_latest_result("synthesis")
+    if not synthesis:
+        # Không còn synthesis (edge) → thoát flow edit
+        session.pending_intake.pop("_awaiting_strategy_edit", None)
+        await save_session(session)
+        await update.message.reply_text(
+            "⚠️ Em không tìm thấy bản strategy để sửa. Sếp chạy lại A→Z giúp em nhé.",
+        )
+        return
+
+    await update.message.reply_text(
+        "✏️ *Em đang chỉnh đúng phần sếp nói...*", parse_mode=ParseMode.MARKDOWN,
+    )
+    await context.bot.send_chat_action(
+        chat_id=update.effective_chat.id, action=ChatAction.TYPING,
+    )
+
+    from agents.surgical_edit import patch_document, summarize_changes, PATCH_OK, PATCH_ASK, PATCH_NOOP
+
+    try:
+        status, payload, detect = await patch_document(synthesis, comment)
+    except Exception as e:
+        logger.exception("strategy surgical edit failed: %s", e)
+        await update.message.reply_text(
+            "⚠️ Em gặp lỗi khi chỉnh. Sếp thử mô tả lại yêu cầu giúp em ạ.",
+        )
+        return
+
+    if status == PATCH_ASK:
+        # Comment mơ hồ — hỏi lại, giữ flag
+        await update.message.reply_text(
+            f"🤔 {payload}",
+        )
+        return
+
+    if status == PATCH_NOOP:
+        await update.message.reply_text(
+            "🤔 Em chưa khoanh được đúng phần cần sửa. Sếp chỉ rõ giúp em là *section/đề mục nào* "
+            "và đổi thành *hướng nào* cụ thể ạ?",
+            parse_mode=ParseMode.MARKDOWN,
+        )
+        return
+
+    # PATCH_OK — lưu version mới + re-render HTML strategy
+    session.add_result("synthesis", payload)
+    await save_session(session)
+
+    from bot.html_report import parse_agent_output, build_single_skill_report
+    from agents.skills import OutputFormat
+
+    try:
+        parsed = parse_agent_output(payload)
+        html_str = build_single_skill_report(
+            "synthesis", parsed, OutputFormat.STRATEGIC_4_SECTION,
+            business_name=session.profile.business_name or "Business",
+            industry=session.profile.industry or "",
+            stage=session.profile.stage or "",
+        )
+        await _send_html_report(update.message, html_str, session)
+    except Exception as e:
+        logger.warning("re-render strategy HTML failed: %s", e)
+
+    change_summary = summarize_changes(detect)
+    await update.message.reply_text(
+        f"✅ {change_summary}\n\n"
+        f"Sếp xem lại bản cập nhật giúp em. Đã ổn chưa, hay cần chỉnh thêm phần nào nữa ạ?",
+        reply_markup=CONFIRM_STRATEGY_KEYBOARD,
+    )
 
 
 async def _send_html_report(message: Message, html_str: str, session):
