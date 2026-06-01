@@ -19,6 +19,7 @@ from agents.operational_prompts import (
     CONTENT_CALENDAR_SYSTEM,
     CONTENT_GENERATOR_SYSTEM,
     SOCIAL_POSTS_SYSTEM,
+    VIDEO_SCRIPT_GEN_SYSTEM,
     UGC_BRIEF_SYSTEM,
     ADS_COPY_SYSTEM,
     VIDEO_SCRIPTS_SYSTEM,
@@ -198,33 +199,30 @@ def make_email_zalo_sequence_skill() -> OperationalSkill:
     ))
 
 
-class SocialPostsSkill(OperationalSkill):
-    """Bài đăng hữu cơ (Facebook/Zalo/Instagram) → 📅 Content Calendar sheet.
+def make_social_posts_skill() -> OperationalSkill:
+    """content_gen — bài đăng hữu cơ (Facebook/Zalo/Instagram) → 📅 Content Calendar.
 
-    Multi-industry skill: 1 skill duy nhất, tự detect session.profile.industry
-    rồi nạp "bộ não ngành" tương ứng (hook pattern, tone, kênh, CTA, angle đặc thù)
-    vào prompt. KHÔNG tách thành nhiều skill rời.
+    Industry brain được inject tập trung tại _run_skill (xem INDUSTRY_BRAIN_SKILLS),
+    nên skill này chỉ cần config base — không override build_user_msg.
     """
+    return OperationalSkill(_config_for(
+        "social_posts",
+        SOCIAL_POSTS_SYSTEM,
+        max_tokens=12000,
+        context_strategy=ContextStrategy.PROFILE_PLUS_CAMPAIGN,
+        primary_deliverable=PrimaryDeliverable.EXCEL,
+    ))
 
-    def __init__(self):
-        super().__init__(_config_for(
-            "social_posts",
-            SOCIAL_POSTS_SYSTEM,
-            max_tokens=12000,
-            context_strategy=ContextStrategy.PROFILE_PLUS_CAMPAIGN,
-            primary_deliverable=PrimaryDeliverable.EXCEL,
-        ))
 
-    def build_user_msg(self, session: Session) -> str:
-        from agents.social_industry_profiles import get_social_industry_profile
-        base_msg = super().build_user_msg(session)
-        profile_block = get_social_industry_profile(session.profile.industry or "")
-        return (
-            base_msg
-            + "\n\n---\n\n"
-            + "**CHUYÊN MÔN NGÀNH (áp dụng CHẶT cho mọi bài viết dưới đây):**\n\n"
-            + profile_block
-        )
+def make_video_script_gen_skill() -> OperationalSkill:
+    """video_script_gen — kịch bản video chuyên sâu từ Calendar → 🎬 Video Script."""
+    return OperationalSkill(_config_for(
+        "video_script_gen",
+        VIDEO_SCRIPT_GEN_SYSTEM,
+        max_tokens=14000,  # 5-beat full dialogue × N video — output dài
+        context_strategy=ContextStrategy.PROFILE_PLUS_CAMPAIGN,
+        primary_deliverable=PrimaryDeliverable.EXCEL,
+    ))
 
 
 def make_ugc_brief_skill() -> OperationalSkill:
@@ -239,7 +237,11 @@ def make_ugc_brief_skill() -> OperationalSkill:
 
 
 class ContentGeneratorPipeline:
-    """Pipeline: social_posts + ugc_brief chạy lần lượt → 2 Excel files.
+    """Pipeline content suite: chạy lần lượt các skill chuyên sâu theo từng loại
+    nội dung → mỗi skill xuất 1 file Excel (sheet riêng).
+
+    Full suite: content_gen (bài viết) → video_script_gen (kịch bản video) →
+    ugc_brief (creator brief) → ads_generator (ads copy) → email_zalo_sequence.
 
     Không phải AgentSkill — không gọi LLM trực tiếp.
     run_pipeline(session) được gọi bởi run_operational_skill khi detect pipeline.
@@ -247,21 +249,53 @@ class ContentGeneratorPipeline:
     name = "content_generator"
     primary_deliverable = PrimaryDeliverable.EXCEL
     output_format = OutputFormat.OPERATIONAL_DELIVERABLE
-    SUB_SKILLS = ["social_posts", "ugc_brief"]
+    SUB_SKILLS = [
+        "social_posts",       # content_gen — bài viết
+        "video_script_gen",   # kịch bản video
+        "ugc_brief",          # creator brief
+        "ads_generator",      # ads copy
+        "email_zalo_sequence",  # chuỗi email/zalo
+    ]
+
+    def _prefill_intake(self, session) -> None:
+        """Pre-fill intake cho các skill cần form (ads/email) từ profile + campaign.
+
+        Pipeline auto-chain nên không có user paste form — suy default hợp lý
+        để skill chạy được. User vẫn chạy riêng từng skill nếu muốn input kỹ.
+        """
+        pi = session.pending_intake
+        profile = session.profile
+        brief = session.get_latest_result("campaign_brief") or ""
+        campaign = pi.get("current_campaign") or pi.get("campaign_name") or "Campaign"
+        goal = pi.get("campaign_goal") or profile.primary_goal or "Thu lead / chốt đơn"
+
+        # ads_generator (AdsCopySkill)
+        pi.setdefault("selected_tiers", "all")
+        pi.setdefault("product", profile.product_service or "Sản phẩm/dịch vụ chính")
+        pi.setdefault("insight", profile.target_customer or "Tệp khách mục tiêu")
+        pi.setdefault("campaign_goal", goal)
+        pi.setdefault("offer", pi.get("key_offer") or "Ưu đãi theo campaign")
+
+        # email_zalo_sequence
+        pi.setdefault("audience_segment", "Lead đã quan tâm chưa chốt + khách cũ")
+        pi.setdefault("sequence_goal", goal)
+        pi.setdefault("channel_preference", "Cả 2 — Email long-form + Zalo reminder")
+        pi.setdefault("duration", "7 ngày")
 
     async def run_pipeline(self, session) -> str:
         from agents.pipeline import run_operational_skill as _run_ops
-        results = {}
+        import logging
+        self._prefill_intake(session)
+        ran: list[str] = []
         for skill_name in self.SUB_SKILLS:
             try:
-                results[skill_name] = await _run_ops(skill_name, session)
+                await _run_ops(skill_name, session)
+                ran.append(skill_name)
             except Exception as e:
-                import logging
                 logging.getLogger(__name__).warning(
                     "ContentGeneratorPipeline: sub-skill %s failed: %s", skill_name, e
                 )
-                results[skill_name] = ""
-        return f"MULTI_OUTPUT:{','.join(self.SUB_SKILLS)}"
+        return f"MULTI_OUTPUT:{','.join(ran)}"
 
 
 def make_competitor_spy_skill() -> OperationalSkill:
@@ -818,7 +852,8 @@ OPS_SKILL_FACTORIES: dict[str, callable] = {
     "campaign_brief":      make_campaign_brief_skill,
     "content_calendar":    ContentCalendarDynamicSkill,  # Sprint 3.4 — Pillar dynamic
     "content_generator":   ContentGeneratorPipeline,
-    "social_posts":        SocialPostsSkill,
+    "social_posts":        make_social_posts_skill,
+    "video_script_gen":    make_video_script_gen_skill,
     "ugc_brief":           make_ugc_brief_skill,
     "competitor_spy":      make_competitor_spy_skill,
     "competitor_comparison": make_competitor_comparison_skill,

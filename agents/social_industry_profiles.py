@@ -332,10 +332,16 @@ SOCIAL_GENERIC_PROFILE = """**🎯 BỘ NÃO NGÀNH: Chung (chưa xác định n
 
 
 def get_social_industry_profile(industry: str) -> str:
-    """Trả về bộ não ngành cho social_posts theo industry key.
+    """Trả về bộ não ngành theo industry key.
 
     industry = session.profile.industry (đã là KPI key, vd 'fnb', 'health_beauty').
     Không match → generic fallback.
     """
     key = (industry or "").strip().lower()
     return SOCIAL_INDUSTRY_PROFILES.get(key, SOCIAL_GENERIC_PROFILE)
+
+
+# Alias craft-agnostic — dùng chung cho mọi content skill (post / video / ads / email / ugc).
+# Bộ não ngành (hook pattern, tone, angle, anti-pattern) transfer được qua mọi craft;
+# từng skill tự điều chỉnh phần kênh/CTA cho định dạng của nó.
+get_industry_content_profile = get_social_industry_profile

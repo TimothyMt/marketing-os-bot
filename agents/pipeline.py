@@ -384,6 +384,27 @@ async def _run_skill(skill: AgentSkill, session: Session) -> str:
         except Exception as e:
             logger.warning("[BV] Inject failed (non-fatal) skill=%s: %s", skill.name, e)
 
+    # Industry brain — nạp "bộ não ngành" cho mọi content skill (post/video/ads/email/ugc).
+    # 1 nguồn duy nhất, áp đồng nhất — không nhân bản subclass cho từng skill.
+    INDUSTRY_BRAIN_SKILLS = {
+        "social_posts", "video_script_gen", "ugc_brief",
+        "ads_generator", "ads_copy", "email_zalo_sequence",
+    }
+    if skill.name in INDUSTRY_BRAIN_SKILLS and "CHUYÊN MÔN NGÀNH" not in user_msg:
+        try:
+            from agents.social_industry_profiles import get_industry_content_profile
+            brain = get_industry_content_profile(session.profile.industry or "")
+            user_msg += (
+                "\n\n---\n\n"
+                "**CHUYÊN MÔN NGÀNH (áp dụng CHẶT — điều chỉnh hook/tone/CTA cho đúng "
+                "định dạng đang viết, vd kịch bản video / email / ads):**\n\n"
+                + brain
+            )
+            logger.info("[IndustryBrain] Injected for skill=%s industry=%s",
+                        skill.name, session.profile.industry)
+        except Exception as e:
+            logger.warning("[IndustryBrain] Inject failed (non-fatal) skill=%s: %s", skill.name, e)
+
     # Sprint 2: Strategic skills cũng cần inject user_correction nếu đang regen
     user_correction = (session.pending_intake or {}).get("_user_correction")
     if user_correction and "USER CORRECTION" not in user_msg:

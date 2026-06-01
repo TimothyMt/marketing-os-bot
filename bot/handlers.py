@@ -56,7 +56,7 @@ BRAND_VOICE_GATED_SKILLS = {
     "post_write", "post_adapt", "post_batch", "post_hooks", "post_visual",
     "ads_generator", "ads_copy", "video_scripts",
     "sales_inbox_script", "email_zalo_sequence", "content_repurpose",
-    "content_generator", "social_posts", "ugc_brief",
+    "content_generator", "social_posts", "video_script_gen", "ugc_brief",
 }
 
 logger = logging.getLogger(__name__)
@@ -1982,7 +1982,7 @@ async def _handle_callback_inner(update, context, query, session, data, user_id)
             return
 
         # ── Content skills: cần Calendar trước ────────────────────
-        if task_type in ("content_generator", "social_posts"):
+        if task_type in ("content_generator", "social_posts", "video_script_gen"):
             has_calendar = bool(session.get_latest_result("content_calendar"))
             if not has_calendar:
                 await query.edit_message_reply_markup(reply_markup=None)
@@ -3144,7 +3144,7 @@ async def _send_ops_result(message: Message, session, task_name: str, result: st
     business_name = session.profile.business_name or "Business"
 
     # Skip HTML: Excel-only skills + action skills (ads_optimizer)
-    SKIP_HTML_SKILLS = {"content_generator", "social_posts", "ugc_brief", "ads_optimizer"}
+    SKIP_HTML_SKILLS = {"content_generator", "social_posts", "video_script_gen", "ugc_brief", "ads_optimizer"}
 
     if task_name not in SKIP_HTML_SKILLS:
         # Send HTML always (universal viewable)
@@ -3871,7 +3871,7 @@ async def _launch_task_from_advisor(update, context, session, task_name: str):
         return
 
     # Content skills cần Calendar trước
-    if task_name in ("content_generator", "social_posts"):
+    if task_name in ("content_generator", "social_posts", "video_script_gen"):
         if not session.get_latest_result("content_calendar"):
             session.pending_followup_skill = task_name
             await save_session(session)

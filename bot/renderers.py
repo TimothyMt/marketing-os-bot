@@ -38,6 +38,7 @@ SKILL_TEMPLATE_SHEET: dict[str, str] = {
     "ads_generator":       "✍️ Ad Copy",
     "ads_copy":            "✍️ Ad Copy",
     "video_scripts":       "🎬 Video Script",
+    "video_script_gen":    "🎬 Video Script",
     "ugc_brief":           "🤝 UGC Brief",
     "email_zalo_sequence": "📧 Email & Zalo",
     "performance_audit":   "📊 KPI Dashboard",

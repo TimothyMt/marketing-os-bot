@@ -222,6 +222,18 @@ OPERATIONAL_TASKS: dict[str, TaskConfig] = {
             {"key": "tone_note", "label": "Tone note đặc biệt?",         "example": "Tết — vibe ấm áp + urgency nhẹ",           "required": False},
         ],
     ),
+    "video_script_gen": TaskConfig(
+        name="video_script_gen",
+        label="Kịch Bản Video (từ Calendar)",
+        button_emoji="🎬",
+        category="operational",
+        description="Kịch bản video chuyên sâu cho các slot video trong Lịch — output Excel Video Script",
+        skill_class_name="VideoScriptGenSkill",
+        intake_fields=[
+            {"key": "scope",     "label": "Viết kịch bản cho video nào / tuần nào?", "example": "Tuần 1 — 4 video TikTok + 2 Reels", "required": True},
+            {"key": "tone_note", "label": "Tone/format note đặc biệt?",              "example": "TikTok trend; founder tự quay", "required": False},
+        ],
+    ),
     "ugc_brief": TaskConfig(
         name="ugc_brief",
         label="Brief Creator UGC",
