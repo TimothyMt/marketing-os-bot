@@ -593,6 +593,11 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await _handle_strategy_edit_text(update, context, session, text)
         return
 
+    # Layer 2b: User mô tả phần cần sửa trong campaign brief → surgical edit
+    if session.pending_intake.get("_awaiting_brief_edit"):
+        await _handle_brief_edit_text(update, context, session, text)
+        return
+
     # Post A→Z: User mô tả idea campaign → refine với customer + market
     if session.pending_intake.get("_awaiting_campaign_idea"):
         await _handle_campaign_idea_text(update, context, session, text)
@@ -1043,6 +1048,28 @@ async def _handle_callback_inner(update, context, query, session, data, user_id)
             f"\"Roadmap tháng 1 thêm bước chạy thử ads ngân sách nhỏ\", "
             f"\"Budget allocation cho TikTok nên cao hơn\"..._\n\n"
             f"Em chỉ chỉnh đúng phần đó, giữ nguyên các phần còn lại.",
+            parse_mode=ParseMode.MARKDOWN,
+        )
+        return
+
+    # ── Layer 2b: Xác nhận / Surgical edit Campaign Brief ───────
+    if data == "brief_confirm":
+        await query.edit_message_reply_markup(reply_markup=None)
+        await _confirm_brief_and_gen_calendar(query.message, session, context, update)
+        return
+
+    if data == "brief_edit":
+        await query.edit_message_reply_markup(reply_markup=None)
+        session.pending_intake["_awaiting_brief_edit"] = "1"
+        session.pending_intake.pop("_awaiting_rating_for", None)
+        await save_session(session)
+        addr = _addr(session)
+        await query.message.reply_text(
+            f"✏️ OK {addr}! Sếp nói rõ giúp em cần *thêm/bớt/sửa phần nào* trong brief ạ.\n\n"
+            f"_Vd: \"Thêm phần phân bổ ngân sách theo kênh\", "
+            f"\"Bỏ phần KPI, tập trung vào nội dung\", "
+            f"\"Mục tiêu nên là thu lead chứ không phải doanh thu\"..._\n\n"
+            f"Em chỉ chỉnh đúng phần đó thôi.",
             parse_mode=ParseMode.MARKDOWN,
         )
         return
@@ -3250,6 +3277,22 @@ async def _send_ops_result(message: Message, session, task_name: str, result: st
     if task_name == "content_calendar":
         return
 
+    # campaign_brief: XÁC NHẬN brief trước khi gen calendar (Layer 2b).
+    # User duyệt → lưu campaign + auto-gen calendar; user sửa → surgical edit.
+    if task_name == "campaign_brief":
+        session.pending_intake.pop("_awaiting_rating_for", None)
+        await save_session(session)
+        addr = _addr(session)
+        await message.reply_text(
+            f"📋 *Brief Campaign xong rồi ạ!* {addr.capitalize()} xem qua giúp em.\n\n"
+            f"Bản kế hoạch này đã đủ chưa, có cần *thêm/bớt* phần nào không?\n"
+            f"• *Duyệt* → em tạo luôn Lịch Nội Dung theo brief này.\n"
+            f"• *Cần sửa* → {addr} chỉ rõ phần nào, em chỉnh đúng chỗ đó.",
+            parse_mode=ParseMode.MARKDOWN,
+            reply_markup=CONFIRM_BRIEF_KEYBOARD,
+        )
+        return
+
     # Sprint 2: Default — send RATING_KEYBOARD
     session.pending_intake["_awaiting_rating_for"] = task_name
     await save_session(session)
@@ -4397,6 +4440,189 @@ async def _handle_strategy_edit_text(update, context, session, text: str):
         f"Sếp xem lại bản cập nhật giúp em. Đã ổn chưa, hay cần chỉnh thêm phần nào nữa ạ?",
         reply_markup=CONFIRM_STRATEGY_KEYBOARD,
     )
+
+
+async def _handle_brief_edit_text(update, context, session, text: str):
+    """Surgical edit campaign_brief theo comment user + log intelligence ngầm."""
+    comment = (text or "").strip()
+    if len(comment) < 4:
+        await update.message.reply_text(
+            "⚠️ Sếp nói rõ hơn chút: cần thêm/bớt/sửa phần nào trong brief ạ?",
+        )
+        return
+
+    brief = session.get_latest_result("campaign_brief")
+    if not brief:
+        session.pending_intake.pop("_awaiting_brief_edit", None)
+        await save_session(session)
+        await update.message.reply_text(
+            "⚠️ Em không tìm thấy brief để sửa. Sếp chạy lại Brief Campaign giúp em nhé.",
+        )
+        return
+
+    await update.message.reply_text(
+        "✏️ *Em đang chỉnh đúng phần sếp nói trong brief...*", parse_mode=ParseMode.MARKDOWN,
+    )
+    await context.bot.send_chat_action(
+        chat_id=update.effective_chat.id, action=ChatAction.TYPING,
+    )
+
+    from agents.surgical_edit import patch_document, summarize_changes, PATCH_OK, PATCH_ASK, PATCH_NOOP
+
+    try:
+        status, payload, detect = await patch_document(brief, comment)
+    except Exception as e:
+        logger.exception("brief surgical edit failed: %s", e)
+        await update.message.reply_text(
+            "⚠️ Em gặp lỗi khi chỉnh brief. Sếp thử mô tả lại yêu cầu giúp em ạ.",
+        )
+        return
+
+    if status == PATCH_ASK:
+        await update.message.reply_text(f"🤔 {payload}")
+        return
+
+    if status == PATCH_NOOP:
+        await update.message.reply_text(
+            "🤔 Em chưa khoanh được đúng phần cần sửa. Sếp chỉ rõ giúp em *phần nào* và "
+            "*thêm/bớt/đổi* thế nào ạ?",
+            parse_mode=ParseMode.MARKDOWN,
+        )
+        return
+
+    # PATCH_OK — lưu version mới + re-render HTML brief
+    session.add_result("campaign_brief", payload)
+    await save_session(session)
+
+    # NGẦM: log intelligence — user yêu cầu sửa brief → học field nào cần
+    try:
+        from storage.campaign_intelligence import log_campaign_intelligence
+        _added = [t.get("sub_point") or t.get("instruction", "")[:60]
+                  for t in detect.get("targets", [])]
+        asyncio.create_task(log_campaign_intelligence(
+            user_id=session.user_id,
+            event_type="brief_edited",
+            industry=session.profile.industry,
+            target_customer=session.profile.target_customer,
+            campaign_goal=session.pending_intake.get("campaign_goal") or session.profile.primary_goal,
+            stage=session.profile.stage,
+            fields_added=[x for x in _added if x],
+            edit_comment=comment,
+            brief_excerpt=payload[:500],
+        ))
+    except Exception as e:
+        logger.debug("brief_edited intelligence log skipped: %s", e)
+
+    from bot.html_report import parse_agent_output, build_single_skill_report
+    from agents.skills import OutputFormat
+
+    try:
+        parsed = parse_agent_output(payload)
+        html_str = build_single_skill_report(
+            "campaign_brief", parsed, OutputFormat.OPERATIONAL_DELIVERABLE,
+            business_name=session.profile.business_name or "Business",
+            industry=session.profile.industry or "",
+            stage=session.profile.stage or "",
+        )
+        await _send_html_report(update.message, html_str, session)
+    except Exception as e:
+        logger.warning("re-render brief HTML failed: %s", e)
+
+    change_summary = summarize_changes(detect)
+    await update.message.reply_text(
+        f"✅ {change_summary}\n\n"
+        f"Sếp xem lại brief giúp em. Đã đủ chưa, hay cần chỉnh thêm gì nữa ạ?",
+        reply_markup=CONFIRM_BRIEF_KEYBOARD,
+    )
+
+
+async def _confirm_brief_and_gen_calendar(message, session, context, update):
+    """User duyệt brief → lưu campaign DB + log intelligence ngầm + auto-gen calendar.
+
+    Calendar gen xong → dừng cho user duyệt (tone calibration + nút sản xuất content).
+    """
+    session.pending_intake.pop("_awaiting_brief_edit", None)
+    session.pending_intake.pop("_awaiting_rating_for", None)
+
+    brief = session.get_latest_result("campaign_brief") or ""
+    campaign_name = (session.pending_intake.get("campaign_name")
+                     or session.pending_intake.get("current_campaign") or "Campaign")
+    campaign_goal = session.pending_intake.get("campaign_goal") or session.profile.primary_goal
+
+    # NGẦM: lưu campaign vào DB (fire-and-forget)
+    try:
+        from storage.v2.campaigns_v2 import create_campaign
+        asyncio.create_task(create_campaign(
+            user_id=session.user_id,
+            name=campaign_name,
+            industry=session.profile.industry,
+            primary_goal=campaign_goal,
+            offer_lever=session.pending_intake.get("key_offer"),
+            start_date=session.pending_intake.get("start_date"),
+            end_date=session.pending_intake.get("end_date"),
+            summary=brief[:2000],
+        ))
+    except Exception as e:
+        logger.debug("create_campaign skipped: %s", e)
+
+    # NGẦM: log intelligence — brief được duyệt nguyên trạng
+    try:
+        from storage.campaign_intelligence import log_campaign_intelligence
+        asyncio.create_task(log_campaign_intelligence(
+            user_id=session.user_id,
+            event_type="brief_approved",
+            industry=session.profile.industry,
+            target_customer=session.profile.target_customer,
+            campaign_goal=campaign_goal,
+            stage=session.profile.stage,
+            brief_excerpt=brief[:500],
+        ))
+    except Exception as e:
+        logger.debug("brief_approved intelligence log skipped: %s", e)
+
+    # Auto-gen Content Calendar từ brief — pre-fill từ profile + campaign
+    profile = session.profile
+    session.pending_intake["channels"] = (
+        session.pending_intake.get("channels")
+        or profile.current_channels or "Facebook + TikTok + Zalo OA"
+    )
+    session.pending_intake.setdefault("duration", session.pending_intake.get("duration") or "30 ngày")
+    if profile.team_size:
+        session.pending_intake.setdefault("team_size", str(profile.team_size))
+    session.pending_intake["current_campaign"] = campaign_name
+    session.selected_task = "content_calendar"
+    await save_session(session)
+
+    addr = _addr(session)
+    await message.reply_text(
+        f"✅ Brief đã duyệt! Em lưu lại campaign *{campaign_name}* rồi.\n\n"
+        f"📅 *Giờ em dựng Lịch Nội Dung theo brief này cho {addr}...*\n"
+        f"_Kênh: {session.pending_intake['channels']} · Khoảng 30-60 giây ạ._",
+        parse_mode=ParseMode.MARKDOWN,
+    )
+    await context.bot.send_chat_action(
+        chat_id=update.effective_chat.id, action=ChatAction.TYPING,
+    )
+
+    from config import AGENT_TIMEOUT
+    try:
+        result = await asyncio.wait_for(
+            run_operational_skill("content_calendar", session),
+            timeout=AGENT_TIMEOUT,
+        )
+    except Exception as e:
+        logger.exception("auto content_calendar after brief failed: %s", e)
+        await message.reply_text(
+            "⚠️ Em gặp lỗi khi dựng lịch. Sếp thử lại từ menu Lịch Nội Dung nhé.",
+        )
+        return
+
+    session.stage = PipelineStage.TASK_SELECT
+    await save_session(session)
+
+    await _send_ops_result(message, session, "content_calendar", result)
+    # Dừng cho user duyệt calendar trước (tone calibration → nút sản xuất content)
+    await _start_tone_calibration(message, session, result)
 
 
 async def _send_html_report(message: Message, html_str: str, session):
