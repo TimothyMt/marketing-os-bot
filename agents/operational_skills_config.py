@@ -298,6 +298,65 @@ class ContentGeneratorPipeline:
         return f"MULTI_OUTPUT:{','.join(ran)}"
 
 
+class AdsIntelligencePipeline:
+    """Pipeline: Competitor Spy + Ads Analytics — full ads intelligence suite.
+
+    Chạy lần lượt:
+      1. competitor_spy  — spy đối thủ từ FB Ads Library
+      2. ads_analytics   — phân tích account của mình từ FB Marketing API
+
+    Handler prefetches FB data TRƯỚC khi pipeline chạy và lưu vào hai key riêng:
+      _fb_data_spy:       competitor ads (Ads Library)
+      _fb_data_analytics: account insights (Marketing API)
+
+    Pipeline swap _fb_data cho đúng skill trước mỗi lần chạy.
+    Nếu một nguồn fail → vẫn chạy skill còn lại (graceful degradation).
+    """
+    name = "ads_intelligence"
+    primary_deliverable = PrimaryDeliverable.HTML
+    output_format = OutputFormat.OPERATIONAL_ANALYSIS
+    SUB_SKILLS = ["competitor_spy", "ads_analytics"]
+
+    def _prefill_intake(self, session) -> None:
+        pi = session.pending_intake
+        profile = session.profile
+        # competitor_spy: fallback competitor_name từ profile nếu user không nhập
+        if not pi.get("competitor_name"):
+            raw = profile.competitors or ""
+            first = raw.split(",")[0].strip() if raw else "Đối thủ chính ngành"
+            pi.setdefault("competitor_name", first)
+        pi.setdefault("focus_area", "Hook style + Offer mechanics + Budget signals")
+        pi.setdefault("pasted_ads", "")
+        # ads_analytics
+        pi.setdefault("date_range", "30 ngày")
+        pi.setdefault("level", "campaign")
+
+    async def run_pipeline(self, session) -> str:
+        from agents.pipeline import run_operational_skill as _run_ops
+        import logging
+        _logger = logging.getLogger(__name__)
+        self._prefill_intake(session)
+        ran: list[str] = []
+
+        # Run competitor_spy — inject spy-specific FB data
+        session.pending_intake["_fb_data"] = session.pending_intake.get("_fb_data_spy") or ""
+        try:
+            await _run_ops("competitor_spy", session)
+            ran.append("competitor_spy")
+        except Exception as e:
+            _logger.warning("AdsIntelligencePipeline: competitor_spy failed: %s", e)
+
+        # Run ads_analytics — inject analytics-specific FB data
+        session.pending_intake["_fb_data"] = session.pending_intake.get("_fb_data_analytics") or ""
+        try:
+            await _run_ops("ads_analytics", session)
+            ran.append("ads_analytics")
+        except Exception as e:
+            _logger.warning("AdsIntelligencePipeline: ads_analytics failed: %s", e)
+
+        return f"MULTI_OUTPUT:{','.join(ran)}"
+
+
 def make_competitor_spy_skill() -> OperationalSkill:
     """Sprint 3: NEW — phân tích FB Ads Library của đối thủ.
     Hiện tại em không tự gọi FB API (chờ key). User paste ads content/screenshots → em phân tích."""
@@ -855,6 +914,7 @@ OPS_SKILL_FACTORIES: dict[str, callable] = {
     "social_posts":        make_social_posts_skill,
     "video_script_gen":    make_video_script_gen_skill,
     "ugc_brief":           make_ugc_brief_skill,
+    "ads_intelligence":    AdsIntelligencePipeline,
     "competitor_spy":      make_competitor_spy_skill,
     "competitor_comparison": make_competitor_comparison_skill,
     "landing_page":        make_landing_page_skill,

@@ -519,6 +519,20 @@ OPERATIONAL_TASKS: dict[str, TaskConfig] = {
             {"key": "campaign_filter", "label": "Lọc campaign cụ thể (bỏ trống = toàn account)", "example": "FT09 / Tết 2026", "required": False},
         ],
     ),
+    "ads_intelligence": TaskConfig(
+        name="ads_intelligence",
+        label="Ads Intelligence Toàn Diện",
+        button_emoji="🔎",
+        category="analysis",
+        description="Spy đối thủ (FB Ads Library) + Analytics account của mình — full picture ads intelligence",
+        skill_class_name="AdsIntelligencePipeline",
+        intake_fields=[
+            {"key": "competitor_name", "label": "Tên đối thủ cần spy",                     "example": "Cocoon Vietnam",                                             "required": True},
+            {"key": "date_range",      "label": "Khoảng thời gian analytics của mình",       "example": "30 ngày / tháng này",                                        "required": True},
+            {"key": "pasted_ads",      "label": "Paste ads tay (mở facebook.com/ads/library, copy 3-10 ads vào đây nếu FB API chưa setup)", "example": "Ad 1: 'Tại sao 80% phụ nữ...' / Ad 2: ...", "required": False},
+            {"key": "focus_area",      "label": "Focus phân tích gì",                        "example": "Hook style + Offer mechanics + Budget signals",               "required": False},
+        ],
+    ),
     "ads_optimizer": TaskConfig(
         name="ads_optimizer",
         label="Tối Ưu Ads Trực Tiếp",

@@ -2902,6 +2902,23 @@ async def _handle_ops_intake_reply(update: Update, context: ContextTypes.DEFAULT
             if not session.pending_intake.get("_fb_data"):
                 await _abort_with_fb_error(update.message, session, "ads_analytics", fb_status)
                 return
+        elif task_name == "ads_intelligence":
+            # 1. Prefetch competitor ads (FB Ads Library)
+            spy_status = await _prefetch_competitor_ads(update.message, session)
+            pasted = (session.pending_intake.get("pasted_ads") or "").strip()
+            if pasted and len(pasted) > 30:
+                existing = session.pending_intake.get("_fb_data", "")
+                session.pending_intake["_fb_data"] = (
+                    (existing + "\n\n---\n\n" if existing else "") + "**ADS USER PASTE TAY:**\n\n" + pasted
+                )
+            session.pending_intake["_fb_data_spy"] = session.pending_intake.pop("_fb_data", "") or ""
+            # 2. Prefetch account analytics (FB Marketing API)
+            analytics_status = await _prefetch_performance_data(update.message, session)
+            session.pending_intake["_fb_data_analytics"] = session.pending_intake.pop("_fb_data", "") or ""
+            # Gate: cần ít nhất 1 nguồn data
+            if not session.pending_intake.get("_fb_data_spy") and not session.pending_intake.get("_fb_data_analytics"):
+                await _abort_with_fb_error(update.message, session, "ads_intelligence", spy_status)
+                return
         elif task_name == "performance_audit":
             fb_status = await _prefetch_performance_data(update.message, session)
             # Gate: cần live data HOẶC user paste số liệu thực trong channels_data
@@ -3144,7 +3161,7 @@ async def _send_ops_result(message: Message, session, task_name: str, result: st
     business_name = session.profile.business_name or "Business"
 
     # Skip HTML: Excel-only skills + action skills (ads_optimizer)
-    SKIP_HTML_SKILLS = {"content_generator", "social_posts", "video_script_gen", "ugc_brief", "ads_optimizer"}
+    SKIP_HTML_SKILLS = {"content_generator", "social_posts", "video_script_gen", "ugc_brief", "ads_optimizer", "ads_intelligence"}
 
     if task_name not in SKIP_HTML_SKILLS:
         # Send HTML always (universal viewable)
