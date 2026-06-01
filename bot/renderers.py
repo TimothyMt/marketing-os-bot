@@ -9,6 +9,7 @@ Per-skill primary_deliverable determines which format is sent as main attachment
 HTML always generated as fallback. Excel/Markdown generated when primary_deliverable matches.
 """
 import io
+import os
 import re
 import logging
 from datetime import datetime
@@ -17,6 +18,28 @@ from typing import Optional
 from agents.skills import OutputFormat, PrimaryDeliverable
 
 logger = logging.getLogger(__name__)
+
+# ─────────────────────────────────────────────────────────────────
+# Template-based Excel output
+# ─────────────────────────────────────────────────────────────────
+
+_TEMPLATE_PATH = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+    "content_generation_template.xlsx",
+)
+
+# Maps skill_name → sheet name inside the template workbook.
+# Skills listed here will fill the corresponding sheet instead of
+# building a new workbook from scratch.
+SKILL_TEMPLATE_SHEET: dict[str, str] = {
+    "content_generator":   "📅 Content Calendar",
+    "content_calendar":    "📅 Content Calendar",
+    "ads_generator":       "✍️ Ad Copy",
+    "ads_copy":            "✍️ Ad Copy",
+    "video_scripts":       "🎬 Video Script",
+    "email_zalo_sequence": "📧 Email & Zalo",
+    "performance_audit":   "📊 KPI Dashboard",
+}
 
 
 # ─────────────────────────────────────────────────────────────────
@@ -305,6 +328,127 @@ def _split_table_by_week(headers: list, rows: list[list]) -> Optional[dict]:
     return groups
 
 
+def _norm_header(s: str) -> str:
+    """Normalize header for fuzzy column matching (strip punctuation, lowercase)."""
+    return re.sub(r'[^a-z0-9À-ɏ]', '', s.lower()) if s else ""
+
+
+def render_template_excel(
+    skill_name: str,
+    skill_label: str,
+    parsed: dict,
+    output_format: OutputFormat,
+    business_name: str = "",
+) -> Optional[bytes]:
+    """Fill content_generation_template.xlsx with LLM data for the skill's mapped sheet.
+
+    Falls back to render_excel_file() if: template file missing, skill not mapped,
+    or no tables found in LLM output.
+    """
+    try:
+        from openpyxl import load_workbook
+        from openpyxl.styles import Font, Alignment
+    except ImportError:
+        return render_excel_file(skill_name, skill_label, parsed, output_format, business_name)
+
+    target_sheet = SKILL_TEMPLATE_SHEET.get(skill_name)
+    if not target_sheet or not os.path.exists(_TEMPLATE_PATH):
+        return render_excel_file(skill_name, skill_label, parsed, output_format, business_name)
+
+    try:
+        wb = load_workbook(_TEMPLATE_PATH)
+    except Exception as exc:
+        logger.warning("render_template_excel: failed to load template: %s", exc)
+        return render_excel_file(skill_name, skill_label, parsed, output_format, business_name)
+
+    if target_sheet not in wb.sheetnames:
+        logger.warning("render_template_excel: sheet '%s' not found in template", target_sheet)
+        return render_excel_file(skill_name, skill_label, parsed, output_format, business_name)
+
+    ws = wb[target_sheet]
+
+    # Build full_text from parsed — same logic as render_excel_file
+    if output_format == OutputFormat.OPERATIONAL_DELIVERABLE:
+        full_text = "\n\n".join(filter(None, [
+            parsed.get("deliverable", ""),
+            parsed.get("summary", ""),
+            parsed.get("raw", ""),
+        ]))
+    else:
+        full_text = "\n\n".join(
+            parsed.get(k, "") for k in ["summary", "kpi_table", "root_cause", "actions", "forecast"]
+        )
+        if not full_text.strip():
+            full_text = parsed.get("raw", "")
+
+    tables = _extract_markdown_tables(full_text)
+    if not tables:
+        try:
+            rebuilt = _haiku_rebuild_table(full_text, skill_name)
+            if rebuilt:
+                tables = _extract_markdown_tables(rebuilt)
+        except Exception as exc:
+            logger.warning("render_template_excel: Haiku rebuild failed: %s", exc)
+
+    if not tables:
+        logger.error("render_template_excel [%s]: no tables extracted — skipping", skill_name)
+        return None
+
+    # Template header row is row 3 (rows 1-2 are title + subtitle)
+    tmpl_headers = [ws.cell(row=3, column=c).value for c in range(1, 16)]
+    tmpl_norm_to_col = {_norm_header(h): i + 1 for i, h in enumerate(tmpl_headers) if h}
+
+    # Pick table with highest column-overlap against template headers
+    best_table = tables[0]
+    best_score = 0
+    for t in tables:
+        _, hdrs, _ = t
+        score = sum(1 for h in hdrs if _norm_header(h) in tmpl_norm_to_col)
+        if score > best_score:
+            best_score = score
+            best_table = t
+
+    _, headers, rows = best_table
+    llm_norm_to_idx = {_norm_header(h): i for i, h in enumerate(headers) if h}
+
+    # Pairs: (template column 1-indexed, llm column 0-indexed)
+    col_pairs = [
+        (tmpl_col, llm_norm_to_idx[norm])
+        for norm, tmpl_col in tmpl_norm_to_col.items()
+        if norm in llm_norm_to_idx
+    ]
+
+    body_font = Font(name="Arial", size=10)
+    body_align = Alignment(vertical="top", wrap_text=True)
+
+    # Clear existing data rows (keep rows 1-3: title, subtitle, headers)
+    data_start = 4
+    for r in range(data_start, ws.max_row + 1):
+        for c in range(1, 16):
+            ws.cell(row=r, column=c).value = None
+
+    # Fill data
+    for r_idx, row_data in enumerate(rows):
+        excel_row = data_start + r_idx
+        for tmpl_col, llm_col in col_pairs:
+            val = row_data[llm_col] if llm_col < len(row_data) else None
+            cell = ws.cell(row=excel_row, column=tmpl_col)
+            cell.value = _clean_cell(str(val)) if val is not None else None
+            cell.font = body_font
+            cell.alignment = body_align
+
+    # Stamp business name into title if not already there
+    if business_name:
+        title_cell = ws["A1"]
+        current = title_cell.value or ""
+        if business_name not in current:
+            title_cell.value = f"{current} — {business_name}"
+
+    buf = io.BytesIO()
+    wb.save(buf)
+    return buf.getvalue()
+
+
 def render_excel_file(
     skill_name: str,
     skill_label: str,
@@ -313,13 +457,13 @@ def render_excel_file(
     business_name: str = "",
 ) -> Optional[bytes]:
     """Render skill output as .xlsx.
-    Special handling cho content_generator: split rows by 'Tuần' column.
-    Default: auto-pivot mini key-value tables thành 1 master overview.
-
-    Layout:
-    - content_generator: Sheet "Tổng hợp" + sheet riêng cho mỗi Tuần
-    - Default: Sheet "Tổng hợp" + non-KV tables
+    Skills in SKILL_TEMPLATE_SHEET are routed to render_template_excel() which
+    fills content_generation_template.xlsx instead of building a new workbook.
+    Other skills use dynamic table extraction + openpyxl.
     """
+    if skill_name in SKILL_TEMPLATE_SHEET:
+        return render_template_excel(skill_name, skill_label, parsed, output_format, business_name)
+
     try:
         from openpyxl import Workbook
         from openpyxl.styles import Font, PatternFill, Alignment

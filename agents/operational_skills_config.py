@@ -192,7 +192,7 @@ def make_email_zalo_sequence_skill() -> OperationalSkill:
         EMAIL_ZALO_SEQUENCE_SYSTEM,
         max_tokens=8000,  # bumped — multi-day sequence with email + zalo for each
         context_strategy=ContextStrategy.PROFILE_PLUS_CAMPAIGN,
-        primary_deliverable=PrimaryDeliverable.MARKDOWN,
+        primary_deliverable=PrimaryDeliverable.EXCEL,  # Template: 📧 Email & Zalo sheet
     ))
 
 
@@ -470,7 +470,7 @@ class AdsCopySkill(AgentSkill):
     output_format = OutputFormat.OPERATIONAL_DELIVERABLE
     intake_pattern = IntakePattern.SINGLE_SHOT_FORM
     context_strategy = ContextStrategy.PROFILE_PLUS_CAMPAIGN
-    primary_deliverable = PrimaryDeliverable.MARKDOWN  # For designer / media buyer
+    primary_deliverable = PrimaryDeliverable.EXCEL  # Template: ✍️ Ad Copy sheet
     accumulate_to_report = False
 
     def build_context(self, session: Session) -> str:
@@ -523,7 +523,7 @@ class VideoScriptsSkill(AgentSkill):
     output_format = OutputFormat.OPERATIONAL_DELIVERABLE
     intake_pattern = IntakePattern.SINGLE_SHOT_FORM
     context_strategy = ContextStrategy.PROFILE_PLUS_CAMPAIGN
-    primary_deliverable = PrimaryDeliverable.MARKDOWN  # For creator brief
+    primary_deliverable = PrimaryDeliverable.EXCEL  # Template: 🎬 Video Script sheet
     accumulate_to_report = False
 
     def build_context(self, session: Session) -> str:
