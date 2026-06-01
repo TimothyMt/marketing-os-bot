@@ -1330,46 +1330,38 @@ Nhiệm vụ: Viết bài đăng hoàn chỉnh cho từng slot trong Lịch Nộ
 
 **Output format**: Operational Deliverable.
 
-CẤU TRÚC OUTPUT:
+CẤU TRÚC OUTPUT (CHỈ 2 phần — KHÔNG viết narrative dài từng bài):
 
-### Phần 1 — Nội dung từng bài (narrative, đọc trên Telegram/HTML)
+## 🎯 Tóm tắt nhanh
 
-Cho MỖI bài viết DẠNG NARRATIVE (KHÔNG dùng bảng key-value 2 cột):
+Viết 3-5 bullet NGẮN GỌN (KHÔNG lặp lại full content — content đầy đủ nằm trong bảng):
+- Đã viết [N] bài cho [kênh nào]: [breakdown ngắn, vd "5 Facebook + 2 Zalo OA"]
+- Pillar mix: [vd "Educate 3 · Trust 2 · Convert 2"]
+- Angle nổi bật: [2-3 ví dụ angle ngắn, mỗi cái ≤10 từ]
+- Tone đã áp: [1 dòng]
 
-#### 📌 BÀI N — [Ngày] | [Kênh]
-**Metadata:** Pillar [X] • Funnel [Y] • Source [Z] • Format [W]
-**Hook:** "[câu ≤125 ký tự]"
-**Body:** [150-300 chữ content thật]
-**CTA:** [call to action cụ thể]
-**Visual:** [1 dòng mô tả ảnh/video]
-**Giờ đăng:** [H:mm]
+## 📄 Bảng nội dung đầy đủ (deliverable chính — TUYỆT ĐỐI BẮT BUỘC)
 
----
-
-### Phần 2 — BẢNG TỔNG KẾT (TUYỆT ĐỐI BẮT BUỘC — KHÔNG ĐƯỢC THIẾU)
-
-🔴 **NGHIÊM CẤM SKIP PHẦN NÀY.** Không có bảng → bot không xuất được Excel cho user.
+🔴 **NGHIÊM CẤM SKIP BẢNG.** Không có bảng → bot không xuất được Excel cho user.
+Đây là nơi chứa TOÀN BỘ content — KHÔNG viết riêng narrative bên ngoài bảng.
 
 Bảng PHẢI có đúng 15 cột theo thứ tự (copy y nguyên tên cột):
 
 | Ngày | Thứ | Kênh | Content Pillar | Source Type | Hook (≤125 ký tự) | Body / Caption | CTA | Ghi chú Visual | Giờ đăng | KPI Target | Status | Người thực hiện | Link post | Ghi chú |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| 5/1 | Thứ 2 | Facebook | Educate | Brand | "Hook câu hỏi..." | Body 150 chữ... | Inbox "tư vấn" | Ảnh sản phẩm nền trắng | 08:30 | | Draft | Content writer | | |
+| 5/1 | Thứ 2 | Facebook | Educate | Brand | "Hook câu hỏi..." | [FULL caption 150-300 chữ] | Inbox "tư vấn" | Ảnh sản phẩm nền trắng | 08:30 | | Draft | Content writer | | |
 
 Quy tắc bảng:
-- Body / Caption: rút gọn 150-200 chữ từ Phần 1
-- Hook đặt trong dấu ngoặc kép "..."
+- **Body / Caption: FULL content 150-300 chữ** (đây là bản chính thức, KHÔNG rút gọn — vì không còn narrative riêng)
+- Hook đặt trong dấu ngoặc kép "..." (≤125 ký tự)
 - Status = "Draft" mặc định
 - Người thực hiện = "Content writer" mặc định
 - **KPI Target = để trống** (team tự set sau, không generate)
 - Link post = để trống (team điền sau khi đăng)
-- KHÔNG dùng ký tự | trong cell content (thay bằng / hoặc ;)
+- KHÔNG dùng ký tự | trong cell content (xuống dòng trong cell thay bằng " / " hoặc " ; ")
 - PHẢI có đủ N rows = N bài user request
 
-🔴 **CẤM TUYỆT ĐỐI ở Phần 1 (narrative):**
-KHÔNG dùng markdown table (`| col |`) cho bất kỳ data nào trong Phần 1.
-Mọi data Phần 1 viết dạng **text/bullet list**.
-Lý do: chỉ có 1 master table cuối Phần 2 mới được trích xuất vào Excel — nếu Phần 1 có table → bot extract nhầm → BUG.
+🔴 **CHỈ ĐƯỢC có DUY NHẤT 1 bảng** (bảng 15 cột ở trên). KHÔNG tạo bảng phụ ở mục Tóm tắt — nếu có table thứ 2, bot sẽ extract nhầm → BUG Excel.
 """
 
 
@@ -1404,27 +1396,20 @@ Nhiệm vụ: Viết Creator Brief hoàn chỉnh, chi tiết đến mức creato
 
 **Output format**: Operational Deliverable.
 
-CẤU TRÚC OUTPUT:
+CẤU TRÚC OUTPUT (CHỈ 2 phần — KHÔNG viết narrative dài từng brief):
 
-### Phần 1 — Chi tiết từng brief (narrative, đọc trên Telegram/HTML)
+## 🎯 Tóm tắt nhanh
 
-#### 🤝 BRIEF N — [Creator Type] | [Platform]
-**Objective:** [mục tiêu cụ thể]
-**Brand Voice:** [tone + từ nên/không nên dùng]
-**Key Message:** "[1-2 câu thông điệp]"
-**Filming requirements:** [chi tiết: cảnh quay, dialogue, timing, góc máy]
-**Don'ts:** [danh sách điều cấm cụ thể]
-**Hashtags:** #tag1 #tag2 #tag3 ...
-**Disclosure:** [cách ghi #ad]
-**Deal:** [free product / range VNĐ theo follower count]
-**Deadline:** Nộp draft [D+7]; Đăng [D+14] sau approve
-**KPI kỳ vọng:** [metrics realistic]
+Viết 3-5 bullet NGẮN GỌN (KHÔNG lặp lại full brief — chi tiết nằm trong bảng):
+- Đã viết [N] brief cho: [vd "2 UGC micro + 1 KOL"]
+- Platform: [vd "2 TikTok + 1 Facebook"]
+- Key message chung: [1 dòng]
+- Tổng deal dự kiến: [range ngân sách, vd "Free product + 1.5-3tr VNĐ"]
 
----
+## 📄 Bảng brief đầy đủ (deliverable chính — TUYỆT ĐỐI BẮT BUỘC)
 
-### Phần 2 — BẢNG TỔNG KẾT (TUYỆT ĐỐI BẮT BUỘC — KHÔNG ĐƯỢC THIẾU)
-
-🔴 **NGHIÊM CẤM SKIP PHẦN NÀY.** Không có bảng → bot không xuất được Excel cho user.
+🔴 **NGHIÊM CẤM SKIP BẢNG.** Không có bảng → bot không xuất được Excel cho user.
+Đây là nơi chứa TOÀN BỘ brief — KHÔNG viết riêng narrative bên ngoài bảng.
 
 Bảng PHẢI có đúng 15 cột theo thứ tự (copy y nguyên tên cột):
 
@@ -1433,15 +1418,13 @@ Bảng PHẢI có đúng 15 cột theo thứ tự (copy y nguyên tên cột):
 | UGC (micro) | TikTok | Trust | Chân thật, tự nhiên; tránh quá professional | "Sản phẩm này thay đổi..." | Quay 30-60s; 3 cảnh: unboxing + demo + reaction; ánh sáng tự nhiên | Không claim chữa bệnh; không quay toilet; không dùng filter nặng | #brandname #review #authentic | Ghi "#ad" trong caption đầu | Free product + 500K | D+7 | D+14 | 5K views; ER 3% | Marketing Manager | |
 
 Quy tắc bảng:
-- Content Requirements: tóm tắt 1-2 câu từ Phần 1
-- Don'ts: 2-3 điều cấm chính
+- **Content Requirements: FULL chi tiết** (cảnh quay, dialogue, timing, góc máy — đây là bản chính thức, không rút gọn)
+- Don'ts: liệt kê đủ các điều cấm chính
 - Người duyệt = "Marketing Manager" mặc định
-- KHÔNG dùng ký tự | trong cell content (thay bằng ; hoặc /)
+- KHÔNG dùng ký tự | trong cell content (xuống dòng trong cell thay bằng " ; " hoặc " / ")
 - PHẢI có đủ N rows = N brief user request
 
-🔴 **CẤM TUYỆT ĐỐI ở Phần 1 (narrative):**
-KHÔNG dùng markdown table (`| col |`) cho bất kỳ data nào trong Phần 1.
-Lý do: chỉ có 1 master table cuối Phần 2 mới được trích xuất vào Excel — Phần 1 có table → bot extract nhầm → BUG.
+🔴 **CHỈ ĐƯỢC có DUY NHẤT 1 bảng** (bảng 15 cột ở trên). KHÔNG tạo bảng phụ ở mục Tóm tắt — nếu có table thứ 2, bot sẽ extract nhầm → BUG Excel.
 """
 
 
