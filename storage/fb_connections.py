@@ -1,4 +1,7 @@
-"""CRUD cho user_fb_connections, oauth_states, ads_snapshots, ads_alert_cooldowns."""
+"""CRUD cho user_fb_connections, oauth_states, ads_snapshots, ads_alert_cooldowns.
+
+Dùng async supabase client (init tại startup) — pattern giống brand_voice.py.
+"""
 import logging
 from datetime import datetime, timezone, timedelta
 from typing import Optional
@@ -12,9 +15,10 @@ def _now() -> datetime:
     return datetime.now(timezone.utc)
 
 
-async def _db():
-    from storage import get_db
-    return get_db()
+def _client():
+    """Lazy import async client từ session module (đã init pool tại startup)."""
+    from storage import session as _session_mod
+    return _session_mod._client
 
 
 # ─── user_fb_connections ────────────────────────────────────────
@@ -26,8 +30,11 @@ async def save_connection(
     account_name: str,
     expires_at: datetime,
 ) -> None:
-    db = await _db()
-    db.table("user_fb_connections").upsert({
+    client = _client()
+    if client is None:
+        logger.warning("save_connection: client not init")
+        return
+    await client.table("user_fb_connections").upsert({
         "user_id":          user_id,
         "encrypted_token":  encrypted_token,
         "ad_account_id":    ad_account_id,
@@ -39,28 +46,42 @@ async def save_connection(
 
 
 async def get_connection(user_id: int) -> Optional[dict]:
-    db = await _db()
-    res = db.table("user_fb_connections").select("*").eq("user_id", user_id).maybe_single().execute()
-    return res.data if res else None
+    client = _client()
+    if client is None:
+        return None
+    res = (
+        await client.table("user_fb_connections")
+        .select("*").eq("user_id", user_id).limit(1).execute()
+    )
+    return res.data[0] if res.data else None
 
 
 async def get_all_active_connections() -> list[dict]:
-    """Trả về tất cả kết nối đang active (notification_enabled=true)."""
-    db = await _db()
-    res = db.table("user_fb_connections").select("*").eq("notification_enabled", True).execute()
+    """Tất cả kết nối đang active (notification_enabled=true)."""
+    client = _client()
+    if client is None:
+        return []
+    res = (
+        await client.table("user_fb_connections")
+        .select("*").eq("notification_enabled", True).execute()
+    )
     return res.data or []
 
 
 async def update_last_pull(user_id: int) -> None:
-    db = await _db()
-    db.table("user_fb_connections").update({
+    client = _client()
+    if client is None:
+        return
+    await client.table("user_fb_connections").update({
         "last_pull_at": _now().isoformat()
     }).eq("user_id", user_id).execute()
 
 
 async def update_token(user_id: int, encrypted_token: str, expires_at: datetime) -> None:
-    db = await _db()
-    db.table("user_fb_connections").update({
+    client = _client()
+    if client is None:
+        return
+    await client.table("user_fb_connections").update({
         "encrypted_token": encrypted_token,
         "expires_at":      expires_at.isoformat(),
     }).eq("user_id", user_id).execute()
@@ -73,20 +94,27 @@ async def update_notification_settings(user_id: int, **kwargs) -> None:
         "tracked_metrics", "alert_frequency_max", "alert_roas_drop_pct", "alert_cpm_spike_pct",
     }
     payload = {k: v for k, v in kwargs.items() if k in allowed}
-    if payload:
-        db = await _db()
-        db.table("user_fb_connections").update(payload).eq("user_id", user_id).execute()
+    if not payload:
+        return
+    client = _client()
+    if client is None:
+        return
+    await client.table("user_fb_connections").update(payload).eq("user_id", user_id).execute()
 
 
 async def delete_connection(user_id: int) -> None:
-    db = await _db()
-    db.table("user_fb_connections").delete().eq("user_id", user_id).execute()
+    client = _client()
+    if client is None:
+        return
+    await client.table("user_fb_connections").delete().eq("user_id", user_id).execute()
 
 
 async def disable_connection(user_id: int) -> None:
     """Token revoked — tắt notification, không xóa settings."""
-    db = await _db()
-    db.table("user_fb_connections").update({
+    client = _client()
+    if client is None:
+        return
+    await client.table("user_fb_connections").update({
         "notification_enabled": False
     }).eq("user_id", user_id).execute()
 
@@ -94,9 +122,11 @@ async def disable_connection(user_id: int) -> None:
 # ─── oauth_states ───────────────────────────────────────────────
 
 async def save_oauth_state(state_token: str, user_id: int) -> None:
-    db = await _db()
+    client = _client()
+    if client is None:
+        return
     expires = _now() + timedelta(minutes=15)
-    db.table("oauth_states").upsert({
+    await client.table("oauth_states").upsert({
         "state_token": state_token,
         "user_id":     user_id,
         "expires_at":  expires.isoformat(),
@@ -105,12 +135,17 @@ async def save_oauth_state(state_token: str, user_id: int) -> None:
 
 async def consume_oauth_state(state_token: str) -> Optional[int]:
     """Validate + delete state (one-use). Returns user_id or None nếu invalid/expired."""
-    db = await _db()
-    res = db.table("oauth_states").select("*").eq("state_token", state_token).maybe_single().execute()
-    if not res or not res.data:
+    client = _client()
+    if client is None:
         return None
-    row = res.data
-    db.table("oauth_states").delete().eq("state_token", state_token).execute()
+    res = (
+        await client.table("oauth_states")
+        .select("*").eq("state_token", state_token).limit(1).execute()
+    )
+    if not res.data:
+        return None
+    row = res.data[0]
+    await client.table("oauth_states").delete().eq("state_token", state_token).execute()
     expires = datetime.fromisoformat(row["expires_at"])
     if expires.tzinfo is None:
         expires = expires.replace(tzinfo=timezone.utc)
@@ -121,9 +156,14 @@ async def consume_oauth_state(state_token: str) -> Optional[int]:
 
 # ─── ads_snapshots ──────────────────────────────────────────────
 
-async def save_snapshot(user_id: int, date: datetime, campaigns: list[dict]) -> None:
-    """Lưu snapshot ngày hôm nay cho user. campaigns = list từ fb_marketing.py."""
-    db = await _db()
+async def save_snapshot(user_id: int, date: datetime, campaigns: list[dict]) -> list[dict]:
+    """Lưu snapshot ngày hôm nay cho user. campaigns = list từ fb_marketing.py
+    (đã pull kèm extra_fields=['campaign_id','action_values']).
+
+    Returns rows đã compute (roas/cpl/vtr_3s) — cùng shape với data đọc từ DB,
+    để delta hôm-nay-vs-hôm-qua nhất quán.
+    """
+    client = _client()
     rows = []
     date_str = date.strftime("%Y-%m-%d")
     for c in campaigns:
@@ -131,13 +171,15 @@ async def save_snapshot(user_id: int, date: datetime, campaigns: list[dict]) -> 
         impressions = float(c.get("impressions") or 0)
         leads = _extract_action(c, "lead")
         purchases = _extract_action(c, "purchase")
-        purchase_value = float(c.get("action_values", {}).get("purchase", 0) if isinstance(c.get("action_values"), dict) else 0)
-        video_3s = _extract_action(c, "video_view")  # FB returns 3s view under video_view
+        purchase_value = _extract_action_value(c, "purchase")
+        video_3s = _extract_action(c, "video_view")
+        # campaign_id có thể thiếu nếu API không trả → fallback campaign_name (key ổn định)
+        camp_id = c.get("campaign_id") or c.get("campaign_name") or "unknown"
         rows.append({
             "user_id":        user_id,
             "snapshot_date":  date_str,
-            "campaign_id":    c.get("campaign_id") or c.get("id") or "unknown",
-            "campaign_name":  c.get("campaign_name") or c.get("name") or "Unknown",
+            "campaign_id":    camp_id,
+            "campaign_name":  c.get("campaign_name") or "Unknown",
             "spend":          spend,
             "impressions":    impressions,
             "reach":          float(c.get("reach") or 0),
@@ -153,8 +195,11 @@ async def save_snapshot(user_id: int, date: datetime, campaigns: list[dict]) -> 
             "cpl":            round(spend / leads, 0) if leads > 0 else 0,
             "vtr_3s":         round(video_3s / impressions * 100, 2) if impressions > 0 else 0,
         })
-    if rows:
-        db.table("ads_snapshots").upsert(rows, on_conflict="user_id,snapshot_date,campaign_id").execute()
+    if rows and client is not None:
+        await client.table("ads_snapshots").upsert(
+            rows, on_conflict="user_id,snapshot_date,campaign_id"
+        ).execute()
+    return rows
 
 
 def _extract_action(campaign: dict, action_type: str) -> float:
@@ -166,18 +211,35 @@ def _extract_action(campaign: dict, action_type: str) -> float:
     return 0.0
 
 
+def _extract_action_value(campaign: dict, action_type: str) -> float:
+    """Extract monetary value từ action_values array (vd purchase revenue)."""
+    values = campaign.get("action_values") or []
+    if isinstance(values, list):
+        for a in values:
+            if a.get("action_type") == action_type:
+                return float(a.get("value") or 0)
+    return 0.0
+
+
 async def get_snapshot(user_id: int, date: datetime) -> list[dict]:
-    db = await _db()
+    client = _client()
+    if client is None:
+        return []
     date_str = date.strftime("%Y-%m-%d")
-    res = db.table("ads_snapshots").select("*").eq("user_id", user_id).eq("snapshot_date", date_str).execute()
+    res = (
+        await client.table("ads_snapshots")
+        .select("*").eq("user_id", user_id).eq("snapshot_date", date_str).execute()
+    )
     return res.data or []
 
 
 async def get_snapshots_range(user_id: int, start: datetime, end: datetime) -> list[dict]:
-    """Lấy snapshots trong khoảng ngày (inclusive). Dùng cho weekly report."""
-    db = await _db()
+    """Snapshots trong khoảng ngày (inclusive). Dùng cho weekly report."""
+    client = _client()
+    if client is None:
+        return []
     res = (
-        db.table("ads_snapshots")
+        await client.table("ads_snapshots")
         .select("*")
         .eq("user_id", user_id)
         .gte("snapshot_date", start.strftime("%Y-%m-%d"))
@@ -189,9 +251,11 @@ async def get_snapshots_range(user_id: int, start: datetime, end: datetime) -> l
 
 async def cleanup_old_snapshots() -> int:
     """Xóa snapshots > 90 ngày. Returns số rows deleted."""
+    client = _client()
+    if client is None:
+        return 0
     cutoff = (_now() - timedelta(days=90)).strftime("%Y-%m-%d")
-    db = await _db()
-    res = db.table("ads_snapshots").delete().lt("snapshot_date", cutoff).execute()
+    res = await client.table("ads_snapshots").delete().lt("snapshot_date", cutoff).execute()
     return len(res.data or [])
 
 
@@ -200,24 +264,25 @@ async def cleanup_old_snapshots() -> int:
 async def check_and_set_cooldown(user_id: int, campaign_id: str, alert_type: str) -> bool:
     """Returns True nếu alert có thể gửi (cooldown chưa active).
     Nếu True → tự động set cooldown 24h."""
-    db = await _db()
+    client = _client()
+    if client is None:
+        return False
     res = (
-        db.table("ads_alert_cooldowns")
+        await client.table("ads_alert_cooldowns")
         .select("last_sent_at")
         .eq("user_id", user_id)
         .eq("campaign_id", campaign_id)
         .eq("alert_type", alert_type)
-        .maybe_single()
+        .limit(1)
         .execute()
     )
-    if res and res.data:
-        last = datetime.fromisoformat(res.data["last_sent_at"])
+    if res.data:
+        last = datetime.fromisoformat(res.data[0]["last_sent_at"])
         if last.tzinfo is None:
             last = last.replace(tzinfo=timezone.utc)
         if _now() - last < timedelta(hours=24):
             return False  # còn trong cooldown
-    # Set / update cooldown
-    db.table("ads_alert_cooldowns").upsert({
+    await client.table("ads_alert_cooldowns").upsert({
         "user_id":      user_id,
         "campaign_id":  campaign_id,
         "alert_type":   alert_type,

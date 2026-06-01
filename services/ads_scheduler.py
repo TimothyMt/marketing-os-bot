@@ -15,6 +15,19 @@ from datetime import datetime, timezone, timedelta, date
 logger = logging.getLogger(__name__)
 
 
+# Dedup guard — đảm bảo mỗi job fire đúng 1 lần/khung giờ (sleep 60s có thể drift).
+# Key = job name, value = chuỗi định danh khung đã chạy (vd "2026-06-01" hoặc "2026-06-01-08").
+_last_fired: dict[str, str] = {}
+
+
+def _should_fire(job: str, slot_key: str) -> bool:
+    """True nếu job chưa chạy ở slot này. Đánh dấu đã chạy."""
+    if _last_fired.get(job) == slot_key:
+        return False
+    _last_fired[job] = slot_key
+    return True
+
+
 async def start_ads_scheduler(bot) -> None:
     """Entry point — chạy vô tận dưới dạng asyncio task."""
     logger.info("[AdsScheduler] Starting background scheduler")
@@ -23,33 +36,33 @@ async def start_ads_scheduler(bot) -> None:
             await _tick(bot)
         except Exception as e:
             logger.error("[AdsScheduler] tick error: %s", e)
-        await asyncio.sleep(60)  # check mỗi phút
+        await asyncio.sleep(30)  # check mỗi 30s — bắt khung giờ chính xác hơn
 
 
 async def _tick(bot) -> None:
-    """Gọi mỗi phút — quyết định job nào cần chạy."""
-    now_utc = datetime.now(timezone.utc)
-    # Convert sang Asia/Ho_Chi_Minh (UTC+7)
-    now_vn = now_utc + timedelta(hours=7)
-    hour, minute, weekday = now_vn.hour, now_vn.minute, now_vn.weekday()  # 0=Mon
+    """Gọi định kỳ — quyết định job nào cần chạy. Dùng _should_fire để chống double-fire."""
+    now_vn = datetime.now(timezone.utc) + timedelta(hours=7)  # Asia/Ho_Chi_Minh (UTC+7)
+    hour, weekday = now_vn.hour, now_vn.weekday()  # 0=Mon
+    day_key  = now_vn.strftime("%Y-%m-%d")
+    hour_key = now_vn.strftime("%Y-%m-%d-%H")
 
-    # Job A/C: Daily/Weekly digest — chạy lúc 8:00 (minute=0 để không chạy 8:01, 8:02...)
-    if hour == 8 and minute == 0:
+    # Job A/C: Daily/Weekly digest — 8:00 (1 lần/ngày)
+    if hour == 8 and _should_fire("digest", day_key):
         if weekday == 0:  # Thứ Hai → weekly report
             asyncio.create_task(_run_weekly_report(bot))
         else:
             asyncio.create_task(_run_daily_digest(bot))
 
-    # Job B: Alert monitor — mỗi 4 tiếng (0h, 4h, 8h, 12h, 16h, 20h)
-    if hour % 4 == 0 and minute == 0:
+    # Job B: Alert monitor — mỗi 4 tiếng (0,4,8,12,16,20h), 1 lần/khung giờ
+    if hour % 4 == 0 and _should_fire("alert", hour_key):
         asyncio.create_task(_run_alert_monitor(bot))
 
-    # Job D: Token refresh — mỗi ngày lúc 2:00
-    if hour == 2 and minute == 0:
+    # Job D: Token refresh — 2:00 (1 lần/ngày)
+    if hour == 2 and _should_fire("refresh", day_key):
         asyncio.create_task(_run_token_refresh(bot))
 
-    # Job E: Snapshot cleanup — mỗi Chủ Nhật lúc 3:00
-    if weekday == 6 and hour == 3 and minute == 0:
+    # Job E: Snapshot cleanup — Chủ Nhật 3:00 (1 lần/ngày)
+    if weekday == 6 and hour == 3 and _should_fire("cleanup", day_key):
         asyncio.create_task(_run_cleanup())
 
 

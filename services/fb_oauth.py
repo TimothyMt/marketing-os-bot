@@ -185,19 +185,20 @@ async def handle_callback(request: Request, bot) -> HTMLResponse:
 
     encrypted = encrypt_token(long_token)
 
-    if len(accounts) == 1:
-        # Auto-select nếu chỉ có 1 account
-        acc = accounts[0]
-        account_id = acc.get("id") or acc.get("account_id")
-        if not account_id.startswith("act_"):
-            account_id = f"act_{account_id.replace('act_', '')}"
-        account_name = acc.get("name") or account_id
-        await save_connection(user_id, encrypted, account_id, account_name, expires_at)
-        await _notify_connected(bot, user_id, account_name, account_id, accounts)
-    else:
-        # Nhiều accounts → lưu tạm token, hỏi user chọn
-        # Dùng pending_intake pattern qua Telegram inline keyboard
-        await _ask_select_account(bot, user_id, encrypted, expires_at, accounts)
+    # Chọn account: ưu tiên account active (status==1) đầu tiên.
+    # FB trả accounts sorted; nếu user có nhiều account và muốn account khác,
+    # họ /disconnect_ads rồi /connect_ads lại (đơn giản, tránh state phức tạp).
+    def _norm_id(acc: dict) -> str:
+        aid = acc.get("id") or acc.get("account_id") or ""
+        return aid if aid.startswith("act_") else f"act_{aid.replace('act_', '')}"
+
+    active = [a for a in accounts if a.get("account_status") == 1]
+    chosen = active[0] if active else accounts[0]
+    account_id   = _norm_id(chosen)
+    account_name = chosen.get("name") or account_id
+
+    await save_connection(user_id, encrypted, account_id, account_name, expires_at)
+    await _notify_connected(bot, user_id, account_name, account_id, accounts)
 
     return HTMLResponse(_HTML_SUCCESS)
 
@@ -214,6 +215,13 @@ async def _notify_connected(bot, user_id: int, account_name: str, account_id: st
         f"Em sẽ báo cáo ads lúc *8:00 sáng* mỗi ngày và tóm tắt *mỗi thứ Hai* hàng tuần.\n\n"
         f"Tiếp theo: Sếp chọn chỉ số muốn theo dõi 👇"
     )
+    # Nếu user có nhiều account → note để họ biết cách đổi
+    if len(all_accounts) > 1:
+        text += (
+            f"\n\n_Sếp có {len(all_accounts)} Ad Account — em đang dùng account active đầu tiên. "
+            f"Muốn đổi: /disconnect\\_ads rồi /connect\\_ads lại._"
+        )
+
     keyboard = InlineKeyboardMarkup([[
         InlineKeyboardButton("⚙️ Chọn chỉ số & ngưỡng cảnh báo", callback_data="ads_setup_metrics"),
         InlineKeyboardButton("✅ Dùng mặc định", callback_data="ads_setup_default"),
@@ -222,52 +230,3 @@ async def _notify_connected(bot, user_id: int, account_name: str, account_id: st
         await bot.send_message(user_id, text, parse_mode=ParseMode.MARKDOWN, reply_markup=keyboard)
     except Exception as e:
         logger.warning("Notify connected failed for user=%d: %s", user_id, e)
-
-
-async def _ask_select_account(bot, user_id: int, encrypted_token: str, expires_at: datetime, accounts: list) -> None:
-    """User có nhiều Ad Account → gửi inline keyboard chọn."""
-    from telegram.constants import ParseMode
-    from telegram import InlineKeyboardButton, InlineKeyboardMarkup
-    import json
-    from storage.fb_connections import save_oauth_state
-
-    # Lưu tạm token vào oauth_states (abuse key, 30 phút)
-    # callback sẽ đọc khi user chọn account
-    temp_key = f"token_{user_id}"
-    import uuid
-    from storage import get_db
-    db = get_db()
-    from datetime import datetime, timezone, timedelta
-    db.table("oauth_states").upsert({
-        "state_token": temp_key,
-        "user_id":     user_id,
-        "expires_at":  (datetime.now(timezone.utc) + timedelta(minutes=30)).isoformat(),
-    }).execute()
-    # Store token separately in a safe way — use the state table with a different key
-    db.table("oauth_states").upsert({
-        "state_token": f"tkn_{user_id}",
-        "user_id":     user_id,
-        "expires_at":  (datetime.now(timezone.utc) + timedelta(minutes=30)).isoformat(),
-    }).execute()
-
-    buttons = []
-    for acc in accounts[:4]:  # max 4 buttons
-        acc_id = acc.get("id") or ""
-        name = acc.get("name") or acc_id
-        buttons.append([InlineKeyboardButton(
-            f"📊 {name[:30]}",
-            callback_data=f"ads_select_account:{acc_id}:{encrypted_token[:20]}",  # truncate for callback limit
-        )])
-
-    text = (
-        f"🔎 Sếp có *{len(accounts)} Ad Account*. Chọn account muốn kết nối:\n\n"
-        + "\n".join(f"• {a.get('name')} (`{a.get('id')}`)" for a in accounts[:6])
-    )
-    try:
-        await bot.send_message(
-            user_id, text,
-            parse_mode=ParseMode.MARKDOWN,
-            reply_markup=InlineKeyboardMarkup(buttons),
-        )
-    except Exception as e:
-        logger.warning("ask_select_account failed for user=%d: %s", user_id, e)

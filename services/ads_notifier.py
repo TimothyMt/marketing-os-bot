@@ -57,12 +57,15 @@ async def pull_and_snapshot(conn: dict) -> list[dict]:
         level="campaign",
         ad_account_id=account,
         access_token=token,
+        extra_fields=["campaign_id", "action_values"],
     )
 
     today = datetime.now(timezone.utc)
-    await save_snapshot(user_id, today, campaigns)
+    # save_snapshot trả về rows đã compute (roas/cpl/vtr_3s/campaign_id) — dùng
+    # shape này để delta nhất quán với snapshot đọc từ DB.
+    computed_rows = await save_snapshot(user_id, today, campaigns)
     await update_last_pull(user_id)
-    return campaigns
+    return computed_rows
 
 
 # ── Delta computation ────────────────────────────────────────────
@@ -134,10 +137,14 @@ def format_daily_digest(
         val_str = fmt(today_val)
         if pct is not None:
             arrow = "↑" if pct > 0 else "↓"
-            # For CPM/CPL/CPA/CPC: ↓ là tốt; ROAS/CTR/VTR: ↑ là tốt
-            good_down = key in ("cpl", "cpm", "cpa", "cpc")
-            is_good = (pct < 0 if good_down else pct > 0)
-            delta_str = f" ({arrow}{abs(pct):.0f}% {'✅' if is_good else '⚠️'})"
+            # Nhóm "thấp là tốt": CPL/CPM/CPA/CPC + Frequency (tăng = saturation)
+            good_down = key in ("cpl", "cpm", "cpa", "cpc", "frequency")
+            # Spend là trung tính — không gắn ✅/⚠️
+            if key == "spend":
+                delta_str = f" ({arrow}{abs(pct):.0f}%)"
+            else:
+                is_good = (pct < 0 if good_down else pct > 0)
+                delta_str = f" ({arrow}{abs(pct):.0f}% {'✅' if is_good else '⚠️'})"
         else:
             delta_str = ""
         lines.append(f"{icon} *{label}:* {val_str}{delta_str}")

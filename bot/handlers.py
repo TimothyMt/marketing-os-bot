@@ -988,7 +988,11 @@ async def _handle_callback_inner(update, context, query, session, data, user_id)
             else:
                 tracked.append(metric)
             await update_notification_settings(user_id, tracked_metrics=tracked)
-            await query.answer(f"{'✅ Thêm' if metric in tracked else '☐ Bỏ'} {metric}", show_alert=False)
+            # Re-render keyboard để tick cập nhật ngay
+            try:
+                await query.edit_message_reply_markup(reply_markup=_build_metric_keyboard(tracked))
+            except Exception:
+                pass
         return
 
     if data == "ads_set_thresholds":
@@ -1007,37 +1011,16 @@ async def _handle_callback_inner(update, context, query, session, data, user_id)
         return
 
     if data == "ads_setup_metrics":
-        # Redirect to /ads_settings flow
-        from services.ads_notifier import METRIC_LABELS, RECOMMENDED_METRICS
-        from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+        from services.ads_notifier import RECOMMENDED_METRICS
         from storage.fb_connections import get_connection
         conn = await get_connection(user_id)
         tracked = (conn or {}).get("tracked_metrics") or RECOMMENDED_METRICS
-
-        recommended = ["spend", "roas", "cpl", "frequency"]
-        advanced    = ["cpm", "ctr", "vtr_3s", "reach"]
-        deep        = ["purchases", "cpa", "cpc", "leads"]
-
-        def _btn(key):
-            icon, label, _ = METRIC_LABELS[key]
-            tick = "✅" if key in tracked else "☐"
-            return InlineKeyboardButton(f"{tick} {icon} {label}", callback_data=f"ads_toggle_metric:{key}")
-
-        keyboard = InlineKeyboardMarkup([
-            [InlineKeyboardButton("── ⭐ Khuyến nghị ──", callback_data="noop")],
-            [_btn(k) for k in recommended],
-            [InlineKeyboardButton("── 📊 Hiệu quả ads ──", callback_data="noop")],
-            [_btn(k) for k in advanced],
-            [InlineKeyboardButton("── 💡 Chuyên sâu ──", callback_data="noop")],
-            [_btn(k) for k in deep],
-            [InlineKeyboardButton("✅ Xong — dùng mặc định cho ngưỡng alert", callback_data="ads_setup_default")],
-        ])
         await query.edit_message_text(
             "📊 *Chọn chỉ số theo dõi hàng ngày:*\n\n"
             "Nhấn để bật/tắt. ⭐ Recommended = 4 chỉ số thiết yếu nhất.\n\n"
             "_Ngưỡng alert: bỏ trống = Max tự theo benchmark ngành._",
             parse_mode=ParseMode.MARKDOWN,
-            reply_markup=keyboard,
+            reply_markup=_build_metric_keyboard(tracked, with_done=True),
         )
         return
 
@@ -5887,6 +5870,37 @@ async def _handle_basic_business_text(update, context, session, text: str):
 # FB ADS SCHEDULER — /connect_ads · /disconnect_ads · /ads_settings
 # ─────────────────────────────────────────────────────────────────
 
+def _build_metric_keyboard(tracked: list, with_done: bool = False, extra_rows: list = None):
+    """Build inline keyboard chọn metric — dùng chung cho settings + setup + toggle re-render."""
+    from services.ads_notifier import METRIC_LABELS
+    from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+
+    recommended = ["spend", "roas", "cpl", "frequency"]
+    advanced    = ["cpm", "ctr", "vtr_3s", "reach"]
+    deep        = ["purchases", "cpa", "cpc", "leads"]
+
+    def _btn(key):
+        icon, label, _ = METRIC_LABELS[key]
+        tick = "✅" if key in tracked else "☐"
+        return InlineKeyboardButton(f"{tick} {icon} {label}", callback_data=f"ads_toggle_metric:{key}")
+
+    rows = [
+        [InlineKeyboardButton("── ⭐ Khuyến nghị ──", callback_data="noop")],
+        [_btn(k) for k in recommended],
+        [InlineKeyboardButton("── 📊 Hiệu quả ads ──", callback_data="noop")],
+        [_btn(k) for k in advanced],
+        [InlineKeyboardButton("── 💡 Chuyên sâu ──", callback_data="noop")],
+        [_btn(k) for k in deep],
+    ]
+    if with_done:
+        rows.append([InlineKeyboardButton("✅ Xong — ngưỡng alert dùng mặc định", callback_data="ads_setup_default")])
+    else:
+        rows.append([InlineKeyboardButton("⚠️ Đặt ngưỡng alert", callback_data="ads_set_thresholds")])
+    if extra_rows:
+        rows.extend(extra_rows)
+    return InlineKeyboardMarkup(rows)
+
+
 async def cmd_connect_ads(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """/connect_ads — bắt đầu OAuth flow để kết nối FB Ad Account."""
     user_id = update.effective_user.id
@@ -5976,8 +5990,7 @@ async def cmd_ads_settings(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     """
     user_id = update.effective_user.id
     from storage.fb_connections import get_connection
-    from services.ads_notifier import METRIC_LABELS, RECOMMENDED_METRICS, AVAILABLE_METRICS
-    from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+    from services.ads_notifier import METRIC_LABELS, RECOMMENDED_METRICS
 
     conn = await get_connection(user_id)
     if not conn:
@@ -6004,36 +6017,18 @@ async def cmd_ads_settings(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         f"*Ngưỡng cảnh báo:*\n"
         f"• Frequency > {freq_max if freq_max else 'benchmark ngành (5.0)'}\n"
         f"• ROAS giảm > {f'{roas_drop:.0f}%' if roas_drop else 'benchmark ngành (20%)'}\n"
-        f"• CPM tăng > {f'{cpm_spike:.0f}%' if cpm_spike else 'benchmark ngành (30%)'}\n"
+        f"• CPM tăng > {f'{cpm_spike:.0f}%' if cpm_spike else 'benchmark ngành (30%)'}\n\n"
+        f"{'🔴 Bấm chỉ số để bật/tắt. /ads_settings lại để bật báo cáo.' if not enabled else '📊 Bấm chỉ số để bật/tắt theo dõi.'}"
     )
 
-    # Build metric selection keyboard (⭐ Recommended + các nhóm khác)
-    recommended = ["spend", "roas", "cpl", "frequency"]
-    advanced    = ["cpm", "ctr", "vtr_3s", "reach"]
-    deep        = ["purchases", "cpa", "cpc", "leads"]
-
-    def _metric_btn(key: str) -> InlineKeyboardButton:
-        icon, label, _ = METRIC_LABELS[key]
-        tick = "✅" if key in tracked else "☐"
-        return InlineKeyboardButton(f"{tick} {icon} {label}", callback_data=f"ads_toggle_metric:{key}")
-
-    keyboard = InlineKeyboardMarkup([
-        [InlineKeyboardButton("── ⭐ Khuyến nghị ──", callback_data="noop")],
-        [_metric_btn(k) for k in recommended],
-        [InlineKeyboardButton("── 📊 Hiệu quả ads ──", callback_data="noop")],
-        [_metric_btn(k) for k in advanced],
-        [InlineKeyboardButton("── 💡 Chuyên sâu ──", callback_data="noop")],
-        [_metric_btn(k) for k in deep],
-        [
-            InlineKeyboardButton(
-                "🔴 Tắt báo cáo" if enabled else "🟢 Bật báo cáo",
-                callback_data="ads_toggle_notify",
-            ),
-            InlineKeyboardButton("⚠️ Đặt ngưỡng alert", callback_data="ads_set_thresholds"),
-        ],
-    ])
-
-    await update.message.reply_text(text, parse_mode=ParseMode.MARKDOWN, reply_markup=keyboard)
+    from telegram import InlineKeyboardButton
+    kb = _build_metric_keyboard(tracked, extra_rows=[[
+        InlineKeyboardButton(
+            "🔴 Tắt báo cáo" if enabled else "🟢 Bật báo cáo",
+            callback_data="ads_toggle_notify",
+        ),
+    ]])
+    await update.message.reply_text(text, parse_mode=ParseMode.MARKDOWN, reply_markup=kb)
 
 
 async def _handle_ads_threshold_text(update: Update, session, text: str) -> None:
