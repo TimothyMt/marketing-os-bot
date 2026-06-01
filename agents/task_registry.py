@@ -203,11 +203,35 @@ OPERATIONAL_TASKS: dict[str, TaskConfig] = {
         label="Sản Xuất Nội Dung",
         button_emoji="✍️",
         category="operational",
-        description="Gen content theo từng bài từ Lịch Nội Dung — output Excel chi tiết",
-        skill_class_name="ContentGeneratorSkill",
+        description="Sản xuất toàn bộ content package: bài đăng + UGC brief — output 2 files Excel",
+        skill_class_name="ContentGeneratorPipeline",
         intake_fields=[
             {"key": "scope",     "label": "Sản xuất cho ngày nào / tuần nào?", "example": "Tuần 1 (5-11/01/2026) — 14 bài", "required": True},
             {"key": "tone_note", "label": "Tone cần đặc biệt note?",            "example": "Tết — vibe ấm áp + urgency mềm", "required": False},
+        ],
+    ),
+    "social_posts": TaskConfig(
+        name="social_posts",
+        label="Viết Bài Đăng",
+        button_emoji="📝",
+        category="operational",
+        description="Viết bài đăng Facebook/Zalo/Instagram từ Calendar — output Excel Content Calendar",
+        skill_class_name="SocialPostsSkill",
+        intake_fields=[
+            {"key": "scope",     "label": "Viết cho ngày / tuần nào?",  "example": "Tuần 1 (5-11/01) — 7 bài Facebook + Zalo", "required": True},
+            {"key": "tone_note", "label": "Tone note đặc biệt?",         "example": "Tết — vibe ấm áp + urgency nhẹ",           "required": False},
+        ],
+    ),
+    "ugc_brief": TaskConfig(
+        name="ugc_brief",
+        label="Brief Creator UGC",
+        button_emoji="🤝",
+        category="operational",
+        description="Viết Creator Brief chi tiết cho UGC/KOL/EGC — output Excel UGC Brief",
+        skill_class_name="UGCBriefSkill",
+        intake_fields=[
+            {"key": "creator_types", "label": "Loại creator nào?",     "example": "2 UGC micro (1K-10K) + 1 KOL (100K+)",    "required": True},
+            {"key": "campaign_goal", "label": "Mục tiêu campaign UGC?", "example": "Trust-building + tăng review organic",     "required": False},
         ],
     ),
     "ads_generator": TaskConfig(

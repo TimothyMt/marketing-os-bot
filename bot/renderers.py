@@ -34,9 +34,11 @@ _TEMPLATE_PATH = os.path.join(
 SKILL_TEMPLATE_SHEET: dict[str, str] = {
     "content_generator":   "📅 Content Calendar",
     "content_calendar":    "📅 Content Calendar",
+    "social_posts":        "📅 Content Calendar",
     "ads_generator":       "✍️ Ad Copy",
     "ads_copy":            "✍️ Ad Copy",
     "video_scripts":       "🎬 Video Script",
+    "ugc_brief":           "🤝 UGC Brief",
     "email_zalo_sequence": "📧 Email & Zalo",
     "performance_audit":   "📊 KPI Dashboard",
 }

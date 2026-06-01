@@ -371,7 +371,7 @@ async def _run_skill(skill: AgentSkill, session: Session) -> str:
         "post_write", "post_adapt", "post_batch", "post_hooks", "post_visual",
         "ads_generator", "ads_copy", "video_scripts",
         "sales_inbox_script", "email_zalo_sequence", "content_repurpose",
-        "content_generator",
+        "content_generator", "social_posts", "ugc_brief",
     }
     if skill.name in BV_INJECTED_SKILLS:
         try:
@@ -563,9 +563,19 @@ async def run_strategy_synthesis(session: Session) -> str:
 # ─────────────────────────────────────────────────────────────────
 
 async def run_operational_skill(skill_name: str, session: Session) -> str:
-    """Run an operational skill by name. Stores result in session with versioning."""
+    """Run an operational skill by name. Stores result in session with versioning.
+
+    Pipeline skills (e.g. ContentGeneratorPipeline) are detected via run_pipeline()
+    and dispatch to sub-skills instead of calling the LLM directly.
+    """
     from agents.operational_skills_config import get_operational_skill
     skill = get_operational_skill(skill_name)
+
+    if hasattr(skill, "run_pipeline"):
+        result = await skill.run_pipeline(session)
+        session.add_result(skill_name, result)
+        return result
+
     result = await _run_skill(skill, session)
     session.add_result(skill_name, result)
     return result

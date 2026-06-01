@@ -18,6 +18,8 @@ from agents.operational_prompts import (
     CAMPAIGN_BRIEF_SYSTEM,
     CONTENT_CALENDAR_SYSTEM,
     CONTENT_GENERATOR_SYSTEM,
+    SOCIAL_POSTS_SYSTEM,
+    UGC_BRIEF_SYSTEM,
     ADS_COPY_SYSTEM,
     VIDEO_SCRIPTS_SYSTEM,
     LANDING_PAGE_SYSTEM,
@@ -196,15 +198,52 @@ def make_email_zalo_sequence_skill() -> OperationalSkill:
     ))
 
 
-def make_content_generator_skill() -> OperationalSkill:
-    """Sprint 3: NEW — gen content theo từng bài từ Content Calendar."""
+def make_social_posts_skill() -> OperationalSkill:
+    """Bài đăng hữu cơ (Facebook/Zalo/Instagram) → 📅 Content Calendar sheet."""
     return OperationalSkill(_config_for(
-        "content_generator",
-        CONTENT_GENERATOR_SYSTEM,
-        max_tokens=12000,  # output dài (1 tuần = 7-14 bài, mỗi bài 200-300 từ)
+        "social_posts",
+        SOCIAL_POSTS_SYSTEM,
+        max_tokens=12000,
         context_strategy=ContextStrategy.PROFILE_PLUS_CAMPAIGN,
-        primary_deliverable=PrimaryDeliverable.EXCEL,  # Table export — paste GG Sheet
+        primary_deliverable=PrimaryDeliverable.EXCEL,
     ))
+
+
+def make_ugc_brief_skill() -> OperationalSkill:
+    """Creator Brief (UGC/KOL/EGC) → 🤝 UGC Brief sheet."""
+    return OperationalSkill(_config_for(
+        "ugc_brief",
+        UGC_BRIEF_SYSTEM,
+        max_tokens=8000,
+        context_strategy=ContextStrategy.PROFILE_PLUS_CAMPAIGN,
+        primary_deliverable=PrimaryDeliverable.EXCEL,
+    ))
+
+
+class ContentGeneratorPipeline:
+    """Pipeline: social_posts + ugc_brief chạy lần lượt → 2 Excel files.
+
+    Không phải AgentSkill — không gọi LLM trực tiếp.
+    run_pipeline(session) được gọi bởi run_operational_skill khi detect pipeline.
+    """
+    name = "content_generator"
+    primary_deliverable = PrimaryDeliverable.EXCEL
+    output_format = OutputFormat.OPERATIONAL_DELIVERABLE
+    SUB_SKILLS = ["social_posts", "ugc_brief"]
+
+    async def run_pipeline(self, session) -> str:
+        from agents.pipeline import run_operational_skill as _run_ops
+        results = {}
+        for skill_name in self.SUB_SKILLS:
+            try:
+                results[skill_name] = await _run_ops(skill_name, session)
+            except Exception as e:
+                import logging
+                logging.getLogger(__name__).warning(
+                    "ContentGeneratorPipeline: sub-skill %s failed: %s", skill_name, e
+                )
+                results[skill_name] = ""
+        return f"MULTI_OUTPUT:{','.join(self.SUB_SKILLS)}"
 
 
 def make_competitor_spy_skill() -> OperationalSkill:
@@ -760,7 +799,9 @@ def _run_async_sync(coro, timeout: int = 60):
 OPS_SKILL_FACTORIES: dict[str, callable] = {
     "campaign_brief":      make_campaign_brief_skill,
     "content_calendar":    ContentCalendarDynamicSkill,  # Sprint 3.4 — Pillar dynamic
-    "content_generator":   make_content_generator_skill,
+    "content_generator":   ContentGeneratorPipeline,
+    "social_posts":        make_social_posts_skill,
+    "ugc_brief":           make_ugc_brief_skill,
     "competitor_spy":      make_competitor_spy_skill,
     "competitor_comparison": make_competitor_comparison_skill,
     "landing_page":        make_landing_page_skill,

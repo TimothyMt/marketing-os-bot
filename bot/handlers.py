@@ -56,7 +56,7 @@ BRAND_VOICE_GATED_SKILLS = {
     "post_write", "post_adapt", "post_batch", "post_hooks", "post_visual",
     "ads_generator", "ads_copy", "video_scripts",
     "sales_inbox_script", "email_zalo_sequence", "content_repurpose",
-    "content_generator",
+    "content_generator", "social_posts", "ugc_brief",
 }
 
 logger = logging.getLogger(__name__)
@@ -1981,12 +1981,12 @@ async def _handle_callback_inner(update, context, query, session, data, user_id)
             )
             return
 
-        # ── Content Generator: cần Calendar trước ─────────────────
-        if task_type == "content_generator":
+        # ── Content skills: cần Calendar trước ────────────────────
+        if task_type in ("content_generator", "social_posts"):
             has_calendar = bool(session.get_latest_result("content_calendar"))
             if not has_calendar:
                 await query.edit_message_reply_markup(reply_markup=None)
-                session.pending_followup_skill = "content_generator"
+                session.pending_followup_skill = task_type
                 await save_session(session)
                 await query.message.reply_text(
                     "✍️ *Sản Xuất Nội Dung cần có Lịch Nội Dung trước ạ.*\n\n"
@@ -3094,6 +3094,15 @@ async def _send_ops_result(message: Message, session, task_name: str, result: st
     from agents.skills import PrimaryDeliverable
     import io
 
+    # ContentGeneratorPipeline returns "MULTI_OUTPUT:skill1,skill2" — dispatch each sub-skill
+    if result.startswith("MULTI_OUTPUT:"):
+        sub_skills = result[len("MULTI_OUTPUT:"):].split(",")
+        for sub_name in sub_skills:
+            sub_result = session.get_latest_result(sub_name) or ""
+            if sub_result:
+                await _send_ops_result(message, session, sub_name, sub_result)
+        return
+
     # Resolve skill instance: strategic single-shot uses STRATEGIC_SKILL_CLASSES,
     # operational uses get_operational_skill factory
     SINGLE_SHOT_STRATEGIC = {"market", "competitor", "customer", "pricing"}
@@ -3134,8 +3143,8 @@ async def _send_ops_result(message: Message, session, task_name: str, result: st
     business_slug = re.sub(r"[^a-zA-Z0-9_-]", "_", session.profile.business_name or task_name)[:30]
     business_name = session.profile.business_name or "Business"
 
-    # Skip HTML: content_generator (only needs Excel), ads_optimizer (action skill — no deliverable files)
-    SKIP_HTML_SKILLS = {"content_generator", "ads_optimizer"}
+    # Skip HTML: Excel-only skills + action skills (ads_optimizer)
+    SKIP_HTML_SKILLS = {"content_generator", "social_posts", "ugc_brief", "ads_optimizer"}
 
     if task_name not in SKIP_HTML_SKILLS:
         # Send HTML always (universal viewable)
@@ -3861,10 +3870,10 @@ async def _launch_task_from_advisor(update, context, session, task_name: str):
             )
         return
 
-    # Content Generator cần Calendar
-    if task_name == "content_generator":
+    # Content skills cần Calendar trước
+    if task_name in ("content_generator", "social_posts"):
         if not session.get_latest_result("content_calendar"):
-            session.pending_followup_skill = "content_generator"
+            session.pending_followup_skill = task_name
             await save_session(session)
             await msg.reply_text(
                 "✍️ Sản Xuất Nội Dung cần *Lịch Nội Dung* trước. Em chạy Calendar trước nhé?",
