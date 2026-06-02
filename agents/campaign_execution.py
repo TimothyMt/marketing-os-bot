@@ -33,10 +33,12 @@ QUY TẮC OUTPUT (Telegram):
 
 🔴 RETENTION LÀ BẮT BUỘC MỌI CAMPAIGN:
 - Mọi campaign đều thu data khách (lead/người mua). KHÔNG để lãng phí.
-- Dù goal là acquisition/brand/revenue, section ♻️ Retention vẫn phải có:
-  thu + gắn tag data khách campaign này (`retention_strategy`) + chuỗi
-  chăm sóc sau chuyển đổi giữ chân/tăng repeat (`email_zalo_sequence`).
-- Mục tiêu: tối ưu ROI dài hạn, biến khách 1-lần thành khách lặp lại.
+- Dù goal là acquisition/brand/revenue, section ♻️ Retention vẫn phải có 3 ý:
+  1. Thu + gắn tag data khách campaign này (`retention_strategy`)
+  2. Chuỗi nuôi lead CHƯA chuyển đổi → kéo về mua (`email_zalo_sequence`)
+  3. Chuỗi chăm sóc khách ĐÃ mua → giữ chân/tăng repeat (`email_zalo_sequence`)
+- Mục tiêu: tối ưu ROI dài hạn — không bỏ sót lead chưa mua, biến khách
+  1-lần thành khách lặp lại.
 
 SKILLS CÓ SẴN (dùng đúng tên trong backtick):
 - `landing_page`         — trang chuyển đổi thu lead/đặt lịch
@@ -75,10 +77,12 @@ _OBJ_MAP = {
 
 # Lớp retention BẮT BUỘC chèn vào mọi campaign không-phải-retention.
 # Mọi campaign đều thu data khách → không để lãng phí, tối ưu ROI dài hạn.
+# Nuôi CẢ 2 nhóm: đã mua (giữ chân/repeat) + chưa mua (kéo về chuyển đổi).
 _RETENTION_BASELINE = (
     "♻️ *Retention — Giữ data & tối ưu ROI* _(luôn chạy)_\n"
     "• Thu + gắn tag data khách campaign này (lead/mua) ← `retention_strategy`\n"
-    "• Chuỗi chăm sóc sau chuyển đổi, tăng repeat ← `email_zalo_sequence`\n\n"
+    "• Chuỗi nuôi lead CHƯA chuyển đổi → kéo về mua ← `email_zalo_sequence`\n"
+    "• Chuỗi chăm sóc khách ĐÃ mua → tăng repeat ← `email_zalo_sequence`\n\n"
 )
 
 _FALLBACK_ACTIVITIES = {
