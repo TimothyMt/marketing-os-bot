@@ -33,7 +33,10 @@ _TEMPLATE_PATH = os.path.join(
 # building a new workbook from scratch.
 SKILL_TEMPLATE_SHEET: dict[str, str] = {
     "content_generator":   "📅 Content Calendar",
-    "content_calendar":    "📅 Content Calendar",
+    # content_calendar KHÔNG map vào template cố định: nó là bảng KẾ HOẠCH
+    # (Funnel / Nhóm khách / Topic / Hook angle...) — cột khác hẳn template
+    # post 15-cột → ép vào template chỉ ra file rỗng. Dùng dynamic extraction
+    # (render_excel_file) để dựng workbook từ chính các bảng kế hoạch của nó.
     "social_posts":        "📅 Content Calendar",
     "ads_generator":       "✍️ Ad Copy",
     "ads_copy":            "✍️ Ad Copy",

@@ -594,7 +594,7 @@ class ContentCalendarDynamicSkill(OperationalSkill):
         pillar_str = " / ".join(
             f"{k.title()} {int(v*100)}%" for k, v in pillar_mix.items()
         )
-        return (
+        msg = (
             base_msg
             + "\n\n---\n\n**PILLAR MIX TÍNH ĐỘNG cho business này (dùng đúng số này, không tự thay):**\n"
             + pillar_str
@@ -604,6 +604,15 @@ class ContentCalendarDynamicSkill(OperationalSkill):
             + str(session.profile.primary_goal or "unknown")
             + ")_"
         )
+        # Source mix do user chốt (nếu có) — override default 40/25/15/20
+        source_mix = (session.pending_intake.get("source_mix") or "").strip()
+        if source_mix:
+            msg += (
+                "\n\n---\n\n**SOURCE MIX DO SẾP CHỐT (dùng ĐÚNG, không tự đổi):**\n"
+                + source_mix
+                + "\n_(Nếu sếp loại 1 dạng — vd không làm video/KOL — thì BỎ hẳn dạng đó khỏi calendar.)_"
+            )
+        return msg
 
 
 class AdsCopySkill(AgentSkill):

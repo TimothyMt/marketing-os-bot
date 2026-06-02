@@ -251,11 +251,30 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 </html>"""
 
 
+def _ensure_blank_line_before_tables(text: str) -> str:
+    """Python-Markdown chỉ render bảng khi có DÒNG TRỐNG ngay trước bảng.
+    LLM thường viết 'Tuần 1 ...\\n| Ngày | Kênh |' (không có dòng trống) → bảng
+    bị render thành text thô với dấu '|'. Chèn 1 dòng trống trước mỗi block bảng."""
+    lines = text.split("\n")
+    out: list[str] = []
+    for line in lines:
+        is_table_row = line.lstrip().startswith("|")
+        if is_table_row and out:
+            prev = out[-1]
+            prev_is_table = prev.lstrip().startswith("|")
+            # Dòng trước là text thường (không trống, không phải row bảng) → chèn blank
+            if prev.strip() and not prev_is_table:
+                out.append("")
+        out.append(line)
+    return "\n".join(out)
+
+
 def _md_to_html(text: str) -> str:
     """Convert markdown → HTML. Falls back to <pre> if no markdown lib available."""
     if not text:
         return ""
     if HAS_MARKDOWN:
+        text = _ensure_blank_line_before_tables(text)
         html = _md.markdown(text, extensions=["tables", "fenced_code", "nl2br", "sane_lists"])
         # Wrap <table> in scroll container so wide tables (e.g. 11-col calendar) scroll on mobile
         html = re.sub(r"<table>", '<div class="table-wrap"><table>', html)

@@ -494,6 +494,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         OPS_INTAKE_AWAITING, "_awaiting_followup_for", "_advisor_mode",
         BIZ_CONTEXT_AWAITING, BIZ_CONTEXT_PENDING_SKILL,
         "_awaiting_feedback_for", "_awaiting_rating_for", "_pending_regen_skill",
+        "_awaiting_campaign_setup",
     )
     _stuck_now = [k for k in _STUCK_FLAGS if session.pending_intake.get(k)]
     _tone_stuck = session.tone_calibration.get("stage") in ("checking_tone", "waiting_feedback")
@@ -603,6 +604,11 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Layer 2b: User mô tả phần cần sửa trong campaign brief → surgical edit
     if session.pending_intake.get("_awaiting_brief_edit"):
         await _handle_brief_edit_text(update, context, session, text)
+        return
+
+    # Sau khi duyệt brief: sếp trả lời kênh + source mix → ghi nhận → dựng calendar
+    if session.pending_intake.get("_awaiting_campaign_setup"):
+        await _handle_campaign_setup_text(update, context, session, text)
         return
 
     # Ads Scheduler: user đang nhập ngưỡng alert
@@ -1153,7 +1159,8 @@ async def _handle_callback_inner(update, context, query, session, data, user_id)
     # ── Layer 2b: Xác nhận / Surgical edit Campaign Brief ───────
     if data == "brief_confirm":
         await query.edit_message_reply_markup(reply_markup=None)
-        await _confirm_brief_and_gen_calendar(query.message, session, context, update)
+        # HỎI kênh + source mix (text) TRƯỚC khi dựng funnel/calendar
+        await _ask_campaign_setup(query.message, session)
         return
 
     # User duyệt Funnel Map + Execution Plan → mới dựng Content Calendar
@@ -4756,6 +4763,102 @@ async def _handle_brief_edit_text(update, context, session, text: str):
     )
 
 
+def _duration_to_days(duration: str | None) -> int:
+    """Suy số ngày từ field duration tự do ('1 tuần', '6 tuần', '40 ngày', '2 tháng').
+    Fallback 30. Dùng cho funnel map duration_days."""
+    if not duration:
+        return 30
+    s = str(duration).lower()
+    # Tìm "<số> <đơn vị>" — đơn vị match lỏng bằng substring để né Unicode tổ hợp
+    for m in re.finditer(r"(\d+)\s*([^\d\s]+)", s):
+        n = int(m.group(1))
+        unit = m.group(2)
+        if "tu" in unit or "week" in unit:        # tuần / tuan / week
+            return max(7, n * 7)
+        if unit.startswith("ng") or "day" in unit:  # ngày / ngay / day
+            return max(1, n)
+        if "th" in unit or "month" in unit:        # tháng / thang / month
+            return max(30, n * 30)
+    return 30
+
+
+async def _ask_campaign_setup(message, session):
+    """Sau khi sếp duyệt brief → HỎI kênh triển khai + tỉ trọng source mix
+    (text, ghi nhận — không nút bấm) TRƯỚC khi dựng funnel/calendar.
+    Sếp trả lời → _handle_campaign_setup_text parse & lưu → chạy tiếp."""
+    session.pending_intake["_awaiting_campaign_setup"] = "1"
+    await save_session(session)
+    addr = _addr(session)
+    suggested = session.profile.current_channels or "Facebook, TikTok, Zalo OA, Instagram"
+    await message.reply_text(
+        f"✅ Brief đã duyệt! Trước khi em dựng Lịch Nội Dung, em hỏi nhanh 2 ý cho đúng ý {addr} ạ:\n\n"
+        f"1️⃣ *Sếp muốn triển khai ở những kênh nào?*\n"
+        f"_(Gợi ý từ profile: {suggested} — sếp cứ liệt kê kênh muốn làm, vd \"chỉ Facebook + TikTok\")_\n\n"
+        f"2️⃣ *Tỉ trọng nội dung theo nguồn (Source) thế nào?*\n"
+        f"_UGC (khách tự quay) / EGC (nhân viên) / FGC (founder) / Brand (studio). "
+        f"Vd: \"UGC 50%, FGC 30%, Brand 20% — chưa làm video\". Không rõ thì gõ \"để em tự cân\" cũng được._\n\n"
+        f"Sếp trả lời cả 2 trong 1 tin nhắn giúp em nhé 🙏",
+        parse_mode=ParseMode.MARKDOWN,
+    )
+
+
+async def _handle_campaign_setup_text(update, context, session, text):
+    """Parse câu trả lời kênh + source mix của sếp → lưu vào pending_intake →
+    chạy tiếp _confirm_brief_and_gen_calendar."""
+    session.pending_intake.pop("_awaiting_campaign_setup", None)
+
+    # Parse bằng LLM (CRITIC_REVIEW) — robust với free-form tiếng Việt
+    channels = ""
+    source_mix = ""
+    try:
+        from tools.llm_router import call as _router_call, TaskType as _TT
+        import json as _json
+        _prompt = (
+            "Trích xuất từ câu trả lời của founder VN về kế hoạch content:\n"
+            f"\"{text}\"\n\n"
+            "Trả về DUY NHẤT 1 JSON:\n"
+            '{\"channels\": \"<danh sách kênh, cách nhau dấu +; vd \'Facebook + TikTok\'; '
+            'rỗng nếu không nêu>\", '
+            '\"source_mix\": \"<mô tả tỉ trọng UGC/EGC/FGC/Brand + dạng loại trừ nếu có; '
+            'rỗng nếu sếp nói tự cân/không rõ>\"}\n'
+            "Chỉ JSON, không giải thích."
+        )
+        _res = await _router_call(
+            task_type=_TT.CRITIC_REVIEW,
+            system="Bạn là parser. Chỉ xuất JSON hợp lệ.",
+            user=_prompt,
+            max_tokens=300,
+        )
+        _raw = (_res.get("output") or "").strip()
+        _m = re.search(r"\{.*\}", _raw, re.DOTALL)
+        if _m:
+            _d = _json.loads(_m.group(0))
+            channels = (_d.get("channels") or "").strip()
+            source_mix = (_d.get("source_mix") or "").strip()
+    except Exception as e:
+        logger.warning("campaign_setup parse failed: %s", e)
+
+    # Fallback: nếu LLM không ra channels → dùng nguyên text làm channels-hint
+    if channels:
+        session.pending_intake["channels"] = channels
+    elif not session.pending_intake.get("channels"):
+        session.pending_intake["channels"] = (
+            session.profile.current_channels or "Facebook + TikTok + Zalo OA"
+        )
+    if source_mix:
+        session.pending_intake["source_mix"] = source_mix
+    await save_session(session)
+
+    addr = _addr(session)
+    await update.message.reply_text(
+        f"📝 Ghi nhận: *Kênh* = {session.pending_intake.get('channels')}"
+        + (f"\n*Source mix* = {source_mix}" if source_mix else "")
+        + f"\n\nEm dựng kế hoạch theo đúng ý {addr} nhé 👇",
+        parse_mode=ParseMode.MARKDOWN,
+    )
+    await _confirm_brief_and_gen_calendar(update.message, session, context, update)
+
+
 async def _confirm_brief_and_gen_calendar(message, session, context, update):
     """User duyệt brief → lưu campaign DB + log intelligence ngầm →
     gen Funnel Map + Execution Plan (tóm tắt Telegram + file HTML) →
@@ -4801,13 +4904,17 @@ async def _confirm_brief_and_gen_calendar(message, session, context, update):
     except Exception as e:
         logger.debug("brief_approved intelligence log skipped: %s", e)
 
-    # Auto-gen Content Calendar từ brief — pre-fill từ profile + campaign
+    # Auto-gen Content Calendar từ brief — channels/source_mix sếp đã chốt ở
+    # bước _ask_campaign_setup (text). Chỉ fallback nếu vì lý do gì đó trống.
     profile = session.profile
     session.pending_intake["channels"] = (
         session.pending_intake.get("channels")
         or profile.current_channels or "Facebook + TikTok + Zalo OA"
     )
-    session.pending_intake.setdefault("duration", session.pending_intake.get("duration") or "30 ngày")
+    # Thời lượng: GIỮ ĐÚNG giá trị từ brief (field "Thời gian chạy") — KHÔNG ép
+    # "30 ngày". Calendar prompt nay đã duration-aware (1 tuần → 1 tuần).
+    if not session.pending_intake.get("duration"):
+        session.pending_intake["duration"] = "4 tuần"
     if profile.team_size:
         session.pending_intake.setdefault("team_size", str(profile.team_size))
     session.pending_intake["current_campaign"] = campaign_name
@@ -4841,7 +4948,7 @@ async def _confirm_brief_and_gen_calendar(message, session, context, update):
             "objective_detail": campaign_goal or "",
             "channels":         session.pending_intake.get("channels", "Facebook + TikTok"),
             "audience":         session.profile.target_customer or "",
-            "duration_days":    30,
+            "duration_days":    _duration_to_days(session.pending_intake.get("duration")),
             "extra_notes":      session.pending_intake.get("key_offer", ""),
         }
 
