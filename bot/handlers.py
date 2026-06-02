@@ -3739,10 +3739,36 @@ async def _try_persona_route(update, context, session, text: str) -> bool:
     # ── Run persona LLM turn ──────────────────────────────────────
     persona_response = await run_persona_turn(session, actual_text, persona)
 
-    # ── Parse [SKILL_DISPATCH:name] marker ───────────────────────
+    # ── Parse markers (strip both before display) ────────────────
     dispatch_match = _re.search(r"\[SKILL_DISPATCH:(\w+)\]", persona_response)
-    clean = _re.sub(r"\[SKILL_DISPATCH:\w+\]", "", persona_response).strip()
+    persona_dispatch_match = _re.search(r"\[PERSONA_DISPATCH:(\w+)\]", persona_response)
+    clean = _re.sub(r"\[(?:SKILL|PERSONA)_DISPATCH:\w+\]", "", persona_response).strip()
     clean = _sanitize_telegram_md(clean)
+
+    # ── [PERSONA_DISPATCH:key] — Max giao việc xuống manager Layer 3 ─
+    if persona_dispatch_match and getattr(persona, "is_orchestrator", False):
+        target_key = persona_dispatch_match.group(1)
+        target = get_persona(target_key)
+        if target and not getattr(target, "is_orchestrator", False):
+            if clean:
+                await update.message.reply_text(clean, parse_mode=ParseMode.MARKDOWN)
+            # Chuyển ngữ cảnh sang manager được giao + mở menu skill của họ
+            session.pending_intake["_active_persona"] = target.key
+            session.pending_intake["_advisor_mode"] = "1"
+            await save_session(session)
+            from agents.task_registry import get_task as _get_task
+            buttons = []
+            for skill_name in target.owns_skills:
+                tcfg = _get_task(skill_name)
+                label = f"{tcfg.button_emoji} {tcfg.label}" if tcfg else skill_name
+                buttons.append([InlineKeyboardButton(label, callback_data=f"task_{skill_name}")])
+            buttons.append([InlineKeyboardButton("💬 Hỏi tiếp", callback_data="continue_advisor")])
+            await update.message.reply_text(
+                f"{target.emoji} *{target.name}* ({target.role}) nhận việc từ Max — chọn skill:",
+                parse_mode=ParseMode.MARKDOWN,
+                reply_markup=InlineKeyboardMarkup(buttons),
+            )
+            return True
 
     if dispatch_match:
         skill_name = dispatch_match.group(1)

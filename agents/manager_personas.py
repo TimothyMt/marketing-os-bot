@@ -30,6 +30,7 @@ class ManagerPersona:
     trigger_keywords: list[str]    # keyword routing (lowercase)
     system_prompt:    str          # persona system prompt cho LLM
     active:           bool = True  # False → persona bị tắt, bỏ qua khi routing
+    is_orchestrator:  bool = False # True → CMO cấp trên: điều phối các manager khác (Layer 2)
 
 
 # ─────────────────────────────────────────────────────────────────
@@ -37,6 +38,59 @@ class ManagerPersona:
 # ─────────────────────────────────────────────────────────────────
 
 PERSONAS: list[ManagerPersona] = [
+
+    # ── 0. Max — CMO (Layer 2: Chiến lược + Điều phối) ──────────
+    ManagerPersona(
+        key="cmo",
+        name="Max",
+        role="CMO — Chiến lược & Điều phối",
+        emoji="🧠",
+        is_orchestrator=True,
+        domain_summary="Ra chiến lược tổng, nghiên cứu thị trường/đối thủ/khách hàng/giá — rồi giao việc cho team thực thi",
+        owns_skills=[
+            "full",        # Trọn bộ A→Z (pipeline chiến lược chính)
+            "strategy",    # Lập kế hoạch tổng (SAVE + SMART + 90-day)
+            "market",      # Nghiên cứu thị trường (TAM/SAM/SOM)
+            "competitor",  # Phân tích đối thủ (8 chiều)
+            "customer",    # Insight khách hàng (ICP + JTBD)
+            "pricing",     # Chiến lược giá
+        ],
+        trigger_keywords=[
+            "chiến lược", "strategy", "kế hoạch", "kế hoạch tổng", "roadmap",
+            "định vị", "positioning", "thị trường", "market", "tam", "sam", "som",
+            "nghiên cứu thị trường", "phân tích thị trường",
+            "insight khách hàng", "chân dung khách hàng", "icp", "khách hàng mục tiêu",
+            "chiến lược giá", "định giá", "pricing", "psychology pricing",
+            "phân tích toàn diện", "trọn bộ", "a-z", "a→z", "tổng thể",
+            "bắt đầu từ đâu", "nên làm gì trước", "tư vấn tổng", "lập chiến lược",
+            "go to market", "gtm", "kế hoạch marketing", "marketing plan",
+        ],
+        system_prompt="""Bạn là **Max** — CMO (Chief Marketing Officer) của doanh nghiệp, đứng đầu Marketing OS.
+
+# VAI TRÒ
+Bạn ở tầng chiến lược. Bạn KHÔNG sa vào chi tiết thực thi (viết post, chạy ads…) — đó là việc của team manager bên dưới. Việc của bạn:
+1. **Chẩn đoán bức tranh tổng:** business đang ở giai đoạn nào, nút thắt lớn nhất là gì.
+2. **Chủ động ra chiến lược:** đề xuất hướng đi, thứ tự ưu tiên, framework phù hợp — KHÔNG chờ sếp hỏi từng bước.
+3. **Điều phối team:** sau khi có định hướng, giao đúng việc cho đúng manager thực thi.
+
+# SKILLS CHIẾN LƯỢC BẠN TỰ CHẠY (Layer 2):
+- **full**: Trọn bộ phân tích A→Z (thị trường → đối thủ → khách hàng → giá → chiến lược tổng). Dùng khi business mới / chưa có nền chiến lược.
+- **strategy**: Lập kế hoạch tổng (SAVE + SMART + roadmap 90 ngày).
+- **market**: Nghiên cứu thị trường (TAM/SAM/SOM, market dynamics).
+- **competitor**: Phân tích đối thủ (8 chiều + market gap).
+- **customer**: Insight khách hàng (ICP + Jobs-to-be-Done).
+- **pricing**: Chiến lược giá + psychology tactics.
+
+# CÁCH LÀM VIỆC:
+1. Nghe vấn đề → xác định: cần phân tích chiến lược (tự chạy skill) hay đã đủ nền, giờ cần thực thi (giao manager)?
+2. Nếu thiếu nền chiến lược → đề xuất chạy skill Layer 2 phù hợp (ưu tiên **full** nếu mới hoàn toàn).
+3. Nếu đã có chiến lược → giao việc cho manager phù hợp + nói rõ lý do.
+4. Luôn chủ động đề xuất bước tiếp theo, đừng để sếp tự mò.
+
+# PHONG CÁCH
+- Giọng CMO: điềm tĩnh, nhìn tổng thể, ưu tiên ROI và thứ tự đòn bẩy.
+- Em-sếp, ngắn gọn, quyết đoán. Đề xuất 1 hướng rõ ràng thay vì liệt kê 5 lựa chọn.""",
+    ),
 
     # ── 1. Digital Marketing Manager ────────────────────────────
     ManagerPersona(
@@ -519,6 +573,7 @@ def route_to_persona(user_msg: str, session: Session) -> Optional[ManagerPersona
 # ─────────────────────────────────────────────────────────────────
 
 TAG_MAP: dict[str, str] = {
+    "max":    "cmo",
     "minh":   "digital_marketing",
     "linh":   "brand",
     "nam":    "content",
@@ -536,6 +591,29 @@ Khi đã xác định được 1 skill cụ thể giải quyết đúng vấn đ
 - tên_skill phải là 1 trong danh sách skills bạn owns (snake_case chính xác).
 - VD: [SKILL_DISPATCH:ads_copy]
 - KHÔNG dùng marker nếu chỉ tư vấn chung, chưa chắc skill nào phù hợp, hoặc cần hỏi thêm sếp."""
+
+
+# Orchestration suffix — CHỈ append cho persona is_orchestrator (Max/CMO).
+# Cho phép Max giao việc xuống manager Layer 3 bằng marker [PERSONA_DISPATCH:key].
+def _build_orchestration_suffix() -> str:
+    roster = "\n".join(
+        f"- {p.key}: {p.name} ({p.role}) — {p.domain_summary}"
+        for p in PERSONAS
+        if getattr(p, "active", True) and not getattr(p, "is_orchestrator", False)
+    )
+    return f"""
+
+# TEAM BẠN ĐIỀU PHỐI (Layer 3 — manager thực thi)
+{roster}
+
+# KHI GIAO VIỆC CHO MANAGER
+Khi việc sếp cần thuộc về 1 manager thực thi (viết content, chạy ads, brand voice…) chứ không phải phân tích chiến lược → kết thúc response bằng đúng marker này (dòng cuối):
+[PERSONA_DISPATCH:key_manager]
+- key_manager là 1 trong các key team ở trên (vd: content, digital_marketing, brand…).
+- VD: [PERSONA_DISPATCH:content]
+- Trước marker, nói ngắn gọn 1 câu vì sao giao người đó.
+- Nếu vấn đề là chiến lược/nghiên cứu → tự chạy skill của mình bằng [SKILL_DISPATCH:...], KHÔNG dùng PERSONA_DISPATCH.
+- Mỗi response chỉ dùng TỐI ĐA 1 marker (hoặc SKILL_DISPATCH hoặc PERSONA_DISPATCH)."""
 
 
 # Telegram chat KHÔNG render heading #, bảng |, blockquote > → hiện ký tự thô.
@@ -582,10 +660,15 @@ async def run_persona_turn(
         user_msg,
     ]
 
+    system_prompt = persona.system_prompt + _DISPATCH_SUFFIX
+    if getattr(persona, "is_orchestrator", False):
+        system_prompt += _build_orchestration_suffix()
+    system_prompt += _TELEGRAM_FORMAT_SUFFIX
+
     try:
         result = await router_call(
             task_type  = TaskType.GENERIC_CREATIVE,
-            system     = persona.system_prompt + _DISPATCH_SUFFIX + _TELEGRAM_FORMAT_SUFFIX,
+            system     = system_prompt,
             user       = "\n".join(context_parts),
             max_tokens = 2000,
         )

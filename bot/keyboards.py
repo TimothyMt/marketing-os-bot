@@ -5,10 +5,11 @@ from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 
 
 # ─────────────────────────────────────────────────────────────────
-# MAIN MENU — Persona-based entry (6 active managers)
+# MAIN MENU — Max (CMO/Layer 2) + Persona-based entry (6 active managers)
 # ─────────────────────────────────────────────────────────────────
 
 MAIN_MENU_KEYBOARD = InlineKeyboardMarkup([
+    [InlineKeyboardButton("🧠 Max — Chiến lược & Điều phối (CMO)", callback_data="persona_menu_cmo")],
     [InlineKeyboardButton("✍️ Viết Content — full workflow", callback_data="task_write_content")],
     [InlineKeyboardButton("📊 Minh — Ads & Performance",   callback_data="persona_menu_digital_marketing")],
     [InlineKeyboardButton("🎨 Linh — Brand Voice",          callback_data="persona_menu_brand")],
