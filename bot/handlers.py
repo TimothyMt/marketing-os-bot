@@ -33,6 +33,7 @@ from bot.keyboards import (
     FEEDBACK_PROMPT_KEYBOARD,
     COMPARE_PROMPT_KEYBOARD,
     CALENDAR_TO_CONTENT_GEN_KEYBOARD,
+    FUNNEL_APPROVE_KEYBOARD,
     ADS_FORMAT_KEYBOARD,
     IMAGE_REFERENCE_KEYBOARD,
     IMAGE_GEN_PROMPT_KEYBOARD,
@@ -1147,6 +1148,14 @@ async def _handle_callback_inner(update, context, query, session, data, user_id)
     if data == "brief_confirm":
         await query.edit_message_reply_markup(reply_markup=None)
         await _confirm_brief_and_gen_calendar(query.message, session, context, update)
+        return
+
+    # User duyệt Funnel Map + Execution Plan → mới dựng Content Calendar
+    if data == "funnel_approve":
+        await query.edit_message_reply_markup(reply_markup=None)
+        session.pending_intake.pop("_awaiting_rating_for", None)
+        await save_session(session)
+        await _gen_content_calendar_after_approval(query.message, session, context, update)
         return
 
     if data == "brief_edit":
@@ -4680,9 +4689,10 @@ async def _handle_brief_edit_text(update, context, session, text: str):
 
 
 async def _confirm_brief_and_gen_calendar(message, session, context, update):
-    """User duyệt brief → lưu campaign DB + log intelligence ngầm + auto-gen calendar.
-
-    Calendar gen xong → dừng cho user duyệt (tone calibration + nút sản xuất content).
+    """User duyệt brief → lưu campaign DB + log intelligence ngầm →
+    gen Funnel Map + Execution Plan (tóm tắt Telegram + file HTML) →
+    DỪNG chờ user duyệt (nút). Duyệt mới dựng Content Calendar
+    (trong _gen_content_calendar_after_approval).
     """
     session.pending_intake.pop("_awaiting_brief_edit", None)
     session.pending_intake.pop("_awaiting_rating_for", None)
@@ -4742,11 +4752,15 @@ async def _confirm_brief_and_gen_calendar(message, session, context, update):
         parse_mode=ParseMode.MARKDOWN,
     )
 
-    # ── Funnel Map + Execution Plan ───────────────────────────────────
-    # Chạy trước calendar để user thấy ToFu/MoFu/BoFu per channel
-    # + roadmap skills cần chạy. Lỗi → skip silently, calendar vẫn chạy.
+    # ── Funnel Map + Execution Plan → tóm tắt Telegram + file HTML ─────
+    # Gửi tóm tắt ngắn lên chat, chi tiết đầy đủ trong HTML, rồi DỪNG chờ
+    # user duyệt (nút). Duyệt mới dựng Content Calendar. Lỗi → vẫn cho
+    # user duyệt bằng nút để qua bước calendar.
+    funnel_ok = False
     try:
-        from agents.funnel_mapper import generate_funnel_map, render_funnel_map_card
+        from agents.funnel_mapper import (
+            generate_funnel_map, render_funnel_map_summary, build_funnel_map_markdown,
+        )
         from agents.campaign_execution import (
             generate_execution_plan, classify_goal_type, funnel_map_objective,
         )
@@ -4774,14 +4788,10 @@ async def _confirm_brief_and_gen_calendar(message, session, context, update):
         _funnel_map = await asyncio.wait_for(
             generate_funnel_map(session, _campaign_dict), timeout=60,
         )
-        # Lưu để content_calendar + downstream skills có thể tham chiếu
         session.pending_intake["_funnel_map_json"] = _json_fm.dumps(_funnel_map, ensure_ascii=False)
         session.add_result("funnel_map", _json_fm.dumps(_funnel_map, ensure_ascii=False))
         await save_session(session)
 
-        await message.reply_text(render_funnel_map_card(_funnel_map), parse_mode=ParseMode.MARKDOWN)
-
-        # Execution Plan
         await context.bot.send_chat_action(
             chat_id=update.effective_chat.id, action=ChatAction.TYPING,
         )
@@ -4789,22 +4799,73 @@ async def _confirm_brief_and_gen_calendar(message, session, context, update):
             generate_execution_plan(session, _funnel_map, campaign_name, campaign_goal or ""),
             timeout=45,
         )
+
+        # 1) Telegram: chỉ TÓM TẮT funnel + execution roadmap (đã ngắn)
+        await message.reply_text(render_funnel_map_summary(_funnel_map), parse_mode=ParseMode.MARKDOWN)
         await message.reply_text(_exec_plan, parse_mode=ParseMode.MARKDOWN)
 
+        # 2) HTML: chi tiết đầy đủ funnel + execution plan
+        try:
+            from bot.html_report import build_single_skill_report
+            from agents.skills import OutputFormat
+            plan_md = (
+                "## 🗺 Funnel Map — Chiến lược từng kênh\n\n"
+                + build_funnel_map_markdown(_funnel_map)
+                + "\n\n---\n\n## 🚀 Kế hoạch thực thi\n\n"
+                + _exec_plan
+            )
+            html_str = build_single_skill_report(
+                "campaign_plan",
+                {"summary": f"Kế hoạch triển khai campaign *{campaign_name}* — funnel ToFu/MoFu/BoFu theo kênh + roadmap thực thi.",
+                 "deliverable": plan_md},
+                OutputFormat.OPERATIONAL_DELIVERABLE,
+                business_name=session.profile.business_name or "",
+                industry=session.profile.industry or "",
+                stage=session.profile.stage or "",
+            )
+            await _send_html_report(message, html_str, session)
+        except Exception as _he:
+            logger.warning("campaign_plan HTML build skipped: %s", _he)
+
+        funnel_ok = True
     except asyncio.TimeoutError:
-        logger.warning("funnel_map/execution_plan timed out — proceeding to calendar")
+        logger.warning("funnel_map/execution_plan timed out")
     except Exception as _fe:
         logger.warning("funnel_map/execution_plan skipped: %s", _fe)
 
-    # ── Content Calendar ──────────────────────────────────────────────
+    # ── DỪNG chờ user duyệt — KHÔNG auto dựng calendar ────────────────
+    session.pending_intake["_awaiting_funnel_approve"] = "1"
+    session.stage = PipelineStage.TASK_SELECT
+    await save_session(session)
+
+    prompt = (
+        "👆 *Sếp xem kế hoạch triển khai (tóm tắt trên + file HTML đầy đủ).*\n\n"
+        if funnel_ok else
+        "_(Em chưa dựng được funnel map chi tiết, nhưng vẫn có thể đi tiếp.)_\n\n"
+    )
     await message.reply_text(
-        f"📅 *Giờ em dựng Lịch Nội Dung theo brief này cho {addr}...*\n"
-        f"_Kênh: {session.pending_intake['channels']} · Khoảng 30-60 giây ạ._",
+        prompt + f"Duyệt để em dựng *Lịch Nội Dung* theo kế hoạch này cho {addr} nhé?",
+        parse_mode=ParseMode.MARKDOWN,
+        reply_markup=FUNNEL_APPROVE_KEYBOARD,
+    )
+
+
+async def _gen_content_calendar_after_approval(message, session, context, update):
+    """User đã duyệt funnel/execution plan → dựng Content Calendar."""
+    session.pending_intake.pop("_awaiting_funnel_approve", None)
+
+    addr = _addr(session)
+    await message.reply_text(
+        f"📅 *Em dựng Lịch Nội Dung theo kế hoạch cho {addr}...*\n"
+        f"_Kênh: {session.pending_intake.get('channels', 'Facebook + TikTok')} · Khoảng 30-60 giây ạ._",
         parse_mode=ParseMode.MARKDOWN,
     )
     await context.bot.send_chat_action(
         chat_id=update.effective_chat.id, action=ChatAction.TYPING,
     )
+
+    session.selected_task = "content_calendar"
+    await save_session(session)
 
     from config import AGENT_TIMEOUT
     try:
@@ -4813,7 +4874,7 @@ async def _confirm_brief_and_gen_calendar(message, session, context, update):
             timeout=AGENT_TIMEOUT,
         )
     except Exception as e:
-        logger.exception("auto content_calendar after brief failed: %s", e)
+        logger.exception("content_calendar after funnel approval failed: %s", e)
         await message.reply_text(
             "⚠️ Em gặp lỗi khi dựng lịch. Sếp thử lại từ menu Lịch Nội Dung nhé.",
         )

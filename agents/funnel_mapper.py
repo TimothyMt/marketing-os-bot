@@ -156,6 +156,47 @@ def render_funnel_map_card(funnel_map: list) -> str:
     return "\n".join(lines).strip()
 
 
+def render_funnel_map_summary(funnel_map: list) -> str:
+    """Tóm tắt NGẮN cho Telegram — chi tiết đầy đủ nằm trong file HTML."""
+    if not funnel_map:
+        return "_(Không có funnel map)_"
+
+    lines = ["🗺 *Funnel Map — tóm tắt theo kênh*", ""]
+    for ch_map in funnel_map:
+        ch    = ch_map.get("channel", "")
+        ratio = ch_map.get("ratio", "")
+        lines.append(f"📡 *{ch}* — _ToFu/MoFu/BoFu {ratio}_")
+    lines.append("")
+    lines.append("_📄 Chi tiết format · content angle · CTA · volume từng kênh → xem file HTML đính kèm._")
+    return "\n".join(lines)
+
+
+def build_funnel_map_markdown(funnel_map: list) -> str:
+    """Markdown ĐẦY ĐỦ cho HTML report — mọi stage, mọi kênh."""
+    if not funnel_map:
+        return "_(Không có funnel map)_"
+
+    STAGE_LABEL = {"tofu": "🔵 ToFu", "mofu": "🟡 MoFu", "bofu": "🟢 BoFu"}
+    parts = []
+    for ch_map in funnel_map:
+        ch    = ch_map.get("channel", "")
+        ratio = ch_map.get("ratio", "")
+        parts.append(f"### 📡 {ch} — tỷ lệ ToFu/MoFu/BoFu {ratio}")
+        for stage in ("tofu", "mofu", "bofu"):
+            s = ch_map.get(stage) or {}
+            formats = ", ".join(s.get("formats") or [])
+            angles  = ", ".join(s.get("content_angles") or [])
+            parts.append(f"**{STAGE_LABEL[stage]}** ({s.get('volume', '')}) — {s.get('goal', '')}")
+            parts.append(f"- Format: {formats}")
+            parts.append(f"- Content angles: {angles}")
+            parts.append(f"- CTA: {s.get('cta', '')}")
+        note = ch_map.get("calendar_note", "")
+        if note:
+            parts.append(f"> 💡 Lưu ý calendar: {note}")
+        parts.append("")
+    return "\n".join(parts).strip()
+
+
 # ─────────────────────────────────────────────────────────────────
 # Calendar bridge
 # ─────────────────────────────────────────────────────────────────

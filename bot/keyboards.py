@@ -63,6 +63,11 @@ CALENDAR_TO_CONTENT_GEN_KEYBOARD = InlineKeyboardMarkup([
     [InlineKeyboardButton("⏭️ Để sau — đánh giá lịch trước", callback_data="skip_content_gen_after_cal")],
 ])
 
+# Sau khi gửi Funnel Map + Execution Plan (HTML) → chờ user duyệt mới dựng calendar
+FUNNEL_APPROVE_KEYBOARD = InlineKeyboardMarkup([
+    [InlineKeyboardButton("✅ Duyệt kế hoạch — dựng Lịch Nội Dung", callback_data="funnel_approve")],
+])
+
 # Sprint 5: Ads Generator — sau tier chooser, hỏi format (Video hay Ảnh)
 ADS_FORMAT_KEYBOARD = InlineKeyboardMarkup([
     [InlineKeyboardButton("🎥 Video",     callback_data="ads_format_video")],
