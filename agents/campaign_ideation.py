@@ -15,7 +15,7 @@ from typing import Optional
 
 import anthropic
 
-from config import CLAUDE_SONNET_MODEL, CLAUDE_HAIKU_MODEL, ANTHROPIC_API_KEY
+from config import CLAUDE_SONNET_MODEL, ANTHROPIC_API_KEY
 from storage.models import Session
 
 logger = logging.getLogger(__name__)
@@ -63,9 +63,13 @@ QUY TẮC OUTPUT (Telegram chat):
 
 
 async def generate_discovery_questions(session: Session) -> str:
-    """Sinh 3 câu discovery campaign ĐỘNG theo ngành (Haiku — rẻ, nhanh).
-    Fallback về câu generic nếu thiếu ngành hoặc LLM lỗi.
+    """Sinh 3 câu discovery campaign ĐỘNG theo ngành.
+
+    Router chain: Haiku (primary) → GPT-5-mini (fallback khi Haiku hit RPD) → GPT-5.
+    Fallback về câu generic nếu thiếu ngành hoặc cả chain đều lỗi.
     """
+    from tools.llm_router import call as router_call, TaskType, AllProvidersFailedError
+
     industry = (session.profile.industry or "").strip()
     if not industry:
         return _DISCOVERY_FALLBACK
@@ -97,19 +101,22 @@ async def generate_discovery_questions(session: Session) -> str:
     )
 
     try:
-        response = await client.messages.create(
-            model=CLAUDE_HAIKU_MODEL,
+        # CRITIC_REVIEW chain: Haiku → GPT-5-mini → GPT-5
+        # Nếu Haiku hit RPD, router tự failover sang GPT-5-mini — không cần code thêm.
+        result = await router_call(
+            task_type=TaskType.CRITIC_REVIEW,
+            system=DISCOVERY_SYSTEM,
+            user=user_msg,
             max_tokens=600,
-            system=[{"type": "text", "text": DISCOVERY_SYSTEM, "cache_control": {"type": "ephemeral"}}],
-            messages=[{"role": "user", "content": user_msg}],
         )
-        try:
-            from tools.token_tracker import track_usage
-            track_usage(session, response, label="campaign_discovery")
-        except Exception:
-            pass
-        text = (response.content[0].text or "").strip()
+        text = (result.get("output") or "").strip()
+        provider = result.get("provider", "unknown")
+        if provider != "anthropic_haiku":
+            logger.info("generate_discovery_questions fallover to provider=%s (industry=%s)", provider, industry)
         return text if text else _DISCOVERY_FALLBACK
+    except AllProvidersFailedError as e:
+        logger.warning("generate_discovery_questions all providers failed (industry=%s): %s", industry, e)
+        return _DISCOVERY_FALLBACK
     except Exception as e:
         logger.warning("generate_discovery_questions failed (industry=%s): %s", industry, e)
         return _DISCOVERY_FALLBACK
