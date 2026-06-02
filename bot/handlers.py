@@ -5136,6 +5136,46 @@ async def _show_dynamic_finalize_form(message: Message, session, campaign: dict,
     await send_long_message(message, form_text, parse_mode=ParseMode.MARKDOWN)
 
 
+async def _haiku_extract_finalize(text: str, fields: list, session) -> dict:
+    """Fallback khi user trả lời finalize form free-form / positional (không kèm nhãn).
+    Dùng router CRITIC_REVIEW (Haiku → GPT-5-mini → GPT-5) extract → dict keyed by label."""
+    from tools.llm_router import call as router_call, TaskType, AllProvidersFailedError
+    import json as _json
+
+    fields_desc = "\n".join(
+        f'- "{f["label"]}"'
+        + ("" if f.get("required", True) else " (không bắt buộc)")
+        + f' — vd: {f.get("example", "")}'
+        for f in fields
+    )
+    system = (
+        "Bạn trích thông tin từ tin nhắn user thành JSON.\n\n"
+        "Các field cần điền (key = label CHÍNH XÁC như dưới):\n"
+        f"{fields_desc}\n\n"
+        "User trả lời ngắn gọn, thường KHÔNG kèm nhãn, theo thứ tự, và có thể "
+        "BỎ QUA field không bắt buộc. Suy luận hợp lý theo ngữ cảnh:\n"
+        "- Số kèm 'suất/slot' → số lượng\n"
+        "- Số có '%' → mức discount\n"
+        "- '+1', '+2 tháng' → số tháng bonus\n"
+        "- 'thứ 2 tuần sau', '15/01' → ngày bắt đầu\n"
+        "- 'trong 1 tuần', 'sau 6 tuần', '28/02' → ngày kết thúc\n\n"
+        "Field nào user KHÔNG nhắc → bỏ qua, TUYỆT ĐỐI không bịa.\n"
+        "Output CHỈ JSON object, key = label, value = string. Không markdown, không giải thích."
+    )
+    try:
+        result = await router_call(
+            task_type=TaskType.CRITIC_REVIEW, system=system, user=text, max_tokens=400,
+        )
+        raw = (result.get("output") or "").strip()
+        raw = re.sub(r"^```json\s*|^```\s*|```$", "", raw, flags=re.MULTILINE).strip()
+        data = _json.loads(raw)
+        valid_labels = {f["label"] for f in fields}
+        return {k: str(v).strip() for k, v in data.items() if k in valid_labels and v}
+    except (AllProvidersFailedError, _json.JSONDecodeError, ValueError, KeyError) as e:
+        logger.warning("finalize free-form extract failed: %s", e)
+        return {}
+
+
 async def _handle_campaign_finalize_text(update, context, session, text: str):
     """Parse user reply (dynamic theo lever) → merge với campaign + lever → run campaign_brief."""
     from agents.campaign_ideation import (
@@ -5159,6 +5199,17 @@ async def _handle_campaign_finalize_text(update, context, session, text: str):
 
     fields = get_finalize_fields(lever)
     parsed, missing = parse_dynamic_finalize_form(text, fields)
+
+    # Fallback: user trả lời free-form / positional (không kèm nhãn) → dùng LLM extract
+    if missing:
+        extra = await _haiku_extract_finalize(text, fields, session)
+        for k, v in extra.items():
+            if v and not parsed.get(k):
+                parsed[k] = v
+        missing = [
+            f["label"] for f in fields
+            if f.get("required", True) and not parsed.get(f["label"])
+        ]
 
     if missing:
         await update.message.reply_text(
