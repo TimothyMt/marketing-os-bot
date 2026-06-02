@@ -1104,14 +1104,21 @@ async def _handle_callback_inner(update, context, query, session, data, user_id)
     if data == "strategy_confirm":
         await query.edit_message_reply_markup(reply_markup=None)
         session.pending_intake.pop("_awaiting_strategy_edit", None)
+        # Set flag để free-text ngay sau đây → campaign refine flow
+        session.pending_intake["_awaiting_campaign_idea"] = "1"
+        session.pending_intake.pop("_awaiting_rating_for", None)
         await save_session(session)
         addr = _addr(session)
         await query.message.reply_text(
-            f"👍 Tuyệt! Strategy đã chốt.\n\n"
-            f"🚀 *Bước tiếp theo: triển khai campaign cụ thể*\n\n"
-            f"Giờ {addr} muốn chạy campaign gì?\n"
-            f"💡 *Đã có ý tưởng* → em validate + refine với Customer + Market\n"
-            f"🔍 *Chưa biết chạy gì* → em đề xuất 3 options phù hợp",
+            f"✅ *Strategy đã chốt! Giờ plan campaign cụ thể nhé {addr}.*\n\n"
+            f"🧠 *Max:* Trước khi em đề xuất, cho em hỏi nhanh 3 ý ạ:\n\n"
+            f"• *Mục tiêu gần nhất* của sếp là gì? "
+            f"_(Acquisition khách mới · Tăng doanh thu / AOV · Brand awareness · Giữ chân khách cũ)_\n"
+            f"• Sếp *đang ấp ủ campaign nào chưa?* "
+            f"_(tên, chủ đề, hay chỉ 1 từ khoá cũng được — vd: \"Tết\", \"ra mắt SP mới\", \"Black Friday\"...)_\n"
+            f"• Có *deadline hay sự kiện* cụ thể cần nhắm tới không?\n\n"
+            f"_Sếp mô tả tự do bên dưới → em phân tích + validate luôn. "
+            f"Hoặc bấm nút nếu muốn em đề xuất trước._",
             parse_mode=ParseMode.MARKDOWN,
             reply_markup=POST_AZ_CAMPAIGN_KEYBOARD,
         )
@@ -1162,12 +1169,11 @@ async def _handle_callback_inner(update, context, query, session, data, user_id)
         session.pending_intake["_awaiting_campaign_idea"] = "1"
         session.pending_intake.pop("_awaiting_rating_for", None)
         await save_session(session)
-        addr = _addr(session)
         await query.message.reply_text(
-            f"💡 *OK {addr}!* Sếp mô tả ngắn campaign muốn chạy ạ.\n\n"
-            f"_Vd: \"Combo Tết giảm giá cho khách cũ\", \"Launch sản phẩm mới cho gen Z\", "
-            f"\"Tăng repeat rate sau khi khách mua lần đầu\"..._\n\n"
-            f"Em sẽ đối chiếu với Customer Insight + Market Research để validate và refine cho sếp.",
+            "💡 *OK!* Sếp mô tả ý tưởng + mục tiêu campaign ạ.\n\n"
+            "_Vd: \"Tết này muốn tặng combo cho khách cũ để tăng repeat, target phụ nữ 28-40\", "
+            "\"Launch SP mới cho gen Z, muốn viral trước, chưa có budget lớn\"..._\n\n"
+            "Em đối chiếu với Customer Insight + Market Research → validate + refine cho sếp luôn.",
             parse_mode=ParseMode.MARKDOWN,
         )
         return
@@ -1176,6 +1182,7 @@ async def _handle_callback_inner(update, context, query, session, data, user_id)
     if data == "az_propose_campaign" or data == "campaign_propose_again":
         await query.edit_message_reply_markup(reply_markup=None)
         session.pending_intake.pop("_awaiting_rating_for", None)
+        session.pending_intake.pop("_awaiting_campaign_idea", None)  # cancel free-text mode
         await save_session(session)
 
         await query.message.reply_text(

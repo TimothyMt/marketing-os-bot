@@ -208,9 +208,8 @@ CONFIRM_BRIEF_KEYBOARD = InlineKeyboardMarkup([
 
 # Sau khi A→Z xong — hỏi có muốn triển khai campaign ngay không
 POST_AZ_CAMPAIGN_KEYBOARD = InlineKeyboardMarkup([
-    [InlineKeyboardButton("💡 Tôi đã có ý tưởng campaign",      callback_data="az_have_idea")],
-    [InlineKeyboardButton("🔍 Max đề xuất campaign phù hợp",   callback_data="az_propose_campaign")],
-    [InlineKeyboardButton("⏭️ Đánh giá output trước, làm sau", callback_data="az_skip_campaign")],
+    [InlineKeyboardButton("💡 Tôi có ý tưởng — kể Max nghe",  callback_data="az_have_idea")],
+    [InlineKeyboardButton("🔍 Max đề xuất 3 campaign options", callback_data="az_propose_campaign")],
 ])
 
 # Sau khi Max đề xuất 3 options — user chọn 1 trong 3

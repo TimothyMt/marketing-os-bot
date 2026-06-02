@@ -648,11 +648,8 @@ PIPELINE_SEQUENCE = [
     (PipelineStage.PSYCHOLOGY_PRICING, run_psychology_and_pricing, "psychology_pricing"),
     # Sprint 2 — USP Definition (conditional, skip if usp_confidence='clear')
     (PipelineStage.USP_DEFINITION, run_usp_definition, "usp_definition"),
-    # Sprint 3 — Retention + Winback strategic integration (A2 decision)
-    (PipelineStage.RETENTION_STRATEGY, run_retention_strategy_stage, "retention_strategy"),
-    (PipelineStage.WINBACK_VISION, run_winback_vision_stage, "winback_campaign"),
-    # Social Listening tạm tắt — chờ web search VN coverage tốt hơn
-    # (PipelineStage.SOCIAL_LISTENING, run_social_listening, "social_listening"),
+    # Synthesis = kế hoạch tổng dựa trên 5 bước phân tích trên.
+    # Retention / Winback đã tách sang Layer 3 (Khoa persona — operational skills).
     (PipelineStage.SYNTHESIS, run_strategy_synthesis, "synthesis"),
 ]
 
