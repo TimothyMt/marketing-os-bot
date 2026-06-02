@@ -152,14 +152,15 @@ body {
   text-transform: none;
 }
 
-/* h4 — sub-heading nhỏ (phương pháp, tier label...) */
+/* h4 — sub-section label nổi bật (Messaging Gap, Channel Gap, Tier 1...) */
 .content h4 {
-  font-size: 12px; font-weight: 700;
-  margin: 22px 0 8px;
-  color: var(--muted);
-  text-transform: uppercase; letter-spacing: 0.8px;
-  padding-bottom: 4px;
-  border-bottom: 1px dashed var(--border);
+  font-size: 13px; font-weight: 700;
+  margin: 24px 0 10px;
+  display: inline-block;
+  padding: 3px 10px 3px 0;
+  color: var(--text);
+  text-transform: uppercase; letter-spacing: 0.6px;
+  border-bottom: 2px solid var(--accent);
 }
 
 .content p { margin-bottom: 14px; font-size: 15px; }
