@@ -118,6 +118,11 @@ RESTART_KEYBOARD = InlineKeyboardMarkup([
     [InlineKeyboardButton("🔄 Bắt đầu phân tích mới", callback_data="restart")],
 ])
 
+# Nhắc nhẹ tên business trước khi chạy A→Z — user có thể bỏ qua
+BIZNAME_SKIP_KEYBOARD = InlineKeyboardMarkup([
+    [InlineKeyboardButton("⏭️ Thôi, chạy luôn", callback_data="bizname_skip")],
+])
+
 
 # ─────────────────────────────────────────────────────────────────
 # ACTION KEYBOARD — sau khi bất kỳ skill nào xong

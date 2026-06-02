@@ -22,6 +22,7 @@ from bot.keyboards import (
     TASK_SELECT_KEYBOARD,
     CONFIRM_KEYBOARD,
     RESTART_KEYBOARD,
+    BIZNAME_SKIP_KEYBOARD,
     stage_done_keyboard,
     get_action_keyboard,
     ASK_FOLLOWUP_KEYBOARD,
@@ -590,6 +591,11 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     # Layer 2: User mô tả phần cần sửa trong strategy → surgical edit
+    # Nhắc tên business trước khi chạy A→Z → user gõ tên (hoặc từ chối)
+    if session.pending_intake.get("_awaiting_bizname"):
+        await _handle_bizname_text(update, context, session, text)
+        return
+
     if session.pending_intake.get("_awaiting_strategy_edit"):
         await _handle_strategy_edit_text(update, context, session, text)
         return
@@ -2192,10 +2198,17 @@ async def _handle_callback_inner(update, context, query, session, data, user_id)
 
     # ── Pipeline confirmation ─────────────────────────────────────
     elif data == "confirm_yes":
-        session.stage = PipelineStage.MARKET_RESEARCH
+        await query.edit_message_reply_markup(reply_markup=None)
+        # Nhắc nhẹ tên business 1 lần nếu còn thiếu (không bắt buộc)
+        if await _maybe_nudge_bizname(query.message, session):
+            return
+        await _proceed_after_confirm(query.message, session)
+
+    elif data == "bizname_skip":
+        session.pending_intake.pop("_awaiting_bizname", None)
         await save_session(session)
         await query.edit_message_reply_markup(reply_markup=None)
-        await _run_pipeline_sequentially(query.message, session)
+        await _proceed_after_confirm(query.message, session)
 
     elif data == "confirm_no":
         # 1 user = 1 business: keep existing profile, let user correct specific fields only
@@ -3428,6 +3441,57 @@ async def _send_ops_result(message: Message, session, task_name: str, result: st
         parse_mode=ParseMode.MARKDOWN,
         reply_markup=RATING_KEYBOARD,
     )
+
+
+async def _maybe_nudge_bizname(message: Message, session) -> bool:
+    """Trước khi chạy pipeline: nếu chưa có tên business → hỏi nhẹ 1 lần.
+
+    Return True nếu đã gửi câu hỏi (caller phải dừng, chờ user trả lời/bấm skip).
+    Return False nếu không cần hỏi (đã có tên hoặc đã hỏi rồi) → caller chạy tiếp.
+    """
+    if session.profile.business_name:
+        return False
+    if session.pending_intake.get("_bizname_nudged"):
+        return False
+    session.pending_intake["_bizname_nudged"] = "1"
+    session.pending_intake["_awaiting_bizname"] = "1"
+    await save_session(session)
+    await message.reply_text(
+        "Ơ, em vẫn chưa biết *tên business* của sếp 😅\n\n"
+        "Sếp cho em xin tên để em ghi vào báo cáo cho chuyên nghiệp nhé — "
+        "_còn không thích thì thôi cũng được, em chạy luôn ạ._",
+        parse_mode=ParseMode.MARKDOWN,
+        reply_markup=BIZNAME_SKIP_KEYBOARD,
+    )
+    return True
+
+
+async def _proceed_after_confirm(message: Message, session):
+    """Chốt confirm → vào pipeline."""
+    session.stage = PipelineStage.MARKET_RESEARCH
+    await save_session(session)
+    await _run_pipeline_sequentially(message, session)
+
+
+async def _handle_bizname_text(update, context, session, text: str):
+    """User trả lời câu hỏi tên business (hoặc từ chối) → chạy pipeline."""
+    name = (text or "").strip()
+    session.pending_intake.pop("_awaiting_bizname", None)
+
+    _REFUSE = {"thôi", "thoi", "ko", "không", "khong", "skip", "bỏ qua",
+               "bo qua", "no", "khỏi", "khoi", "thôi khỏi"}
+    if name and name.lower() not in _REFUSE and len(name) <= 80:
+        session.profile.business_name = name
+        await save_session(session)
+        await update.message.reply_text(
+            f"✅ Ghi nhận business *{_escape_md(name)}* — em chạy luôn nhé! 🚀",
+            parse_mode=ParseMode.MARKDOWN,
+        )
+    else:
+        await save_session(session)
+        await update.message.reply_text("Ok sếp, em chạy luôn nha! 🚀")
+
+    await _proceed_after_confirm(update.message, session)
 
 
 async def _run_pipeline_sequentially(message: Message, session):
