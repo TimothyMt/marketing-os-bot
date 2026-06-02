@@ -121,20 +121,53 @@ body {
 .summary ul, .benchmarks ul { margin-left: 20px; }
 .summary p, .benchmarks p { margin-bottom: 6px; }
 
-.content { margin-top: 16px; }
+.content { margin-top: 16px; line-height: 1.7; }
+
+/* Reset shared rule — mỗi level tự định nghĩa riêng */
 .content h1, .content h2, .content h3, .content h4 {
-  margin: 20px 0 10px; font-weight: 600; color: var(--text);
+  font-weight: 700; color: var(--text); line-height: 1.3;
 }
-.content h1 { font-size: 22px; padding-bottom: 6px; border-bottom: 1px solid var(--border); }
-.content h2 { font-size: 18px; }
-.content h3 { font-size: 16px; color: var(--primary); }
-.content h4 { font-size: 14px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; }
-.content p { margin-bottom: 12px; }
-.content ul, .content ol { margin: 8px 0 12px 24px; }
-.content li { margin-bottom: 6px; }
+
+/* h1 — title cấp section (hiếm dùng trong content) */
+.content h1 {
+  font-size: 22px; margin: 36px 0 14px;
+  padding-bottom: 8px; border-bottom: 2px solid var(--primary);
+}
+
+/* h2 — đề mục lớn trong tab */
+.content h2 {
+  font-size: 19px; margin: 32px 0 12px; color: var(--text);
+  padding-bottom: 6px; border-bottom: 1px solid var(--border);
+}
+
+/* h3 — phần chính (TAM, Tier 1, ICP...) — phải nổi bật nhất trong content */
+.content h3 {
+  font-size: 15px; font-weight: 700;
+  margin: 30px 0 10px;
+  padding: 9px 14px;
+  background: #eff6ff;
+  border-left: 4px solid var(--primary);
+  border-radius: 0 6px 6px 0;
+  color: #1e3a8a;
+  text-transform: none;
+}
+
+/* h4 — sub-heading nhỏ (phương pháp, tier label...) */
+.content h4 {
+  font-size: 12px; font-weight: 700;
+  margin: 22px 0 8px;
+  color: var(--muted);
+  text-transform: uppercase; letter-spacing: 0.8px;
+  padding-bottom: 4px;
+  border-bottom: 1px dashed var(--border);
+}
+
+.content p { margin-bottom: 14px; font-size: 15px; }
+.content ul, .content ol { margin: 6px 0 14px 26px; }
+.content li { margin-bottom: 8px; font-size: 15px; line-height: 1.65; }
 .content strong { font-weight: 700; color: var(--text); }
 .content em { color: var(--muted); }
-.content .table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; margin: 16px 0; }
+.content .table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; margin: 20px 0; }
 .content table {
   width: 100%; border-collapse: collapse; font-size: 14px;
   background: white; border-radius: 8px; overflow: hidden;
@@ -146,15 +179,16 @@ body {
 }
 .content td { white-space: normal; min-width: 80px; }
 .content th {
-  background: #f1f5f9; font-weight: 600; font-size: 12px;
+  background: #f1f5f9; font-weight: 700; font-size: 12px;
   text-transform: uppercase; color: var(--muted); letter-spacing: 0.5px;
   white-space: nowrap;
 }
 .content tr:last-child td { border-bottom: none; }
 .content tr:hover { background: #f8fafc; }
 .content blockquote {
-  border-left: 4px solid var(--accent); padding: 14px 18px; margin: 14px 0;
+  border-left: 4px solid var(--accent); padding: 14px 18px; margin: 18px 0;
   background: #fffbeb; color: #78350f; font-style: italic; border-radius: 4px;
+  font-size: 15px;
 }
 
 .footer {
@@ -169,6 +203,7 @@ body {
   .header h1 { font-size: 22px; }
   .section { padding: 20px 16px; }
   .tab-btn { padding: 8px 12px; font-size: 12px; }
+  .content h3 { font-size: 14px; padding: 7px 12px; }
   .content table { font-size: 13px; }
   .content th, .content td { padding: 8px 10px; }
 }
