@@ -7,6 +7,7 @@ gắn custom route /oauth/fb/callback vào cùng 1 server + 1 port.
 """
 import asyncio
 import logging
+from contextlib import asynccontextmanager
 
 import uvicorn
 from starlette.applications import Starlette
@@ -105,7 +106,9 @@ async def oauth_fb_callback(request: Request):
 
 # ── Startup / shutdown lifecycle ─────────────────────────────────
 
-async def on_startup() -> None:
+@asynccontextmanager
+async def lifespan(app: Starlette):
+    # ── Startup ──────────────────────────────────────────────────
     await init_pool()
     await init_db()
     logger.info("DB pool ready.")
@@ -118,19 +121,15 @@ async def on_startup() -> None:
     await ptb_app.start()
     logger.info("PTB webhook registered: %s", f"{WEBHOOK_URL}/{TELEGRAM_BOT_TOKEN}")
 
-    # Background tasks
-    asyncio.create_task(_start_background_tasks())
-
-
-async def _start_background_tasks() -> None:
     from workers.monitor_competitors import start_background_monitor
     from services.ads_scheduler import start_ads_scheduler
     asyncio.create_task(start_background_monitor(ptb_app.bot, interval_seconds=3600))
     asyncio.create_task(start_ads_scheduler(ptb_app.bot))
     logger.info("Background tasks started (competitor monitor + ads scheduler).")
 
+    yield  # app is running
 
-async def on_shutdown() -> None:
+    # ── Shutdown ─────────────────────────────────────────────────
     await ptb_app.stop()
     await ptb_app.shutdown()
     logger.info("PTB shutdown complete.")
@@ -143,8 +142,7 @@ starlette_app = Starlette(
         Route(f"/{TELEGRAM_BOT_TOKEN}", telegram_webhook, methods=["POST"]),
         Route("/oauth/fb/callback",     oauth_fb_callback, methods=["GET"]),
     ],
-    on_startup=[on_startup],
-    on_shutdown=[on_shutdown],
+    lifespan=lifespan,
 )
 
 
