@@ -4804,90 +4804,72 @@ def _duration_to_days(duration: str | None) -> int:
 
 
 async def _ask_campaign_setup(message, session):
-    """Sau khi sếp chốt đủ thông tin campaign → HỎI kênh triển khai + tỉ trọng
-    source mix THEO TỪNG KÊNH (text, ghi nhận — không nút bấm) TRƯỚC khi viết
-    Brief. Brief mới có thể viết chiến lược theo đúng kênh + source mix sếp chốt.
+    """Hỏi kênh triển khai (text, ghi nhận — không nút bấm) TRƯỚC khi viết Brief.
     Sếp trả lời → _handle_campaign_setup_text parse & lưu → viết Brief."""
     session.pending_intake["_awaiting_campaign_setup"] = "1"
     await save_session(session)
     addr = _addr(session)
     suggested = session.profile.current_channels or "Facebook, TikTok, Zalo OA, Instagram"
     await message.reply_text(
-        f"📝 *Đã nhận đủ thông tin!* Trước khi em viết Brief, em hỏi nhanh 2 ý "
-        f"cho đúng ý {addr} ạ:\n\n"
-        f"1️⃣ *Sếp muốn triển khai ở những kênh nào?*\n"
-        f"_(Gợi ý từ profile: {suggested} — sếp cứ liệt kê kênh muốn làm, vd \"chỉ Facebook + TikTok\")_\n\n"
-        f"2️⃣ *Tỉ trọng nội dung theo nguồn (Source) — cho TỪNG kênh thế nào?*\n"
-        f"_UGC (khách tự quay) / EGC (nhân viên) / FGC (founder) / Brand (studio). "
-        f"Sếp nói rõ kênh nào dùng dạng nào & bao nhiêu %, vd:_\n"
-        f"_\"TikTok: UGC 60% + FGC 40%; Facebook: Brand 50% + EGC 50% — chưa làm video dài\"._\n"
-        f"_Không rõ thì gõ \"để em tự cân\" cũng được._\n\n"
-        f"Sếp trả lời cả 2 trong 1 tin nhắn giúp em nhé 🙏",
+        f"📝 *Đã nhận đủ thông tin!* Trước khi em viết Brief, cho em hỏi:\n\n"
+        f"*Sếp muốn triển khai ở những kênh nào?*\n"
+        f"_(Gợi ý từ profile: {suggested})_\n\n"
+        f"_Vd: \"chỉ TikTok + Facebook\" / \"TikTok + Zalo OA, chưa làm Instagram\"_\n\n"
+        f"Sếp trả lời giúp em nhé 🙏",
         parse_mode=ParseMode.MARKDOWN,
     )
 
 
 async def _handle_campaign_setup_text(update, context, session, text):
-    """Parse câu trả lời kênh + source mix (theo từng kênh) của sếp →
-    lưu vào pending_intake → viết Campaign Brief (channel-aware)."""
+    """Parse câu trả lời kênh của sếp → lưu vào pending_intake →
+    viết Campaign Brief (channel-aware)."""
     session.pending_intake.pop("_awaiting_campaign_setup", None)
 
-    # Parse bằng LLM (CRITIC_REVIEW) — robust với free-form tiếng Việt
+    # Parse kênh bằng LLM (CRITIC_REVIEW) — robust với free-form tiếng Việt
     channels = ""
-    source_mix = ""
     try:
         from tools.llm_router import call as _router_call, TaskType as _TT
         import json as _json
         _prompt = (
-            "Trích xuất từ câu trả lời của founder VN về kế hoạch content "
-            "(kênh triển khai + tỉ trọng source theo TỪNG kênh):\n"
+            "Trích xuất danh sách kênh marketing từ câu trả lời của founder VN:\n"
             f"\"{text}\"\n\n"
             "Trả về DUY NHẤT 1 JSON:\n"
             '{\"channels\": \"<danh sách kênh, cách nhau dấu +; vd \'Facebook + TikTok\'; '
-            'rỗng nếu không nêu>\", '
-            '\"source_mix\": \"<mô tả tỉ trọng UGC/EGC/FGC/Brand GẮN VỚI từng kênh + '
-            'dạng loại trừ nếu có; vd \'TikTok: UGC 60% + FGC 40%; Facebook: Brand 50% + EGC 50%; '
-            'không làm video dài\'; rỗng nếu sếp nói tự cân/không rõ>\"}\n'
+            'rỗng nếu không nêu>\"}\n'
             "Chỉ JSON, không giải thích."
         )
         _res = await _router_call(
             task_type=_TT.CRITIC_REVIEW,
             system="Bạn là parser. Chỉ xuất JSON hợp lệ.",
             user=_prompt,
-            max_tokens=400,
+            max_tokens=150,
         )
         _raw = (_res.get("output") or "").strip()
         _m = re.search(r"\{.*\}", _raw, re.DOTALL)
         if _m:
-            _d = _json.loads(_m.group(0))
-            channels = (_d.get("channels") or "").strip()
-            source_mix = (_d.get("source_mix") or "").strip()
+            channels = (_json.loads(_m.group(0)).get("channels") or "").strip()
     except Exception as e:
         logger.warning("campaign_setup parse failed: %s", e)
 
-    # Fallback: nếu LLM không ra channels → dùng nguyên text làm channels-hint
     if channels:
         session.pending_intake["channels"] = channels
     elif not session.pending_intake.get("channels"):
         session.pending_intake["channels"] = (
             session.profile.current_channels or "Facebook + TikTok + Zalo OA"
         )
-    if source_mix:
-        session.pending_intake["source_mix"] = source_mix
     await save_session(session)
 
     addr = _addr(session)
     await update.message.reply_text(
-        f"📝 Ghi nhận: *Kênh* = {session.pending_intake.get('channels')}"
-        + (f"\n*Source mix* = {source_mix}" if source_mix else "")
-        + f"\n\nEm viết Brief theo đúng ý {addr} nhé 👇",
+        f"📝 Ghi nhận: *Kênh* = {session.pending_intake.get('channels')}\n\n"
+        f"Em viết Brief theo đúng ý {addr} nhé 👇",
         parse_mode=ParseMode.MARKDOWN,
     )
     await _run_campaign_brief_after_setup(update.message, session, context, update)
 
 
 async def _run_campaign_brief_after_setup(message, session, context, update):
-    """Viết Campaign Brief (đã có channels + source_mix trong intake) → hiển thị.
+    """Viết Campaign Brief (đã có channels trong intake) → hiển thị.
     Brief output kèm nút duyệt → brief_confirm → _confirm_brief_and_gen_calendar."""
     campaign_name = session.pending_intake.get("campaign_name", "Campaign")
     session.selected_task = "campaign_brief"

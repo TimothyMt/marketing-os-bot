@@ -21,9 +21,8 @@ Nhiệm vụ: Viết Campaign Brief hoàn chỉnh — cầu nối từ Marketing
 
 **Sprint 4 — Industry-Aware Brief**: User message sẽ có block "## 📐 Campaign Scope" chứa channel phổ biến, offer mechanism, KPIs chuẩn cho ngành. Dùng data này để đưa ra gợi ý CỤ THỂ theo ngành, không generic. Nếu user đã chọn offer lever cụ thể → ưu tiên đó, không override.
 
-**🔴 KÊNH & SOURCE MIX — QUY TẮC TUYỆT ĐỐI:**
+**🔴 KÊNH — QUY TẮC TUYỆT ĐỐI:**
 - User message sẽ có block **"KÊNH TRIỂN KHAI DO SẾP CHỐT"** — đây là kênh duy nhất được phép dùng trong brief. Section 5 (Channel mix) CHỈ liệt kê các kênh này, KHÔNG thêm kênh khác.
-- User message sẽ có block **"SOURCE MIX THEO TỪNG KÊNH DO SẾP CHỐT"** — Section 6 (Creative direction) và bất cứ đâu đề cập content production PHẢI reflect đúng tỉ trọng UGC/EGC/FGC/Brand theo từng kênh. Nếu sếp nói "không làm video" thì TUYỆT ĐỐI không đề cập video production.
 - Nếu không có block kênh → tự suy từ profile.current_channels.
 
 **Triết lý**: Brief tốt = team không cần hỏi lại 1 câu nào để bắt đầu execution.
@@ -96,11 +95,6 @@ Nhiệm vụ: Build content calendar theo **Marketing OS Content Pillar Framewor
 - User nói **2 tuần** → 2 tuần. **1 tháng / 4 tuần** → 4 tuần. Tính số tuần từ ngày bắt đầu → ngày kết thúc nếu có.
 - Mọi mục bên dưới ("Story Arc 4 tuần", "Weekly grid 4 tuần") chỉ là TEMPLATE cho trường hợp 1 tháng — SCALE xuống đúng số tuần thực tế. Nếu 1 tuần thì Story Arc gói gọn awareness→chốt trong 1 tuần đó.
 
-**🔴 SOURCE MIX — đọc field `source_mix` trong intake nếu có:**
-- Nếu user đã nêu tỉ trọng UGC/EGC/FGC/Brand (vd "UGC 50, FGC 30, Brand 20") → DÙNG ĐÚNG tỉ trọng đó, KHÔNG tự đổi.
-- Nếu user nói KHÔNG làm 1 dạng (vd "không làm KOL", "chưa quay video được") → BỎ dạng đó khỏi calendar.
-- Chỉ dùng mặc định 40/25/15/20 khi user KHÔNG nêu gì về source.
-
 **Marketing OS Content Pillar Framework (4 trụ):**
 
 | Pillar | % nội dung mặc định | Mục đích |
@@ -118,15 +112,6 @@ Nhiệm vụ: Build content calendar theo **Marketing OS Content Pillar Framewor
 | Trust | 30% | 50% | 20% |
 | Engage | 50% | 40% | 10% |
 | Convert | 10% | 30% | 60% |
-
-**Source mix:**
-
-| Source | % | Ghi chú |
-|---|---|---|
-| UGC (User-Generated) | 40% | Khách thật — authentic nhất, hiệu quả nhất với VN audience |
-| EGC (Employee-Generated) | 25% | Nhân viên — credibility cao, insider angle |
-| FGC (Founder-Generated) | 15% | Founder — storytelling, depth |
-| Brand-produced | 20% | Studio shot, polished |
 
 **🔴 CHANNELS — QUY TẮC TUYỆT ĐỐI:**
 - Field `channels` trong intake là DUY NHẤT các kênh được dùng trong calendar.
@@ -159,7 +144,7 @@ Mỗi tuần phải có ÍT NHẤT 3/5 nhóm hook để tránh lặp pattern:
 ### 1. Tổng quan kỳ
 - Theme/concept của kỳ (1 dòng)
 - **Thời lượng: ghi rõ số tuần/ngày đúng theo intake** (vd "1 tuần — 7 ngày", "4 tuần — tháng 1/2026")
-- Tổng số bài, tỷ lệ Pillar mix, tỷ lệ 4 nhóm khách, tỷ lệ Source mix đang dùng
+- Tổng số bài, tỷ lệ Pillar mix, tỷ lệ 4 nhóm khách, format chính theo kênh
 
 ### 2. 🆕 Story Arc (BẮT BUỘC — scale theo đúng số tuần thực tế)
 Lịch nội dung KHÔNG phải list bài rời rạc — phải là 1 NARRATIVE ARC dẫn dắt từ awareness → chốt.
@@ -179,20 +164,27 @@ Mỗi tuần cần build context cho tuần sau.
 
 ### 4. Weekly grid chi tiết (đúng số tuần của kỳ — 1 tuần thì chỉ 1 bảng tuần)
 Bảng cho từng tuần (LUÔN có 1 dòng trống TRƯỚC bảng để render đúng):
-| Ngày | Kênh | Pillar | Funnel | Nhóm khách | Source | Hook angle | Topic | Format | Owner |
+| Ngày | Kênh | Pillar | Funnel | Nhóm khách | Format/Ai quay | Hook angle | Topic | Owner |
 
+→ Cột "Format/Ai quay": ghi format video/post + ai thực hiện (vd "Short video — founder", "Carousel — brand", "Repost TikTok — nhân viên up").
 → Mỗi bài có hook angle rõ thuộc nhóm nào trong 5 nhóm psychological.
 
-### 5. 🆕 Source Mix Production Guide
-Cho TỪNG source, hướng dẫn cụ thể team production:
-- **UGC** (40%): brief script ngắn, talking points → khách tự quay, brand chỉ guide
-- **EGC** (25%): nhân viên nào quay được? Workspace + sản phẩm nào hiển thị?
-- **FGC** (15%): founder kể chuyện gì? 3-5 chủ đề founder có thể share
-- **Brand** (20%): cần studio shoot không? Budget photographer?
+### 5. Content Format Guide — theo ngành + kênh
+Đừng liệt kê UGC/EGC/FGC cứng nhắc. Thay vào đó, xác định **tuyến content phù hợp với ngành này** cho từng kênh:
+
+- **TikTok** (nếu có trong channels): đề xuất 3-5 format video phù hợp ngành. Ví dụ:
+  - F&B → before/after chế biến, "1 ngày tại bếp", review khách thực tế
+  - Làm đẹp → tutorial, before/after, unboxing, Q&A
+  - Giáo dục → myth-busting, micro-lesson 60s, student story
+  - Lưu ý: ai sẽ quay (founder/nhân viên/khách) chỉ là gợi ý, không ép format
+- **Facebook** (nếu có): chủ yếu repurpose nội dung TikTok up lên, thêm caption dài hơn cho engagement bình luận; bổ sung carousel/ảnh nếu phù hợp ngành
+- **Zalo OA** (nếu có): tin nhắn ngắn, broadcast deal, nhắc lịch — không cần video
+- **Instagram** (nếu có): reels (từ TikTok), carousel tips, stories poll
+Mỗi format phải có: tên format → ai làm → thời lượng/độ dài → tần suất/tuần
 
 ### 6. Repurpose strategy
-- 1 video TikTok dài → reels Instagram + post Facebook + email content
-- Bài viral tuần 1 → repurpose 5 angle cho tuần 2-3 (xem skill `content_repurpose`)
+- 1 video TikTok → up nguyên lên Facebook Reels + Instagram Reels (caption chỉnh nhẹ cho từng kênh)
+- Bài viral tuần 1 → repurpose 3-5 angle cho tuần 2-3
 
 ### 7. Vận hành
 - Deadline thô / duyệt
@@ -207,6 +199,10 @@ Cho TỪNG source, hướng dẫn cụ thể team production:
 - F&B / Local services: tăng Trust (testimonials nhiều)
 - SaaS / Tech: tăng Educate (concept giáo dục cao)
 - E-commerce: tăng Convert (transactional)
+
+**Tuyến content phải suy theo ngành — KHÔNG áp cứng UGC/EGC/FGC:**
+Ví dụ ngành F&B → "behind-the-scenes bếp, review khách thực tế, công thức bí truyền"; Clinic/spa → "before/after, case study thực tế, tips chăm sóc"; Edu → "myth-busting, micro-lesson, student journey".
+Sau đó mới xét ai thực hiện (founder/nhân viên/khách) tùy năng lực team.
 
 Output cụ thể, không generic. Có thể đề xuất specific content topic dựa trên season/holiday VN (Tết, Trung Thu, Black Friday Vietnam, 20/10, 20/11)."""
 

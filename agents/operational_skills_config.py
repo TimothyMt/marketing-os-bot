@@ -590,18 +590,11 @@ class CampaignBriefDynamicSkill(OperationalSkill):
     def build_user_msg(self, session: Session) -> str:
         msg = super().build_user_msg(session)
         channels = (session.pending_intake.get("channels") or "").strip()
-        source_mix = (session.pending_intake.get("source_mix") or "").strip()
         if channels:
             msg += (
                 "\n\n---\n\n**KÊNH TRIỂN KHAI DO SẾP CHỐT (chỉ viết brief cho CÁC KÊNH NÀY):**\n"
                 + channels
-                + "\n_(Các section về phân bổ ngân sách, KPI, content plan PHẢI ghi rõ từng kênh này.)_"
-            )
-        if source_mix:
-            msg += (
-                "\n\n---\n\n**SOURCE MIX THEO TỪNG KÊNH DO SẾP CHỐT (dùng ĐÚNG, không tự đổi):**\n"
-                + source_mix
-                + "\n_(Section Content Mix trong brief PHẢI reflect đúng tỉ trọng UGC/EGC/FGC/Brand này theo từng kênh.)_"
+                + "\n_(Section 5 Channel mix + Section 8 KPI PHẢI ghi rõ từng kênh này, KHÔNG thêm kênh khác.)_"
             )
         return msg
 
@@ -637,14 +630,6 @@ class ContentCalendarDynamicSkill(OperationalSkill):
             + str(session.profile.primary_goal or "unknown")
             + ")_"
         )
-        # Source mix do user chốt (nếu có) — override default 40/25/15/20
-        source_mix = (session.pending_intake.get("source_mix") or "").strip()
-        if source_mix:
-            msg += (
-                "\n\n---\n\n**SOURCE MIX DO SẾP CHỐT (dùng ĐÚNG, không tự đổi):**\n"
-                + source_mix
-                + "\n_(Nếu sếp loại 1 dạng — vd không làm video/KOL — thì BỎ hẳn dạng đó khỏi calendar.)_"
-            )
         return msg
 
 
