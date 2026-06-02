@@ -1109,16 +1109,19 @@ async def _handle_callback_inner(update, context, query, session, data, user_id)
         session.pending_intake.pop("_awaiting_rating_for", None)
         await save_session(session)
         addr = _addr(session)
+
         await query.message.reply_text(
-            f"✅ *Strategy đã chốt! Giờ plan campaign cụ thể nhé {addr}.*\n\n"
-            f"🧠 *Max:* Trước khi em đề xuất, cho em hỏi nhanh 3 ý ạ:\n\n"
-            f"• *Mục tiêu gần nhất* của sếp là gì? "
-            f"_(Acquisition khách mới · Tăng doanh thu / AOV · Brand awareness · Giữ chân khách cũ)_\n"
-            f"• Sếp *đang ấp ủ campaign nào chưa?* "
-            f"_(tên, chủ đề, hay chỉ 1 từ khoá cũng được — vd: \"Tết\", \"ra mắt SP mới\", \"Black Friday\"...)_\n"
-            f"• Có *deadline hay sự kiện* cụ thể cần nhắm tới không?\n\n"
-            f"_Sếp mô tả tự do bên dưới → em phân tích + validate luôn. "
-            f"Hoặc bấm nút nếu muốn em đề xuất trước._",
+            f"✅ *Strategy đã chốt! Giờ plan campaign cụ thể nhé {addr}.*",
+            parse_mode=ParseMode.MARKDOWN,
+        )
+        await context.bot.send_chat_action(
+            chat_id=update.effective_chat.id, action=ChatAction.TYPING,
+        )
+        # Câu hỏi discovery SINH ĐỘNG theo ngành (không hardcode)
+        from agents.campaign_ideation import generate_discovery_questions
+        discovery = await generate_discovery_questions(session)
+        await query.message.reply_text(
+            discovery,
             parse_mode=ParseMode.MARKDOWN,
             reply_markup=POST_AZ_CAMPAIGN_KEYBOARD,
         )

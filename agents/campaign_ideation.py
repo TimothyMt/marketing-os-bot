@@ -15,7 +15,7 @@ from typing import Optional
 
 import anthropic
 
-from config import CLAUDE_SONNET_MODEL, ANTHROPIC_API_KEY
+from config import CLAUDE_SONNET_MODEL, CLAUDE_HAIKU_MODEL, ANTHROPIC_API_KEY
 from storage.models import Session
 
 logger = logging.getLogger(__name__)
@@ -25,6 +25,94 @@ client = anthropic.AsyncAnthropic(
     timeout=120.0,
     max_retries=1,
 )
+
+
+# ─────────────────────────────────────────────────────────────────
+# DISCOVERY — Max hỏi câu mở đầu campaign, ĐỘNG theo ngành
+# ─────────────────────────────────────────────────────────────────
+
+# Fallback khi không rõ ngành / LLM lỗi — câu hỏi generic.
+_DISCOVERY_FALLBACK = (
+    "🧠 *Max:* Trước khi đề xuất, cho em hỏi nhanh ạ:\n\n"
+    "• *Mục tiêu gần nhất* của sếp là gì? "
+    "_(thu khách mới · tăng doanh thu/AOV · giữ chân khách cũ · build thương hiệu)_\n"
+    "• Sếp *đang ấp ủ campaign nào chưa?* "
+    "_(tên/chủ đề, hoặc chỉ 1 từ khoá — vd \"Tết\", \"ra mắt SP\"...)_\n"
+    "• Có *mốc thời gian* cần nhắm tới không? "
+    "_(dịp lễ, ngày ra mắt, cuối quý đẩy số, khai trương... — để em canh timing + offer)_\n\n"
+    "_Sếp mô tả tự do bên dưới → em validate luôn. Hoặc bấm nút để em đề xuất trước._"
+)
+
+DISCOVERY_SYSTEM = """Bạn là **Max** — CMO AI. Strategy A→Z vừa chốt xong. Việc của bạn: hỏi 3 câu discovery NGẮN để hiểu campaign sếp cần, TRƯỚC khi đề xuất.
+
+3 câu BẮT BUỘC có (theo thứ tự), nhưng diễn đạt phải BÁM NGÀNH của sếp:
+
+1. **Mục tiêu gần nhất** — đưa 3-4 lựa chọn mục tiêu ĐẶC THÙ NGÀNH (dựa vào growth levers + market dynamics được cung cấp), KHÔNG dùng mục tiêu generic.
+   - VD F&B: "tăng table turn giờ thấp điểm · tăng repeat visit · cân lại tỷ trọng delivery · đẩy daypart mới (sáng/tối)"
+   - VD SaaS: "tăng trial→paid · giảm churn · expansion/upsell tài khoản cũ · acquisition logo mới"
+   - VD Ecommerce: "tăng AOV/giỏ hàng · tăng repeat & LTV · thu khách mới · xả hàng tồn"
+2. **Campaign đang ấp ủ** — hỏi sếp đã có ý tưởng/chủ đề/từ khoá nào chưa.
+3. **Mốc thời gian** — hỏi có dịp/sự kiện cần neo không, GỢI Ý mốc seasonal đặc thù ngành (vd F&B: Tết, Trung Thu, mùa cưới; Ecom: Mega sale 11.11/12.12, Tết; Education: mùa tuyển sinh).
+
+QUY TẮC OUTPUT (Telegram chat):
+- Mở đầu đúng 1 dòng: "🧠 *Max:* ..."
+- CHỈ dùng *in đậm*, _in nghiêng_, bullet "• ". KHÔNG heading #, KHÔNG bảng |.
+- Tổng ≤ 10 dòng. Mỗi câu hỏi 1 bullet, lựa chọn để trong _( )_ ngăn bằng " · ".
+- Kết thúc 1 dòng: "_Sếp mô tả tự do bên dưới → em validate luôn. Hoặc bấm nút để em đề xuất trước._"
+- KHÔNG bịa số liệu. KHÔNG hỏi budget/team (để bước sau)."""
+
+
+async def generate_discovery_questions(session: Session) -> str:
+    """Sinh 3 câu discovery campaign ĐỘNG theo ngành (Haiku — rẻ, nhanh).
+    Fallback về câu generic nếu thiếu ngành hoặc LLM lỗi.
+    """
+    industry = (session.profile.industry or "").strip()
+    if not industry:
+        return _DISCOVERY_FALLBACK
+
+    # Gom context ngành: growth levers + market dynamics + synthesis excerpt.
+    ctx_parts = [f"# NGÀNH: {industry}"]
+    try:
+        from frameworks.kpi_library import get_kpi_framework
+        fw = get_kpi_framework(industry)
+        if fw and getattr(fw, "growth_levers", None):
+            ctx_parts.append("## Growth levers của ngành:\n" + "\n".join(f"- {x}" for x in fw.growth_levers))
+    except Exception:
+        pass
+    try:
+        from frameworks.industry_context import get_industry_context
+        ic = get_industry_context(industry)
+        if ic and getattr(ic, "market_dynamics", None):
+            ctx_parts.append("## Market dynamics:\n" + ic.market_dynamics)
+    except Exception:
+        pass
+
+    synthesis = session.get_latest_result("synthesis") or ""
+    if synthesis:
+        ctx_parts.append("## Trích Strategy (synthesis):\n" + synthesis[:1200])
+
+    user_msg = (
+        "\n\n".join(ctx_parts)
+        + "\n\n---\n\nHãy viết 3 câu discovery campaign bám ngành trên, theo đúng format Telegram."
+    )
+
+    try:
+        response = await client.messages.create(
+            model=CLAUDE_HAIKU_MODEL,
+            max_tokens=600,
+            system=[{"type": "text", "text": DISCOVERY_SYSTEM, "cache_control": {"type": "ephemeral"}}],
+            messages=[{"role": "user", "content": user_msg}],
+        )
+        try:
+            from tools.token_tracker import track_usage
+            track_usage(session, response, label="campaign_discovery")
+        except Exception:
+            pass
+        text = (response.content[0].text or "").strip()
+        return text if text else _DISCOVERY_FALLBACK
+    except Exception as e:
+        logger.warning("generate_discovery_questions failed (industry=%s): %s", industry, e)
+        return _DISCOVERY_FALLBACK
 
 
 PROPOSE_SYSTEM = """Bạn là Max — CMO AI giúp founder VN xác định campaign tiếp theo dựa trên Marketing Strategy đã có.
