@@ -4738,7 +4738,66 @@ async def _confirm_brief_and_gen_calendar(message, session, context, update):
 
     addr = _addr(session)
     await message.reply_text(
-        f"✅ Brief đã duyệt! Em lưu lại campaign *{campaign_name}* rồi.\n\n"
+        f"✅ Brief đã duyệt! Em lưu lại campaign *{campaign_name}* rồi.",
+        parse_mode=ParseMode.MARKDOWN,
+    )
+
+    # ── Funnel Map + Execution Plan ───────────────────────────────────
+    # Chạy trước calendar để user thấy ToFu/MoFu/BoFu per channel
+    # + roadmap skills cần chạy. Lỗi → skip silently, calendar vẫn chạy.
+    try:
+        from agents.funnel_mapper import generate_funnel_map, render_funnel_map_card
+        from agents.campaign_execution import (
+            generate_execution_plan, classify_goal_type, funnel_map_objective,
+        )
+        import json as _json_fm
+
+        _goal_slug = classify_goal_type(campaign_goal or "")
+        _campaign_dict = {
+            "name":             campaign_name,
+            "objective":        funnel_map_objective(_goal_slug),
+            "objective_detail": campaign_goal or "",
+            "channels":         session.pending_intake.get("channels", "Facebook + TikTok"),
+            "audience":         session.profile.target_customer or "",
+            "duration_days":    30,
+            "extra_notes":      session.pending_intake.get("key_offer", ""),
+        }
+
+        await message.reply_text(
+            "🗺 *Em đang map ToFu/MoFu/BoFu cho từng kênh...*\n_Khoảng 15-25 giây ạ._",
+            parse_mode=ParseMode.MARKDOWN,
+        )
+        await context.bot.send_chat_action(
+            chat_id=update.effective_chat.id, action=ChatAction.TYPING,
+        )
+
+        _funnel_map = await asyncio.wait_for(
+            generate_funnel_map(session, _campaign_dict), timeout=60,
+        )
+        # Lưu để content_calendar + downstream skills có thể tham chiếu
+        session.pending_intake["_funnel_map_json"] = _json_fm.dumps(_funnel_map, ensure_ascii=False)
+        session.add_result("funnel_map", _json_fm.dumps(_funnel_map, ensure_ascii=False))
+        await save_session(session)
+
+        await message.reply_text(render_funnel_map_card(_funnel_map), parse_mode=ParseMode.MARKDOWN)
+
+        # Execution Plan
+        await context.bot.send_chat_action(
+            chat_id=update.effective_chat.id, action=ChatAction.TYPING,
+        )
+        _exec_plan = await asyncio.wait_for(
+            generate_execution_plan(session, _funnel_map, campaign_name, campaign_goal or ""),
+            timeout=45,
+        )
+        await message.reply_text(_exec_plan, parse_mode=ParseMode.MARKDOWN)
+
+    except asyncio.TimeoutError:
+        logger.warning("funnel_map/execution_plan timed out — proceeding to calendar")
+    except Exception as _fe:
+        logger.warning("funnel_map/execution_plan skipped: %s", _fe)
+
+    # ── Content Calendar ──────────────────────────────────────────────
+    await message.reply_text(
         f"📅 *Giờ em dựng Lịch Nội Dung theo brief này cho {addr}...*\n"
         f"_Kênh: {session.pending_intake['channels']} · Khoảng 30-60 giây ạ._",
         parse_mode=ParseMode.MARKDOWN,
