@@ -4827,6 +4827,12 @@ async def _confirm_brief_and_gen_calendar(message, session, context, update):
         except Exception as _he:
             logger.warning("campaign_plan HTML build skipped: %s", _he)
 
+        # 3) Excel: funnel map chi tiết → file .xlsx
+        try:
+            await _send_excel_funnel_map(message, _funnel_map, campaign_name, session)
+        except Exception as _xe:
+            logger.warning("funnel_map Excel export skipped: %s", _xe)
+
         funnel_ok = True
     except asyncio.TimeoutError:
         logger.warning("funnel_map/execution_plan timed out")
@@ -4839,7 +4845,7 @@ async def _confirm_brief_and_gen_calendar(message, session, context, update):
     await save_session(session)
 
     prompt = (
-        "👆 *Sếp xem kế hoạch triển khai (tóm tắt trên + file HTML đầy đủ).*\n\n"
+        "👆 *Sếp xem kế hoạch triển khai (tóm tắt trên + file HTML + file Excel đầy đủ).*\n\n"
         if funnel_ok else
         "_(Em chưa dựng được funnel map chi tiết, nhưng vẫn có thể đi tiếp.)_\n\n"
     )
@@ -4901,6 +4907,30 @@ async def _send_html_report(message: Message, html_str: str, session):
         document=buf,
         filename=filename,
         caption="📄 *Báo cáo đầy đủ* — mở để xem full analysis với layout đẹp.",
+        parse_mode=ParseMode.MARKDOWN,
+    )
+
+
+async def _send_excel_funnel_map(message: Message, funnel_map: list, campaign_name: str, session):
+    """Export funnel map → .xlsx và gửi qua Telegram."""
+    import io as _io
+    from agents.funnel_mapper import build_funnel_map_excel
+
+    xlsx_bytes = build_funnel_map_excel(funnel_map, campaign_name)
+    business_slug = re.sub(r"[^a-zA-Z0-9_-]", "_", (session.profile.business_name or "campaign"))[:30]
+    filename = f"funnel_map_{business_slug}.xlsx"
+
+    buf = _io.BytesIO(xlsx_bytes)
+    buf.name = filename
+
+    await message.reply_document(
+        document=buf,
+        filename=filename,
+        caption=(
+            "📊 *Funnel Map — Excel*\n"
+            "Format · Content Angles · CTA · Volume từng tầng từng kênh.\n"
+            "_Mở bằng Excel / Google Sheets để chỉnh sửa trực tiếp._"
+        ),
         parse_mode=ParseMode.MARKDOWN,
     )
 

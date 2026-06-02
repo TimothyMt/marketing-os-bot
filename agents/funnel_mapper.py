@@ -6,6 +6,7 @@ Output: Funnel Map list → feed vào content_calendar + content_generator
 """
 from __future__ import annotations
 
+import io
 import json
 import logging
 import re
@@ -245,3 +246,126 @@ def funnel_map_to_calendar_input(funnel_map: list, campaign: dict) -> dict:
         "extra_notes":      campaign.get("extra_notes", ""),
         "channel_plans":    channel_plans,
     }
+
+
+# ─────────────────────────────────────────────────────────────────
+# Excel export
+# ─────────────────────────────────────────────────────────────────
+
+def build_funnel_map_excel(funnel_map: list, campaign_name: str = "") -> bytes:
+    """Export full funnel map → .xlsx bytes (openpyxl).
+
+    Sheet "Funnel Map": one row per (channel × stage).
+    Columns: Kênh | Tỷ lệ | Giai đoạn | Mục tiêu | Formats | Content Angles | CTA | Volume
+    """
+    import openpyxl
+    from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+    from openpyxl.utils import get_column_letter
+
+    STAGE_LABELS = {"tofu": "ToFu 🔵", "mofu": "MoFu 🟡", "bofu": "BoFu 🟢"}
+    STAGE_FILLS  = {
+        "tofu": PatternFill("solid", fgColor="BDD7EE"),
+        "mofu": PatternFill("solid", fgColor="FFE699"),
+        "bofu": PatternFill("solid", fgColor="C6EFCE"),
+    }
+    HEADER_FILL  = PatternFill("solid", fgColor="1F4E79")
+    HEADER_FONT  = Font(bold=True, color="FFFFFF", size=11)
+    BOLD         = Font(bold=True)
+    WRAP         = Alignment(wrap_text=True, vertical="top")
+    CENTER_WRAP  = Alignment(wrap_text=True, vertical="top", horizontal="center")
+    THIN         = Side(style="thin", color="BFBFBF")
+    BORDER       = Border(left=THIN, right=THIN, top=THIN, bottom=THIN)
+
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "Funnel Map"
+
+    # ── Title row ────────────────────────────────────────────────
+    title_text = f"Funnel Map — {campaign_name}" if campaign_name else "Funnel Map"
+    ws.merge_cells("A1:H1")
+    title_cell = ws["A1"]
+    title_cell.value = title_text
+    title_cell.font  = Font(bold=True, size=14, color="1F4E79")
+    title_cell.alignment = Alignment(horizontal="center", vertical="center")
+    ws.row_dimensions[1].height = 30
+
+    # ── Header row ───────────────────────────────────────────────
+    HEADERS = ["Kênh", "Tỷ lệ\nToFu/MoFu/BoFu", "Giai đoạn", "Mục tiêu", "Formats", "Content Angles", "CTA", "Volume"]
+    COL_WIDTHS = [20, 18, 14, 36, 32, 32, 26, 14]
+    for col_idx, (hdr, width) in enumerate(zip(HEADERS, COL_WIDTHS), start=1):
+        cell = ws.cell(row=2, column=col_idx, value=hdr)
+        cell.font      = HEADER_FONT
+        cell.fill      = HEADER_FILL
+        cell.alignment = CENTER_WRAP
+        cell.border    = BORDER
+        ws.column_dimensions[get_column_letter(col_idx)].width = width
+    ws.row_dimensions[2].height = 32
+
+    # ── Data rows ────────────────────────────────────────────────
+    current_row = 3
+    for ch_map in funnel_map:
+        ch    = ch_map.get("channel", "")
+        ratio = ch_map.get("ratio", "")
+        stage_rows_start = current_row
+
+        for stage in ("tofu", "mofu", "bofu"):
+            s = ch_map.get(stage) or {}
+            formats = "\n".join(f"• {f}" for f in (s.get("formats") or []))
+            angles  = "\n".join(f"• {a}" for a in (s.get("content_angles") or []))
+            row_data = [
+                ch,
+                ratio,
+                STAGE_LABELS[stage],
+                s.get("goal", ""),
+                formats,
+                angles,
+                s.get("cta", ""),
+                s.get("volume", ""),
+            ]
+            fill = STAGE_FILLS[stage]
+            for col_idx, val in enumerate(row_data, start=1):
+                cell = ws.cell(row=current_row, column=col_idx, value=val)
+                cell.alignment = WRAP
+                cell.border    = BORDER
+                # Stage column gets stage colour; others get light row colour
+                if col_idx == 3:
+                    cell.fill = fill
+                    cell.font = BOLD
+                elif col_idx in (1, 2):
+                    cell.font = BOLD
+            ws.row_dimensions[current_row].height = max(
+                40, 15 * max(1, len((s.get("formats") or [])), len((s.get("content_angles") or [])))
+            )
+            current_row += 1
+
+        # Merge Kênh + Tỷ lệ columns across the 3 stage rows
+        if current_row - stage_rows_start > 1:
+            for merge_col in (1, 2):
+                ws.merge_cells(
+                    start_row=stage_rows_start, start_column=merge_col,
+                    end_row=current_row - 1, end_column=merge_col,
+                )
+                merged = ws.cell(row=stage_rows_start, column=merge_col)
+                merged.alignment = CENTER_WRAP
+                merged.font      = BOLD
+
+        # Calendar note row (span all cols)
+        note = ch_map.get("calendar_note", "")
+        if note:
+            ws.merge_cells(
+                start_row=current_row, start_column=1,
+                end_row=current_row,   end_column=8,
+            )
+            note_cell = ws.cell(row=current_row, column=1, value=f"💡 {note}")
+            note_cell.font      = Font(italic=True, color="595959")
+            note_cell.alignment = WRAP
+            note_cell.border    = BORDER
+            ws.row_dimensions[current_row].height = 20
+            current_row += 1
+
+    # ── Freeze header ────────────────────────────────────────────
+    ws.freeze_panes = "A3"
+
+    buf = io.BytesIO()
+    wb.save(buf)
+    return buf.getvalue()
