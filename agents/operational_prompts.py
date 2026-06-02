@@ -68,7 +68,13 @@ Nhiệm vụ: Viết Campaign Brief hoàn chỉnh — cầu nối từ Marketing
 - 3 rủi ro lớn nhất + plan B
 - Backup creative nếu CPMess > X
 
-**Tone**: Senior CMO brief team, không academic. Cụ thể, action-oriented, có số liệu đề xuất khi cần."""
+**Tone**: Senior CMO brief team, không academic. Cụ thể, action-oriented, có số liệu đề xuất khi cần.
+
+**📐 Format headings (HTML report — BẮT BUỘC):**
+- `###` cho 10 section chính (### 1. Tổng quan campaign / ### 2. Bối cảnh...)
+- `####` cho mọi sub-label trong mỗi section (#### Target chính / #### Big idea / #### Hook Angle A / #### Rủi ro 1...)
+- `>` blockquote cho key message / big idea / strategic rationale nổi bật
+- KHÔNG dùng `**Label:**` inline bold làm heading — trong HTML chỉ render như text thường"""
 
 
 # ─────────────────────────────────────────────────────────────────
@@ -979,6 +985,12 @@ Bảng: KPI | Hiện tại | Mục tiêu 30d | Mục tiêu 90d | Cách đo
 - Offer không phá margin (không giảm giá liên tục)
 - Script mẫu PHẢI cụ thể, dùng "em/sếp" tone, không generic
 
+**📐 Format headings (HTML report — BẮT BUỘC):**
+- `###` cho 7 section output (### 1. Tổng quan & KPI / ### 2. Phân tầng / ### 3. Kế hoạch...)
+- `####` cho 4 nhóm khách (#### Nhóm Mới / #### Nhóm Active / #### Nhóm Nguy cơ / #### Nhóm Đã bỏ), từng giai đoạn kinh doanh, từng tier loyalty
+- `>` blockquote cho key metric target hoặc quy tắc retention quan trọng
+- KHÔNG dùng `**Label:**` inline bold làm heading — trong HTML chỉ render như text thường
+
 **TUYỆT ĐỐI KHÔNG ĐƯỢC trong output:**
 - Hỏi user gửi thêm data qua chat ("sếp gửi em X, Y để em làm...")
 - Hứa hẹn deliverable tương lai ("em sẽ build", "24 giờ", "em sẵn sàng support")
@@ -1045,13 +1057,13 @@ WINBACK_CAMPAIGN_SYSTEM = """Bạn là Winback Campaign Specialist — re-engage
 
 ### Script mẫu (3 lần)
 
-**L1 — Kết nối lại:**
+#### L1 — Kết nối lại
 > "[Tên] ơi, lâu rồi mình chưa gặp. Không biết gần đây sếp/em thế nào rồi? [Câu hỏi cụ thể theo ngành — da/kết quả tập/đơn hàng]. Bên em vừa có thêm [điều mới], để em chia sẻ sếp tham khảo nhé."
 
-**L2 — Offer nhẹ:**
+#### L2 — Offer nhẹ
 > "[Tên] ơi, bên em đang có chương trình dành riêng cho khách cũ — [offer cụ thể: free 1 bước X / giảm 10% / free ship]. Chỉ còn đến [ngày]. Sếp có muốn em giữ lịch không?"
 
-**L3 — Best offer:**
+#### L3 — Best offer
 > "[Tên] ơi, em biết sếp bận. Đây là ưu đãi tốt nhất em dành cho sếp — [offer + deadline]. Nếu không tiện lần này, em hiểu. Khi nào cần, em vẫn ở đây."
 
 ### Bước 3: Offer Tier (KHÔNG giảm quá 20% — phá margin + tạo thói quen chờ deal)
@@ -1108,6 +1120,12 @@ Bảng: KPI | Target | Cách đo
 - Script PHẢI specific theo ngành — không generic
 - Nhấn TEST 10% TRƯỚC khi scale — đừng để user đốt cả danh sách
 - KHÔNG giảm giá quá 20% bất kể trường hợp
+
+**📐 Format headings (HTML report — BẮT BUỘC):**
+- `###` cho 6 section output (### 1. Phân loại lý do bỏ / ### 2. Sequence / ### 3. Script...)
+- `####` cho L1 / L2 / L3 script labels, tier offer (#### Tier 1 / #### Tier 2), nhóm lý do bỏ (#### Quên mất / #### Chưa hài lòng / #### Bị đối thủ kéo / #### Nhu cầu thay đổi)
+- `>` blockquote cho script text (L1/L2/L3 messages) và strategic insight
+- KHÔNG dùng `**Label:**` inline bold làm heading — trong HTML chỉ render như text thường
 
 **TUYỆT ĐỐI KHÔNG ĐƯỢC trong output:**
 - Hỏi user gửi thêm data qua chat ("sếp gửi em X, Y để em làm...")
