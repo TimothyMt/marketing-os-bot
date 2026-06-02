@@ -20,14 +20,23 @@ Viết **Kế hoạch thực thi ngắn** cho founder dựa trên goal type + fu
 
 QUY TẮC OUTPUT (Telegram):
 - Dòng 1: "🗓 *Kế hoạch thực thi — [campaign_name]*\\n_Goal: [goal_type hiển thị đẹp]_"
-- 3 section liên tiếp, mỗi section 2-3 bullet activity CỤ THỂ bám ngành:
+- 4 section liên tiếp, mỗi section 2-3 bullet activity CỤ THỂ bám ngành:
     🔵 *ToFu — Tiếp cận tệp mới*
     🟡 *MoFu — Nurture & Trust*
     🟢 *BoFu — Chốt & Convert*
+    ♻️ *Retention — Giữ data & tối ưu ROI* _(LUÔN CÓ — kể cả campaign acquisition/brand)_
 - Mỗi bullet: "• [Tên hoạt động VN ngắn gọn] ← `[skill_name]`"
-- Cuối: "*🚀 Thứ tự ưu tiên chạy tiếp:*" → 3-4 bước có số thứ tự, mỗi bước 1 dòng
+- Cuối: "*🚀 Thứ tự ưu tiên chạy tiếp:*" → 3-5 bước có số thứ tự, mỗi bước 1 dòng;
+  bước CUỐI LUÔN là retention (giữ chân khách vừa thu được từ campaign này).
 - Dòng cuối: "_Sếp muốn bắt đầu từ bước nào? Em run luôn._"
-- Tổng ≤ 22 dòng. KHÔNG bịa số liệu. Dùng đúng tên skill có sẵn.
+- Tổng ≤ 26 dòng. KHÔNG bịa số liệu. Dùng đúng tên skill có sẵn.
+
+🔴 RETENTION LÀ BẮT BUỘC MỌI CAMPAIGN:
+- Mọi campaign đều thu data khách (lead/người mua). KHÔNG để lãng phí.
+- Dù goal là acquisition/brand/revenue, section ♻️ Retention vẫn phải có:
+  thu + gắn tag data khách campaign này (`retention_strategy`) + chuỗi
+  chăm sóc sau chuyển đổi giữ chân/tăng repeat (`email_zalo_sequence`).
+- Mục tiêu: tối ưu ROI dài hạn, biến khách 1-lần thành khách lặp lại.
 
 SKILLS CÓ SẴN (dùng đúng tên trong backtick):
 - `landing_page`         — trang chuyển đổi thu lead/đặt lịch
@@ -64,6 +73,14 @@ _OBJ_MAP = {
     "mix":         "mix",
 }
 
+# Lớp retention BẮT BUỘC chèn vào mọi campaign không-phải-retention.
+# Mọi campaign đều thu data khách → không để lãng phí, tối ưu ROI dài hạn.
+_RETENTION_BASELINE = (
+    "♻️ *Retention — Giữ data & tối ưu ROI* _(luôn chạy)_\n"
+    "• Thu + gắn tag data khách campaign này (lead/mua) ← `retention_strategy`\n"
+    "• Chuỗi chăm sóc sau chuyển đổi, tăng repeat ← `email_zalo_sequence`\n\n"
+)
+
 _FALLBACK_ACTIVITIES = {
     "acquisition": (
         "🔵 *ToFu — Tiếp cận tệp mới*\n"
@@ -75,11 +92,13 @@ _FALLBACK_ACTIVITIES = {
         "🟢 *BoFu — Chốt & Convert*\n"
         "• Ads retarget tệp ấm + offer ← `ads_generator`\n"
         "• Kịch bản chốt inbox/DM ← `sales_inbox_script`\n\n"
+        + _RETENTION_BASELINE +
         "*🚀 Thứ tự ưu tiên chạy tiếp:*\n"
         "1. `landing_page` (cần trước khi chạy ads)\n"
         "2. `ads_generator` (ToFu + BoFu retarget)\n"
         "3. `email_zalo_sequence` (nurture lead)\n"
-        "4. `sales_inbox_script` (chốt cuối phễu)"
+        "4. `sales_inbox_script` (chốt cuối phễu)\n"
+        "5. `retention_strategy` (giữ chân khách vừa thu — tối ưu ROI)"
     ),
     "revenue": (
         "🔵 *ToFu — Nhắc nhớ & Re-engage*\n"
@@ -90,10 +109,12 @@ _FALLBACK_ACTIVITIES = {
         "🟢 *BoFu — Chốt nâng đơn*\n"
         "• Bundle / combo offer reveal ← `ads_generator`\n"
         "• Kịch bản inbox upsell ← `sales_inbox_script`\n\n"
+        + _RETENTION_BASELINE +
         "*🚀 Thứ tự ưu tiên chạy tiếp:*\n"
         "1. `email_zalo_sequence` (upsell sequence)\n"
         "2. `ads_generator` (BoFu retarget)\n"
-        "3. `sales_inbox_script` (chốt upsell)"
+        "3. `sales_inbox_script` (chốt upsell)\n"
+        "4. `retention_strategy` (giữ chân + tăng repeat — tối ưu ROI)"
     ),
     "brand": (
         "🔵 *ToFu — Viral & Awareness*\n"
@@ -104,10 +125,12 @@ _FALLBACK_ACTIVITIES = {
         "• Content pillar Educate + Engage ← `content_calendar`\n\n"
         "🟢 *BoFu — Social Proof & CTA nhẹ*\n"
         "• Testimonial + case study ads ← `ads_generator`\n\n"
+        + _RETENTION_BASELINE +
         "*🚀 Thứ tự ưu tiên chạy tiếp:*\n"
         "1. `video_scripts` (hero content viral)\n"
         "2. `ads_generator` (ToFu reach)\n"
-        "3. `post_hooks` (organic amplify)"
+        "3. `post_hooks` (organic amplify)\n"
+        "4. `retention_strategy` (giữ data follower/lead thu được — tối ưu ROI)"
     ),
     "retention": (
         "🔵 *ToFu — Re-attract khách cũ*\n"
