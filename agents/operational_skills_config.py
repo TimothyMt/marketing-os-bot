@@ -570,8 +570,41 @@ Nếu object sếp yêu cầu không có trong hierarchy → thông báo rõ rà
 
 
 # ─────────────────────────────────────────────────────────────────
-# SPECIAL skills (2) — custom subclasses with extra logic
+# SPECIAL skills — custom subclasses with extra logic
 # ─────────────────────────────────────────────────────────────────
+
+class CampaignBriefDynamicSkill(OperationalSkill):
+    """Campaign Brief với channels + source_mix per-channel injected từ intake.
+    Brief phải viết chiến lược THEO ĐÚNG kênh + tỉ trọng source sếp đã chốt."""
+
+    def __init__(self):
+        config = _config_for(
+            "campaign_brief",
+            CAMPAIGN_BRIEF_SYSTEM,
+            max_tokens=10000,
+            context_strategy=ContextStrategy.PROFILE_PLUS_STRATEGY,
+            primary_deliverable=PrimaryDeliverable.HTML,
+        )
+        super().__init__(config)
+
+    def build_user_msg(self, session: Session) -> str:
+        msg = super().build_user_msg(session)
+        channels = (session.pending_intake.get("channels") or "").strip()
+        source_mix = (session.pending_intake.get("source_mix") or "").strip()
+        if channels:
+            msg += (
+                "\n\n---\n\n**KÊNH TRIỂN KHAI DO SẾP CHỐT (chỉ viết brief cho CÁC KÊNH NÀY):**\n"
+                + channels
+                + "\n_(Các section về phân bổ ngân sách, KPI, content plan PHẢI ghi rõ từng kênh này.)_"
+            )
+        if source_mix:
+            msg += (
+                "\n\n---\n\n**SOURCE MIX THEO TỪNG KÊNH DO SẾP CHỐT (dùng ĐÚNG, không tự đổi):**\n"
+                + source_mix
+                + "\n_(Section Content Mix trong brief PHẢI reflect đúng tỉ trọng UGC/EGC/FGC/Brand này theo từng kênh.)_"
+            )
+        return msg
+
 
 class ContentCalendarDynamicSkill(OperationalSkill):
     """Sprint 3.4: Content Calendar với Pillar % dynamic theo business stage + goal."""
@@ -917,7 +950,7 @@ def _run_async_sync(coro, timeout: int = 60):
 # ─────────────────────────────────────────────────────────────────
 
 OPS_SKILL_FACTORIES: dict[str, callable] = {
-    "campaign_brief":      make_campaign_brief_skill,
+    "campaign_brief":      CampaignBriefDynamicSkill,
     "content_calendar":    ContentCalendarDynamicSkill,  # Sprint 3.4 — Pillar dynamic
     "content_generator":   ContentGeneratorPipeline,
     "social_posts":        make_social_posts_skill,

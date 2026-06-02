@@ -1092,8 +1092,29 @@ async def _handle_callback_inner(update, context, query, session, data, user_id)
     # ── Calendar → Content Gen chain ─────────────────────────────
     if data == "run_content_gen_after_cal":
         await query.edit_message_reply_markup(reply_markup=None)
+        # Brand Voice gate: hỏi BV trước, rồi mới sản xuất content
+        skipped_flag = session.pending_intake.get("_bv_skipped_session")
+        if not skipped_flag:
+            try:
+                from storage import has_brand_voice
+                has_bv = await has_brand_voice(user_id)
+            except Exception:
+                has_bv = True  # fail-safe
+            if not has_bv:
+                session.pending_intake["_bv_pending_skill"] = "content_generator"
+                await save_session(session)
+                await query.message.reply_text(
+                    "🎙 *Sếp chưa setup Brand Voice cho brand.*\n\n"
+                    "Em recommend setup Brand Voice 1 lần để nội dung sau này "
+                    "(*content calendar, social posts, ads, video...*) "
+                    "đều đúng tone & từ ngữ brand — nhất quán hơn nhiều.\n\n"
+                    "_Sếp có thể bỏ qua giờ và setup sau, em vẫn chạy được._",
+                    parse_mode=ParseMode.MARKDOWN,
+                    reply_markup=BRAND_VOICE_PROMPT_KEYBOARD,
+                )
+                return
         session.selected_task = "content_generator"
-        session.pending_intake = {}  # reset cho fresh intake
+        session.pending_intake.pop("_bv_pending_skill", None)
         await save_session(session)
         await query.message.reply_text(
             "✍️ *Tiếp tục Sản Xuất Nội Dung từ Calendar...*",
@@ -1159,8 +1180,8 @@ async def _handle_callback_inner(update, context, query, session, data, user_id)
     # ── Layer 2b: Xác nhận / Surgical edit Campaign Brief ───────
     if data == "brief_confirm":
         await query.edit_message_reply_markup(reply_markup=None)
-        # HỎI kênh + source mix (text) TRƯỚC khi dựng funnel/calendar
-        await _ask_campaign_setup(query.message, session)
+        # Kênh + source mix đã hỏi TRƯỚC khi viết brief → dựng funnel/calendar luôn
+        await _confirm_brief_and_gen_calendar(query.message, session, context, update)
         return
 
     # User duyệt Funnel Map + Execution Plan → mới dựng Content Calendar
@@ -4783,28 +4804,32 @@ def _duration_to_days(duration: str | None) -> int:
 
 
 async def _ask_campaign_setup(message, session):
-    """Sau khi sếp duyệt brief → HỎI kênh triển khai + tỉ trọng source mix
-    (text, ghi nhận — không nút bấm) TRƯỚC khi dựng funnel/calendar.
-    Sếp trả lời → _handle_campaign_setup_text parse & lưu → chạy tiếp."""
+    """Sau khi sếp chốt đủ thông tin campaign → HỎI kênh triển khai + tỉ trọng
+    source mix THEO TỪNG KÊNH (text, ghi nhận — không nút bấm) TRƯỚC khi viết
+    Brief. Brief mới có thể viết chiến lược theo đúng kênh + source mix sếp chốt.
+    Sếp trả lời → _handle_campaign_setup_text parse & lưu → viết Brief."""
     session.pending_intake["_awaiting_campaign_setup"] = "1"
     await save_session(session)
     addr = _addr(session)
     suggested = session.profile.current_channels or "Facebook, TikTok, Zalo OA, Instagram"
     await message.reply_text(
-        f"✅ Brief đã duyệt! Trước khi em dựng Lịch Nội Dung, em hỏi nhanh 2 ý cho đúng ý {addr} ạ:\n\n"
+        f"📝 *Đã nhận đủ thông tin!* Trước khi em viết Brief, em hỏi nhanh 2 ý "
+        f"cho đúng ý {addr} ạ:\n\n"
         f"1️⃣ *Sếp muốn triển khai ở những kênh nào?*\n"
         f"_(Gợi ý từ profile: {suggested} — sếp cứ liệt kê kênh muốn làm, vd \"chỉ Facebook + TikTok\")_\n\n"
-        f"2️⃣ *Tỉ trọng nội dung theo nguồn (Source) thế nào?*\n"
+        f"2️⃣ *Tỉ trọng nội dung theo nguồn (Source) — cho TỪNG kênh thế nào?*\n"
         f"_UGC (khách tự quay) / EGC (nhân viên) / FGC (founder) / Brand (studio). "
-        f"Vd: \"UGC 50%, FGC 30%, Brand 20% — chưa làm video\". Không rõ thì gõ \"để em tự cân\" cũng được._\n\n"
+        f"Sếp nói rõ kênh nào dùng dạng nào & bao nhiêu %, vd:_\n"
+        f"_\"TikTok: UGC 60% + FGC 40%; Facebook: Brand 50% + EGC 50% — chưa làm video dài\"._\n"
+        f"_Không rõ thì gõ \"để em tự cân\" cũng được._\n\n"
         f"Sếp trả lời cả 2 trong 1 tin nhắn giúp em nhé 🙏",
         parse_mode=ParseMode.MARKDOWN,
     )
 
 
 async def _handle_campaign_setup_text(update, context, session, text):
-    """Parse câu trả lời kênh + source mix của sếp → lưu vào pending_intake →
-    chạy tiếp _confirm_brief_and_gen_calendar."""
+    """Parse câu trả lời kênh + source mix (theo từng kênh) của sếp →
+    lưu vào pending_intake → viết Campaign Brief (channel-aware)."""
     session.pending_intake.pop("_awaiting_campaign_setup", None)
 
     # Parse bằng LLM (CRITIC_REVIEW) — robust với free-form tiếng Việt
@@ -4814,20 +4839,22 @@ async def _handle_campaign_setup_text(update, context, session, text):
         from tools.llm_router import call as _router_call, TaskType as _TT
         import json as _json
         _prompt = (
-            "Trích xuất từ câu trả lời của founder VN về kế hoạch content:\n"
+            "Trích xuất từ câu trả lời của founder VN về kế hoạch content "
+            "(kênh triển khai + tỉ trọng source theo TỪNG kênh):\n"
             f"\"{text}\"\n\n"
             "Trả về DUY NHẤT 1 JSON:\n"
             '{\"channels\": \"<danh sách kênh, cách nhau dấu +; vd \'Facebook + TikTok\'; '
             'rỗng nếu không nêu>\", '
-            '\"source_mix\": \"<mô tả tỉ trọng UGC/EGC/FGC/Brand + dạng loại trừ nếu có; '
-            'rỗng nếu sếp nói tự cân/không rõ>\"}\n'
+            '\"source_mix\": \"<mô tả tỉ trọng UGC/EGC/FGC/Brand GẮN VỚI từng kênh + '
+            'dạng loại trừ nếu có; vd \'TikTok: UGC 60% + FGC 40%; Facebook: Brand 50% + EGC 50%; '
+            'không làm video dài\'; rỗng nếu sếp nói tự cân/không rõ>\"}\n'
             "Chỉ JSON, không giải thích."
         )
         _res = await _router_call(
             task_type=_TT.CRITIC_REVIEW,
             system="Bạn là parser. Chỉ xuất JSON hợp lệ.",
             user=_prompt,
-            max_tokens=300,
+            max_tokens=400,
         )
         _raw = (_res.get("output") or "").strip()
         _m = re.search(r"\{.*\}", _raw, re.DOTALL)
@@ -4853,10 +4880,42 @@ async def _handle_campaign_setup_text(update, context, session, text):
     await update.message.reply_text(
         f"📝 Ghi nhận: *Kênh* = {session.pending_intake.get('channels')}"
         + (f"\n*Source mix* = {source_mix}" if source_mix else "")
-        + f"\n\nEm dựng kế hoạch theo đúng ý {addr} nhé 👇",
+        + f"\n\nEm viết Brief theo đúng ý {addr} nhé 👇",
         parse_mode=ParseMode.MARKDOWN,
     )
-    await _confirm_brief_and_gen_calendar(update.message, session, context, update)
+    await _run_campaign_brief_after_setup(update.message, session, context, update)
+
+
+async def _run_campaign_brief_after_setup(message, session, context, update):
+    """Viết Campaign Brief (đã có channels + source_mix trong intake) → hiển thị.
+    Brief output kèm nút duyệt → brief_confirm → _confirm_brief_and_gen_calendar."""
+    campaign_name = session.pending_intake.get("campaign_name", "Campaign")
+    session.selected_task = "campaign_brief"
+    await save_session(session)
+
+    await message.reply_text(
+        f"📋 Em viết Brief Campaign cho \"{campaign_name}\" "
+        f"(kênh: {session.pending_intake.get('channels', '?')})...\n"
+        f"_Khoảng 60-90 giây ạ._",
+        parse_mode=ParseMode.MARKDOWN,
+    )
+    await context.bot.send_chat_action(
+        chat_id=update.effective_chat.id, action=ChatAction.TYPING,
+    )
+
+    try:
+        from config import AGENT_TIMEOUT
+        result = await asyncio.wait_for(
+            run_operational_skill("campaign_brief", session),
+            timeout=AGENT_TIMEOUT,
+        )
+        await save_session(session)
+        await _send_ops_result(message, session, "campaign_brief", result)
+    except asyncio.TimeoutError:
+        await message.reply_text("⚠️ Brief Campaign timeout. Sếp thử lại nhé.")
+    except Exception as e:
+        logger.exception("Campaign brief auto-run failed: %s", e)
+        await message.reply_text(f"⚠️ Lỗi khi chạy Brief: {str(e)[:200]}")
 
 
 async def _confirm_brief_and_gen_calendar(message, session, context, update):
@@ -5337,33 +5396,13 @@ async def _handle_campaign_finalize_text(update, context, session, text: str):
     for key, val in brief_fields.items():
         session.pending_intake[key] = val or "(chưa rõ)"
 
+    session.pending_intake["campaign_name"] = campaign.get("name", "Campaign")
     session.selected_task = "campaign_brief"
     await save_session(session)
 
-    await update.message.reply_text(
-        f"✅ *Đã nhận đủ thông tin!*\n\n"
-        f"📋 Em làm Brief Campaign cho \"{campaign.get('name', '?')}\" "
-        f"(lever: {lever.get('name', '?')})...\n"
-        f"_Khoảng 60-90 giây ạ._",
-        parse_mode=ParseMode.MARKDOWN,
-    )
-    await context.bot.send_chat_action(
-        chat_id=update.effective_chat.id, action=ChatAction.TYPING,
-    )
-
-    try:
-        from config import AGENT_TIMEOUT
-        result = await asyncio.wait_for(
-            run_operational_skill("campaign_brief", session),
-            timeout=AGENT_TIMEOUT,
-        )
-        await save_session(session)
-        await _send_ops_result(update.message, session, "campaign_brief", result)
-    except asyncio.TimeoutError:
-        await update.message.reply_text("⚠️ Brief Campaign timeout. Sếp thử lại nhé.")
-    except Exception as e:
-        logger.exception("Campaign brief auto-run failed: %s", e)
-        await update.message.reply_text(f"⚠️ Lỗi khi chạy Brief: {str(e)[:200]}")
+    # HỎI kênh + tỉ trọng source mix (theo từng kênh) TRƯỚC khi viết brief —
+    # brief mới có thể viết chiến lược theo đúng kênh + tỉ trọng sếp chốt.
+    await _ask_campaign_setup(update.message, session)
 
 
 # ─── Brand Voice Persistence (Sprint 5) ──────────────────────────
