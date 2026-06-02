@@ -784,6 +784,11 @@ OPS_SKILL_TASK_TYPES: dict[str, TaskType] = {
     "post_batch":            TaskType.OPS_CONTENT_BULK,
 
     # ── Already-optimal chains from strategic ROUTING_TABLE ───────
+    # Synthesis (A→Z kế hoạch tổng, ~40K output): Gemini Pro 1M-ctx primary
+    # → GPT-5-mini → Sonnet. Bắt buộc map ở đây vì _run_skill() tra
+    # OPS_SKILL_TASK_TYPES; thiếu entry này synthesis rơi về GENERIC_CREATIVE
+    # (Sonnet primary) — sai ý định thiết kế + dồn tải lên Sonnet OTPM.
+    "synthesis":             TaskType.SYNTHESIS_LONG_CONTEXT,
     "retention_strategy":    TaskType.RETENTION_MATRIX,   # GPT-5-mini → Sonnet
     "winback_campaign":      TaskType.WINBACK_STRATEGY,   # GPT-5-mini → Sonnet
     "content_calendar":      TaskType.CONTENT_TABLE,      # GPT-5-mini → Sonnet
