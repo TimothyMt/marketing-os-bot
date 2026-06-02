@@ -2939,11 +2939,15 @@ async def _handle_ops_intake_reply(update: Update, context: ContextTypes.DEFAULT
         # Defaults đã được pre-fill ở _send_strategy_aware_form, dùng nguyên
         parsed = {}
     else:
-        # Strategy-aware form: dùng Haiku để extract free-form text nếu structured parse fail
+        # Strategy-aware form + A→Z (full): dùng Haiku extract free-form nếu structured parse fail.
+        # "full" cũng cần fallback vì user hay gõ tự do, không kèm nhãn field → parser rigid miss.
         is_strategy_aware = session.pending_intake.get("_strategy_aware") == "1"
         parsed = _parse_single_shot_intake(text, task_name)
-        # Nếu strategy-aware và parsed có < 2 field → text là free-form, dùng Haiku extract
-        if is_strategy_aware and len([v for v in parsed.values() if v]) < 2:
+        # Số field structured parse bắt được; nếu thiếu so với field cần hỏi → text free-form
+        _task_obj = get_task(task_name)
+        _expected = len(_task_obj.intake_fields) if _task_obj else 2
+        _need_fallback = len([v for v in parsed.values() if v]) < min(2, _expected)
+        if (is_strategy_aware or task_name == "full") and _need_fallback:
             try:
                 parsed_haiku = await _haiku_extract_intake(text, task_name, session)
                 # Merge: parsed_haiku ưu tiên nếu structured parse rỗng
