@@ -164,6 +164,63 @@ async def search_similar_campaigns(
         return []
 
 
+async def get_latest_campaign(user_id: int) -> Optional[dict]:
+    """
+    Lấy campaign gần nhất của user (đầy đủ field strategic) để làm ký ức
+    cho Dream Engine. Returns None nếu chưa có campaign hoặc DB lỗi.
+    """
+    client = _get_client()
+    if client is None:
+        return None
+
+    try:
+        resp = (
+            await client.table(TABLE)
+            .select(
+                "id,business_name,industry,stage,primary_goal,usp,summary,"
+                "market_research,competitor,customer_insight,synthesis,campaign_brief,created_at"
+            )
+            .eq("user_id", user_id)
+            .order("created_at", desc=True)
+            .limit(1)
+            .execute()
+        )
+        return resp.data[0] if resp.data else None
+    except Exception as e:
+        logger.warning("get_latest_campaign failed (user=%d): %s", user_id, e)
+        return None
+
+
+async def get_history_user_ids(limit: int = 200) -> list[int]:
+    """
+    Distinct user_ids có ít nhất 1 campaign history — nguồn user đủ điều kiện
+    để Dream Engine "mơ". Dedupe phía Python (Supabase REST không group-by).
+    """
+    client = _get_client()
+    if client is None:
+        return []
+
+    try:
+        resp = (
+            await client.table(TABLE)
+            .select("user_id,created_at")
+            .order("created_at", desc=True)
+            .limit(limit * 5)  # over-fetch rồi dedupe
+            .execute()
+        )
+        seen: list[int] = []
+        for row in (resp.data or []):
+            uid = row.get("user_id")
+            if uid is not None and uid not in seen:
+                seen.append(uid)
+            if len(seen) >= limit:
+                break
+        return seen
+    except Exception as e:
+        logger.warning("get_history_user_ids failed: %s", e)
+        return []
+
+
 async def list_campaigns(user_id: int, limit: int = 10) -> list[dict]:
     """
     Liệt kê campaigns gần đây của user theo thứ tự created_at DESC.

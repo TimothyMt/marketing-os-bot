@@ -77,3 +77,16 @@ DB_V2_READ  = os.getenv("DB_V2_READ",  "true").lower()  in ("true", "1", "yes") 
 USE_DB_V2 = DB_V2_READ  # backward-compat nếu code khác đang đọc
 
 STAGES = ["idea", "mvp", "growth", "scale"]
+
+# ─────────────────────────────────────────────────────────────────
+# Dream Engine — bot "mơ" ý tưởng marketing ban đêm (AI dreaming).
+#
+# Worker nền tua lại campaign history + brand voice + đối thủ đang track,
+# sinh ý tưởng mới rồi gửi morning digest. Vì đây là tin nhắn CHỦ ĐỘNG
+# (proactive) + tốn token → MẶC ĐỊNH TẮT, bật qua env var DREAM_ENABLED=true.
+# Lệnh /dream (user tự gọi) LUÔN hoạt động bất kể flag này.
+# ─────────────────────────────────────────────────────────────────
+DREAM_ENABLED        = os.getenv("DREAM_ENABLED", "false").lower() in ("true", "1", "yes")
+DREAM_HOUR           = int(os.getenv("DREAM_HOUR", "7"))       # giờ (0-23) gửi digest mỗi ngày
+DREAM_MAX_USERS      = int(os.getenv("DREAM_MAX_USERS", "50")) # cap user/lần để giới hạn chi phí
+DREAM_IDEAS_PER_USER = int(os.getenv("DREAM_IDEAS_PER_USER", "3"))

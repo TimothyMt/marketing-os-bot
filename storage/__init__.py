@@ -10,5 +10,15 @@ from .campaign_history import (
     save_campaign_history,
     search_similar_campaigns,
     list_campaigns,
+    get_latest_campaign,
+    get_history_user_ids,
+)
+from .dreams import (
+    save_dreams,
+    list_dreams,
+    get_dream,
+    update_status as update_dream_status,
+    recent_signatures,
+    mark_surfaced,
 )
 from .embeddings import embed_text

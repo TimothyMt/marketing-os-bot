@@ -27,6 +27,7 @@ from bot.handlers import (
     cmd_admin_userinfo,
     cmd_history,
     cmd_post,
+    cmd_dream,
 )
 
 logging.basicConfig(
@@ -46,6 +47,10 @@ async def post_init(application: Application):
     import asyncio
     from workers.monitor_competitors import start_background_monitor
     asyncio.create_task(start_background_monitor(application.bot, interval_seconds=3600))
+
+    # Dream Engine — bot "mơ" ý tưởng marketing ban đêm (no-op nếu DREAM_ENABLED=false)
+    from workers.dream_engine import start_background_dreamer
+    asyncio.create_task(start_background_dreamer(application.bot))
 
 
 def main():
@@ -81,6 +86,9 @@ def main():
 
     # Sprint 7 — Per-post Actions
     app.add_handler(CommandHandler("post", cmd_post))
+
+    # Dream Engine — /dream: bot mơ ý tưởng marketing on-demand
+    app.add_handler(CommandHandler("dream", cmd_dream))
 
     # Inline keyboard callbacks
     app.add_handler(CallbackQueryHandler(handle_callback))

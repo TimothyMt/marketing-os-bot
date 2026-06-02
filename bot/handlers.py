@@ -956,6 +956,11 @@ async def _handle_callback_inner(update, context, query, session, data, user_id)
         await _handle_adapt_channel_callback(query, session)
         return
 
+    # ── Dream Engine: phát triển / bỏ qua ý tưởng đã mơ ───────────
+    if data.startswith("dreamdev_") or data.startswith("dreamx_"):
+        await _handle_dream_callback(query, data, user_id)
+        return
+
     # ── Competitor → Compare follow-up (Sprint 4) ─────────────────
     if data == "run_compare":
         await query.edit_message_reply_markup(reply_markup=None)
@@ -4852,6 +4857,100 @@ async def cmd_history(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
 
     lines.append("\n💡 _Dùng `/history <từ khoá>` để tìm campaign tương tự_")
     await update.message.reply_text("\n".join(lines), parse_mode=ParseMode.MARKDOWN)
+
+
+# ═════════════════════════════════════════════════════════════════
+# Dream Engine — bot "mơ" ý tưởng marketing (AI dreaming)
+# ═════════════════════════════════════════════════════════════════
+
+async def cmd_dream(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """
+    /dream — Bot mơ NGAY 3 ý tưởng marketing mới từ ký ức của sếp
+    (campaign history + brand voice + đối thủ đang track).
+
+    Hoạt động bất kể DREAM_ENABLED — đây là user tự gọi, không phải proactive.
+    """
+    user_id = update.effective_user.id
+    from workers.dream_engine import generate_and_store, build_digest_text, build_digest_keyboard
+    from storage.dreams import mark_surfaced
+
+    thinking = await update.message.reply_text(
+        "🌙 Để em nhắm mắt mơ chút... (ôn lại chiến lược + đối thủ của sếp)",
+        parse_mode=ParseMode.MARKDOWN,
+    )
+    try:
+        memory, rows = await generate_and_store(user_id)
+    except Exception as e:
+        logger.exception("cmd_dream failed (user=%d): %s", user_id, e)
+        await thinking.edit_text("😴 Em mơ hụt mất rồi, sếp thử lại sau chút nhé.")
+        return
+
+    if memory is None:
+        await thinking.edit_text(
+            "💭 Em chưa có ký ức nào để mơ cho sếp cả.\n\n"
+            "Hãy chạy *phân tích A→Z* (/start) ít nhất 1 lần — sau đó em sẽ mơ ra "
+            "ý tưởng dựa trên chiến lược + đối thủ của sếp.",
+            parse_mode=ParseMode.MARKDOWN,
+        )
+        return
+    if not rows:
+        await thinking.edit_text(
+            "😅 Đêm nay em chưa nghĩ ra ý tưởng nào mới & khác biệt. Sếp thử lại sau nhé."
+        )
+        return
+
+    try:
+        await thinking.delete()
+    except Exception:
+        pass
+    await update.message.reply_text(
+        build_digest_text(rows),
+        parse_mode=ParseMode.MARKDOWN,
+        reply_markup=build_digest_keyboard(rows),
+    )
+    await mark_surfaced([r["id"] for r in rows if r.get("id")])
+
+
+async def _handle_dream_callback(query, data: str, user_id: int) -> None:
+    """Xử lý nút Phát triển (dreamdev_<id>) / Bỏ qua (dreamx_<id>)."""
+    from storage.dreams import get_dream, update_status
+
+    if data.startswith("dreamx_"):
+        dream_id = data[len("dreamx_"):]
+        await update_status(dream_id, "dismissed")
+        try:
+            await query.edit_message_reply_markup(reply_markup=None)
+        except Exception:
+            pass
+        await query.message.reply_text(
+            "🗑 Ok sếp, em bỏ ý tưởng đó. Gõ /dream để em mơ tiếp nhé."
+        )
+        return
+
+    # dreamdev_<id> — phát triển thành mini campaign plan
+    dream_id = data[len("dreamdev_"):]
+    dream = await get_dream(dream_id)
+    if not dream:
+        await query.message.reply_text(
+            "⚠️ Ý tưởng này không còn nữa. Gõ /dream để em mơ ý tưởng mới nhé."
+        )
+        return
+
+    await query.message.reply_text(
+        f"🚀 Em đang phát triển ý tưởng *{dream.get('title','')}* thành kế hoạch thực thi...",
+        parse_mode=ParseMode.MARKDOWN,
+    )
+    from agents.dreamer import gather_memory, expand_dream
+    memory = await gather_memory(user_id) or ""
+    try:
+        plan = await expand_dream(dream, memory)
+    except Exception as e:
+        logger.exception("expand_dream failed (id=%s): %s", dream_id, e)
+        await query.message.reply_text("😴 Em phát triển hụt mất, sếp thử lại nhé.")
+        return
+
+    await update_status(dream_id, "developed")
+    await send_long_message(query.message, plan, parse_mode=ParseMode.MARKDOWN)
 
 
 # ═════════════════════════════════════════════════════════════════
