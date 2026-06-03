@@ -65,6 +65,10 @@ BRAND_VOICE_GATED_SKILLS = {
 
 logger = logging.getLogger(__name__)
 
+# Support contact — cập nhật khi có thông tin chính thức
+SUPPORT_CONTACT = "_(liên hệ support — sắp cập nhật)_"
+SUPPORT_NOTE = f"📸 Nếu thấy lỗi, chụp màn hình và gửi cho support: {SUPPORT_CONTACT}"
+
 STAGE_HEADERS = {
     "market_research": "📊 NGHIÊN CỨU THỊ TRƯỜNG (TAM/SAM/SOM)",
     "competitor":      "🕵️ PHÂN TÍCH ĐỐI THỦ CẠNH TRANH",
@@ -3749,7 +3753,7 @@ async def _run_strategy_plan(message: Message, session, direction: str) -> None:
     except _asyncio.TimeoutError:
         session.pending_intake.pop("_strategy_direction", None)
         await save_session(session)
-        await message.reply_text("⚠️ Xây kế hoạch chiến lược timeout. Sếp thử lại sau nhé.")
+        await message.reply_text(f"⚠️ Xây kế hoạch chiến lược timeout. Sếp thử lại sau nhé.\n\n{SUPPORT_NOTE}")
         return
     except Exception as e:
         session.pending_intake.pop("_strategy_direction", None)
@@ -3901,7 +3905,7 @@ async def _run_pipeline_sequentially(message: Message, session):
                 await _send_html_report(
                     message, html_str, session,
                     caption=(
-                        "📄 *Kết quả một phần* — một số bước bị timeout, đây là phần đã hoàn thành."
+                        f"📄 *Kết quả một phần* — một số bước bị timeout, đây là phần đã hoàn thành.\n\n{SUPPORT_NOTE}"
                         if pipeline_aborted else None
                     ),
                 )
@@ -3918,7 +3922,8 @@ async def _run_pipeline_sequentially(message: Message, session):
         # All stages failed/skipped → no valid content for HTML
         await message.reply_text(
             "⚠️ Tất cả bước phân tích đều timeout/lỗi — không có gì để render HTML. "
-            "Sếp thử chạy lại từng bước riêng lẻ (từ menu Chiến Lược) để xem bước nào fail."
+            "Sếp thử chạy lại từng bước riêng lẻ (từ menu Chiến Lược) để xem bước nào fail.\n\n"
+            + SUPPORT_NOTE
         )
 
     if stage_count > 0 and stage_count == total_stages:
