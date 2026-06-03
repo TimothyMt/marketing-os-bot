@@ -50,6 +50,7 @@ from bot.keyboards import (
     CAMPAIGN_IDEA_CONFIRM_KEYBOARD,
     OFFER_LEVER_KEYBOARD,
     BRAND_VOICE_PROMPT_KEYBOARD,
+    RESEARCH_GATE_KEYBOARD,
 )
 
 
@@ -140,9 +141,9 @@ HELP_MESSAGE = """*Marketing OS — Hướng dẫn sử dụng*
 3. Nhận card tóm tắt + file đầy đủ
 4. Đánh giá output → em note lại để cải thiện
 
-*Mẹo*: Chạy *Trọn Bộ A→Z* trước → các task sau (Brief Campaign, Content Calendar, Landing Page) sẽ tự động dùng Strategy đó làm base.
+*Mẹo*: Chạy *Nghiên Cứu & Phân Tích Thị Trường* trước → các task sau (Brief Campaign, Content Calendar, Landing Page) sẽ tự động dùng Strategy đó làm base.
 
-*Thời gian*: 30-60s task đơn, 3-5p A→Z toàn diện."""
+*Thời gian*: 30-60s task đơn, 3-5p phân tích toàn diện."""
 
 
 def _strip_code_fences(text: str) -> str:
@@ -497,6 +498,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "_awaiting_campaign_setup",
         "_awaiting_campaign_needs",
         "_awaiting_offer_prefs",
+        "_awaiting_research_paste",
     )
     _stuck_now = [k for k in _STUCK_FLAGS if session.pending_intake.get(k)]
     _tone_stuck = session.tone_calibration.get("stage") in ("checking_tone", "waiting_feedback")
@@ -636,6 +638,26 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Post A→Z: User fill 4 trường quyết định (budget, team, start_date, discount)
     if session.pending_intake.get("_awaiting_campaign_finalize"):
         await _handle_campaign_finalize_text(update, context, session, text)
+        return
+
+    # Research Gate: user paste bản nghiên cứu thị trường có sẵn
+    if session.pending_intake.get("_awaiting_research_paste"):
+        session.pending_intake.pop("_awaiting_research_paste", None)
+        session.add_result("synthesis", text)
+        session.stage = PipelineStage.COMPLETE
+        await save_session(session)
+        addr = _addr(session)
+        await update.message.reply_text(
+            f"✅ *Em đã đọc và lưu bản nghiên cứu thị trường của {addr}!*\n\n"
+            f"Giờ sếp có thể dùng toàn bộ workflow — em sẽ dùng bản nghiên cứu này làm nền:\n\n"
+            f"• 📋 *Brief Campaign* — brief cụ thể theo data của sếp\n"
+            f"• 📅 *Lịch Nội Dung* — lịch bám sát strategy\n"
+            f"• 🌐 *Landing Page* — copy aligned với positioning\n"
+            f"• ✍️ *Toàn bộ Operational Skills*\n\n"
+            f"_Sếp muốn bắt đầu từ đâu?_",
+            parse_mode=ParseMode.MARKDOWN,
+            reply_markup=MAIN_MENU_KEYBOARD,
+        )
         return
 
     # Sprint 2: Q&A follow-up (stage COMPLETE + awaiting_followup_for OR stage COMPLETE)
@@ -1398,9 +1420,26 @@ async def _handle_callback_inner(update, context, query, session, data, user_id)
             session.pending_intake.pop(k, None)
         await save_session(session)
         await query.message.reply_text(
-            "Sếp đánh giá output A→Z em vừa làm thế nào ạ?",
+            "Sếp đánh giá output Nghiên Cứu & Phân Tích Thị Trường em vừa làm thế nào ạ?",
             reply_markup=RATING_KEYBOARD,
         )
+        return
+
+    if data == "research_paste":
+        await query.edit_message_reply_markup(reply_markup=None)
+        session.pending_intake["_awaiting_research_paste"] = "1"
+        await save_session(session)
+        await query.message.reply_text(
+            "📋 *Paste bản nghiên cứu thị trường của sếp vào đây ạ.*\n\n"
+            "_Có thể là Google Docs text, báo cáo, file notes — format tự do._\n\n"
+            "_Em đọc xong sẽ dùng làm nền cho toàn bộ workflow._",
+            parse_mode=ParseMode.MARKDOWN,
+        )
+        return
+
+    if data == "research_analyze":
+        await query.edit_message_reply_markup(reply_markup=None)
+        await _send_single_shot_form(query.message, session, "full")
         return
 
     # ── Rating callback (Sprint 2) ───────────────────────────────
@@ -2082,8 +2121,8 @@ async def _handle_callback_inner(update, context, query, session, data, user_id)
                 f"📋 *{task_label} chuyên sâu cần có Marketing Strategy nền.*\n\n"
                 f"Em chưa có data Strategy của sếp.\n\n"
                 f"Để output chính xác (đúng audience, đúng goals, đúng channels), "
-                f"em chạy *Phân Tích Tổng Hợp A→Z* trước nhé. (~5-7 phút, 5 bước)\n\n"
-                f"_Sau khi A→Z xong, em tự động tiếp tục {task_label} cho sếp._",
+                f"em chạy *Nghiên Cứu & Phân Tích Thị Trường* trước nhé. (~5-7 phút, 5 bước)\n\n"
+                f"_Sau khi phân tích xong, em tự động tiếp tục {task_label} cho sếp._",
                 parse_mode=ParseMode.MARKDOWN,
                 reply_markup=NEEDS_STRATEGY_KEYBOARD,
             )
@@ -2176,6 +2215,20 @@ async def _handle_callback_inner(update, context, query, session, data, user_id)
         # - "full" được thêm vào đây để tránh hỏi lại fields đã có từ gate
         SINGLE_SHOT_STRATEGIC = {"market", "competitor", "customer", "pricing", "full", "strategy"}
         if task_type in SINGLE_SHOT_STRATEGIC:
+            # "full" pipeline: hỏi research gate trước (có bản nghiên cứu chưa?)
+            if task_type == "full":
+                await query.edit_message_reply_markup(reply_markup=None)
+                await query.message.reply_text(
+                    "🔬 *Nghiên Cứu & Phân Tích Thị Trường*\n\n"
+                    "Sếp đã có bản nghiên cứu thị trường chưa?\n\n"
+                    "📋 *Có rồi* → Paste vào đây, em dùng làm nền cho toàn bộ workflow "
+                    "_(brief campaign, lịch content, landing page...)_\n\n"
+                    "🔬 *Chưa có* → Em và sếp cùng phân tích từ đầu "
+                    "_(~5-7 phút, 8 bước: Market → Đối thủ → Customer → Pricing → USP → Retention → Strategy)_",
+                    parse_mode=ParseMode.MARKDOWN,
+                    reply_markup=RESEARCH_GATE_KEYBOARD,
+                )
+                return
             task = get_task(task_type)
             if task and task.intake_fields:
                 await query.edit_message_reply_markup(reply_markup=None)
@@ -2270,7 +2323,7 @@ async def _handle_callback_inner(update, context, query, session, data, user_id)
             session.stage = PipelineStage.CONFIRMED
             await save_session(session)
             await query.message.reply_text(
-                "🚀 *Bắt đầu Phân Tích Tổng Hợp A→Z...*",
+                "🔬 *Bắt đầu Nghiên Cứu & Phân Tích Thị Trường...*",
                 parse_mode=ParseMode.MARKDOWN,
             )
             session.stage = PipelineStage.MARKET_RESEARCH
@@ -3630,7 +3683,7 @@ async def _run_pipeline_sequentially(message: Message, session):
             from agents.task_registry import get_task as _get_task
             followup_label = (_get_task(followup_skill).label if _get_task(followup_skill) else followup_skill)
             await message.reply_text(
-                f"✅ *A→Z xong rồi ạ!* Em tiếp tục *{followup_label}* cho sếp luôn nhé...",
+                f"✅ *Nghiên Cứu & Phân Tích xong rồi ạ!* Em tiếp tục *{followup_label}* cho sếp luôn nhé...",
                 parse_mode=ParseMode.MARKDOWN,
             )
             session.selected_task = followup_skill
@@ -3647,7 +3700,7 @@ async def _run_pipeline_sequentially(message: Message, session):
             # User duyệt → POST_AZ_CAMPAIGN; user sửa → surgical edit loop.
             addr = _addr(session)
             await message.reply_text(
-                f"✅ *Hoàn thành A→Z!* Mở file HTML để xem báo cáo đầy đủ.\n\n"
+                f"✅ *Hoàn thành Nghiên Cứu & Phân Tích Thị Trường!* Mở file HTML để xem báo cáo đầy đủ.\n\n"
                 f"─────────────────────\n"
                 f"🔎 *{addr.capitalize()} xem qua giúp em:* những phân tích & chiến lược ở trên "
                 f"đã chính xác chưa ạ? Có chỗ nào cần sửa hoặc bổ sung không?\n\n"
@@ -4092,7 +4145,7 @@ async def _launch_task_from_advisor(update, context, session, task_name: str):
             await save_session(session)
             task_label = (get_task(task_name).label if get_task(task_name) else task_name)
             await msg.reply_text(
-                f"📋 *{task_label} cần Strategy nền.* Em chạy *A→Z* trước nhé sếp?",
+                f"📋 *{task_label} cần Strategy nền.* Em chạy *Nghiên Cứu & Phân Tích Thị Trường* trước nhé sếp?",
                 parse_mode=ParseMode.MARKDOWN,
                 reply_markup=NEEDS_STRATEGY_KEYBOARD,
             )
@@ -4615,7 +4668,7 @@ async def _handle_strategy_edit_text(update, context, session, text: str):
         session.pending_intake.pop("_awaiting_strategy_edit", None)
         await save_session(session)
         await update.message.reply_text(
-            "⚠️ Em không tìm thấy bản strategy để sửa. Sếp chạy lại A→Z giúp em nhé.",
+            "⚠️ Em không tìm thấy bản strategy để sửa. Sếp chạy lại Nghiên Cứu & Phân Tích Thị Trường giúp em nhé.",
         )
         return
 
@@ -5904,7 +5957,7 @@ async def cmd_history(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         msg = (
             header +
             "_(Chưa có campaign nào được lưu)_\n\n"
-            "💡 Chạy phân tích A→Z để bắt đầu tích lũy lịch sử."
+            "💡 Chạy Nghiên Cứu & Phân Tích Thị Trường để bắt đầu tích lũy lịch sử."
         )
         await update.message.reply_text(msg, parse_mode=ParseMode.MARKDOWN)
         return

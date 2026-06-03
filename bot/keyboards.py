@@ -118,9 +118,15 @@ RESTART_KEYBOARD = InlineKeyboardMarkup([
     [InlineKeyboardButton("🔄 Bắt đầu phân tích mới", callback_data="restart")],
 ])
 
-# Nhắc nhẹ tên business trước khi chạy A→Z — user có thể bỏ qua
+# Nhắc nhẹ tên business trước khi chạy pipeline — user có thể bỏ qua
 BIZNAME_SKIP_KEYBOARD = InlineKeyboardMarkup([
     [InlineKeyboardButton("⏭️ Thôi, chạy luôn", callback_data="bizname_skip")],
+])
+
+# Research Gate — hỏi trước khi chạy Nghiên Cứu & Phân Tích Thị Trường
+RESEARCH_GATE_KEYBOARD = InlineKeyboardMarkup([
+    [InlineKeyboardButton("📋 Có rồi — paste bản nghiên cứu vào đây", callback_data="research_paste")],
+    [InlineKeyboardButton("🔬 Chưa có — em và sếp cùng phân tích",    callback_data="research_analyze")],
 ])
 
 

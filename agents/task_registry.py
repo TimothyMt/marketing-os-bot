@@ -54,10 +54,10 @@ class TaskConfig:
 STRATEGIC_TASKS: dict[str, TaskConfig] = {
     "full": TaskConfig(
         name="full",
-        label="Trọn Bộ A→Z",
-        button_emoji="🔍",
+        label="Nghiên Cứu & Phân Tích Thị Trường",
+        button_emoji="🔬",
         category="full",
-        description="Phân tích chiến lược toàn diện — Market + Competitor + Customer + Pricing + USP + Retention + Synthesis",
+        description="Phân tích thị trường toàn diện — Market + Đối thủ + Customer + Pricing + USP + Retention + Strategy",
         skill_class_name="",  # Composite
         pipeline_stages=[
             "market_research",
