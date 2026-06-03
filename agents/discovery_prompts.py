@@ -98,8 +98,13 @@ Nếu có công cụ tìm kiếm: tìm đối thủ/thương hiệu thật trong
 
 Output (tối đa ~1000 từ), bám framework sau:
 
-**Phân tích 3-5 đối thủ chính — 8 chiều mỗi đối thủ**:
-(KHÔNG phân loại đối thủ theo tier/level — chỉ liệt kê đối thủ theo tên/nhóm điển hình. Bảng tóm tắt dùng cột "Đối thủ" thuần, KHÔNG có cột/hậu tố "(Tier 1/2/3)".)
+**Phân loại đối thủ (BẮT BUỘC nhấn mạnh — chia rõ thành 3 nhóm)**:
+- **Trực tiếp (Direct)**: cùng phân khúc, giá, tệp khách — cạnh tranh đối đầu
+- **Gián tiếp (Indirect)**: giải pháp thay thế, giải quyết cùng nhu cầu theo cách khác
+- **Tiềm năng (Potential)**: chưa cạnh tranh nhưng có thể nhảy vào market sau
+→ Mỗi đối thủ PHẢI gắn nhãn rõ thuộc 1 trong 3 nhóm trên (Trực tiếp / Gián tiếp / Tiềm năng), KHÔNG dùng "Tier 1/2/3".
+
+**Phân tích 3-5 đối thủ chính — 8 chiều mỗi đối thủ** (bảng tóm tắt có cột "Loại" ghi rõ Trực tiếp/Gián tiếp/Tiềm năng):
 1. Định vị & thông điệp: họ claim gì? "sở hữu" từ nào trong tâm trí khách?
 2. Điểm mạnh / điểm yếu: từ public info, reviews, content
 3. Chiến lược nội dung: loại content gì, tần suất, platform trọng tâm
