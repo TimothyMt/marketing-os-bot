@@ -197,6 +197,28 @@ body {
   padding: 24px 16px; margin-top: 16px; line-height: 1.7;
 }
 
+/* === Positioning Map Visual === */
+.pos-map-wrap { margin: 24px 0; font-family: inherit; }
+.pos-map-title { font-size: 15px; font-weight: 700; color: var(--text); margin-bottom: 8px; }
+.pos-y-lbl { text-align: center; font-size: 12px; font-weight: 600; color: var(--muted); padding: 4px 0; }
+.pos-quads {
+  display: grid; grid-template-columns: 1fr 1fr;
+  border: 2px solid var(--border); border-radius: 10px; overflow: hidden;
+}
+.pos-q { padding: 14px; min-height: 100px; }
+.pq2 { background: #eff6ff; border-right: 2px solid #bfdbfe; border-bottom: 2px solid #bfdbfe; }
+.pq1 { background: #f0fdf4; border-bottom: 2px solid #bbf7d0; }
+.pq3 { background: #fefce8; border-right: 2px solid #fde68a; }
+.pq4 { background: #fdf4ff; }
+.pos-q-lbl { font-size: 10px; font-weight: 700; text-transform: uppercase; color: var(--muted); margin-bottom: 4px; letter-spacing: 0.5px; }
+.pos-q-desc { font-size: 12px; font-weight: 600; color: var(--text); margin-bottom: 8px; line-height: 1.4; }
+.pos-q-items { display: flex; flex-wrap: wrap; gap: 5px; }
+.pos-item { font-size: 12px; padding: 3px 9px; border-radius: 12px; background: rgba(255,255,255,0.8); border: 1px solid rgba(0,0,0,0.1); color: var(--text); }
+.pos-item-self { background: var(--primary) !important; color: white !important; border-color: var(--primary) !important; font-weight: 600; }
+.pos-x-axis { display: flex; align-items: center; gap: 10px; margin-top: 8px; font-size: 12px; font-weight: 600; color: var(--muted); }
+.pos-x-l, .pos-x-r { flex-shrink: 0; }
+.pos-x-line { flex: 1; height: 2px; background: var(--border); }
+
 /* Mobile */
 @media (max-width: 640px) {
   body { padding: 12px 8px; }
@@ -207,8 +229,114 @@ body {
   .content h3 { font-size: 14px; padding: 7px 12px; }
   .content table { font-size: 13px; }
   .content th, .content td { padding: 8px 10px; }
+  .pos-q { padding: 10px; min-height: 80px; }
+  .pos-q-desc { font-size: 11px; }
 }
 """
+
+
+POS_MAP_SCRIPT = """<script>
+(function() {
+  function isMap(t) {
+    return t.indexOf('^') >= 0 && /GÓC/i.test(t);
+  }
+  function roman(n) { return ['I','II','III','IV'][n-1] || String(n); }
+  function fromRoman(s) {
+    return {'I':1,'II':2,'III':3,'IV':4}[(s||'').toUpperCase().trim()] || 0;
+  }
+  function parseMap(text) {
+    var lines = text.split('\\n'), n = lines.length;
+    var hIdx = -1;
+    for (var i = 0; i < n; i++) {
+      if (/[-─]{4,}/.test(lines[i])) { hIdx = i; break; }
+    }
+    if (hIdx < 0) return null;
+    var cols = {}, vCol = 0, mx = 0;
+    lines.forEach(function(l) {
+      for (var j = 0; j < l.length; j++) if (l[j] === '|') cols[j] = (cols[j]||0) + 1;
+    });
+    Object.keys(cols).forEach(function(j) { if (cols[j] > mx) { mx = cols[j]; vCol = +j; } });
+    if (!mx) vCol = Math.floor((lines[hIdx]||'').length / 2);
+    var yTop = '', yBottom = '', xRight = '', xLeft = '';
+    for (var i = 0; i < hIdx; i++) {
+      if (lines[i].indexOf('^') >= 0) {
+        var t = lines[i].replace(/\^/g,'').replace(/\|/g,'').trim();
+        yTop = t || (i > 0 ? lines[i-1].replace(/\|/g,'').trim() : '');
+        break;
+      }
+    }
+    for (var i = hIdx + 1; i < n; i++) {
+      if (/^\\s*v\\s*$/.test(lines[i]) || lines[i].trim() === 'v') {
+        yBottom = (i+1 < n ? lines[i+1] : '').replace(/\\|/g,'').trim();
+        break;
+      }
+    }
+    var axL = lines[hIdx] || '';
+    var ar = axL.match(/[-─>]+\\s*(.+)$/); if (ar) xRight = ar[1].trim();
+    var lr = axL.match(/^([^─\\-|+]+)[-─]/); if (lr) xLeft = lr[1].trim();
+    var qdesc = {1:'',2:'',3:'',4:''};
+    var gr = /GÓC\\s*(IV|III|II|I)\\s*[:\\-—\\(]?\\s*([^\\n|\\)]{0,60})/gi, gm;
+    while ((gm = gr.exec(text)) !== null) {
+      var num = fromRoman(gm[1]);
+      if (num >= 1 && num <= 4) qdesc[num] = gm[2].replace(/[\\)\\]]/g,'').trim();
+    }
+    var items = {1:[],2:[],3:[],4:[]}, seen = {1:[],2:[],3:[],4:[]};
+    for (var row = 0; row < n; row++) {
+      if (row === hIdx) continue;
+      var line = lines[row], isTop = row < hIdx;
+      var ir = /(?:[•·●♦★→]|\\[)([^\\]•·●♦★→\\n|]{2,35})(?:\\])?/g, im;
+      while ((im = ir.exec(line)) !== null) {
+        var item = im[1].trim().replace(/[\\[\\]\\(\\)]/g,'');
+        if (!item || /GÓC|TRỐNG/i.test(item)) continue;
+        var q = isTop ? (im.index >= vCol ? 1 : 2) : (im.index >= vCol ? 4 : 3);
+        if (seen[q].indexOf(item) < 0) { seen[q].push(item); items[q].push(item); }
+      }
+    }
+    return {yTop:yTop, yBottom:yBottom, xRight:xRight, xLeft:xLeft, qdesc:qdesc, items:items};
+  }
+  function mk(tag, cls, text) {
+    var el = document.createElement(tag);
+    if (cls) el.className = cls;
+    if (text !== undefined) el.textContent = text;
+    return el;
+  }
+  function buildEl(map) {
+    var w = mk('div','pos-map-wrap');
+    w.appendChild(mk('div','pos-map-title','📍 Bản đồ Định vị Cạnh tranh'));
+    if (map.yTop) w.appendChild(mk('div','pos-y-lbl top','↑ ' + map.yTop));
+    var qg = mk('div','pos-quads');
+    [[2,'pq2'],[1,'pq1'],[3,'pq3'],[4,'pq4']].forEach(function(p) {
+      var qn = p[0], q = mk('div','pos-q ' + p[1]);
+      q.appendChild(mk('div','pos-q-lbl','GÓC ' + roman(qn)));
+      if (map.qdesc[qn]) q.appendChild(mk('div','pos-q-desc', map.qdesc[qn]));
+      var qi = mk('div','pos-q-items');
+      map.items[qn].forEach(function(it) {
+        var isSelf = /SếP|sếp|★|self/.test(it);
+        qi.appendChild(mk('span','pos-item' + (isSelf ? ' pos-item-self' : ''), it));
+      });
+      q.appendChild(qi);
+      qg.appendChild(q);
+    });
+    w.appendChild(qg);
+    if (map.yBottom) w.appendChild(mk('div','pos-y-lbl bot','↓ ' + map.yBottom));
+    if (map.xLeft || map.xRight) {
+      var xa = mk('div','pos-x-axis');
+      if (map.xLeft) xa.appendChild(mk('span','pos-x-l','← ' + map.xLeft));
+      xa.appendChild(mk('div','pos-x-line'));
+      if (map.xRight) xa.appendChild(mk('span','pos-x-r', map.xRight + ' →'));
+      w.appendChild(xa);
+    }
+    return w;
+  }
+  document.querySelectorAll('pre').forEach(function(pre) {
+    var text = (pre.querySelector('code') || pre).textContent || '';
+    if (!isMap(text)) return;
+    var map = parseMap(text);
+    if (!map) return;
+    pre.parentNode.replaceChild(buildEl(map), pre);
+  });
+})();
+</script>"""
 
 
 HTML_TEMPLATE = """<!DOCTYPE html>
@@ -247,6 +375,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
   </div>
 
 </div>
+{pos_map_script}
 </body>
 </html>"""
 
@@ -451,6 +580,7 @@ def build_single_skill_report(
         sections_html=section_html,
         css=CSS,
         tab_rules=_generate_tab_css(1),
+        pos_map_script=POS_MAP_SCRIPT,
     )
 
 
@@ -512,4 +642,5 @@ def build_report(
         sections_html=sections_html,
         css=CSS,
         tab_rules=_generate_tab_css(n),
+        pos_map_script=POS_MAP_SCRIPT,
     )

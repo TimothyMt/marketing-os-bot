@@ -289,7 +289,7 @@ def get_strategic_pipeline_tiers() -> list[TierConfig]:
             ],
             must_have=set(),  # Cả 2 đều nice-to-have (Synthesis có thể fallback)
             nice_to_have={"usp_definition_agent", "psychology_pricing_agent"},
-            timeout_per_agent=180,
+            timeout_per_agent=260,   # bumped: Sonnet(55s) + GPT-5(90s) + overhead ~20s = 165s; 260 gives buffer
             max_concurrent=2,
         ),
         TierConfig(
