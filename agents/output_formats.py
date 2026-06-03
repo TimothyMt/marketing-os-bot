@@ -41,6 +41,7 @@ LANG_INSTRUCTIONS = {
   * "JTBD (Jobs-to-be-Done — nhiệm vụ khách cần làm)"
   * "TOFU/MOFU/BOFU (Top/Middle/Bottom of Funnel — đầu/giữa/cuối phễu)"
 - Sau khi giải thích 1 lần → dùng viết tắt tự do
+- CHỈ giải thích inline trong ngoặc lần đầu — KHÔNG tạo section "Ghi chú thuật ngữ"/glossary riêng ở cuối.
 - SMART/SAVE Goals viết FULL: "S (Specific — Cụ thể): ..." """,
 
     "fluent": """**NGÔN NGỮ (USER THÔNG THẠO TIẾNG ANH):**
@@ -107,6 +108,7 @@ _SHARED_LANGUAGE_RULES = """**NGÔN NGỮ (BẮT BUỘC):**
    - "TOFU/MOFU/BOFU (Top/Middle/Bottom of Funnel — đầu/giữa/cuối phễu)"
    - "UGC/EGC/FGC (User/Employee/Founder-Generated Content)"
    - Sau khi đã giải thích lần đầu → có thể dùng viết tắt tự do
+   - CHỈ giải thích INLINE trong ngoặc ngay lần đầu. TUYỆT ĐỐI KHÔNG gom thành 1 section "Ghi chú thuật ngữ" / glossary riêng ở cuối — đó là dư thừa.
 
 3. **SMART Goals — viết FULL ngay từ đầu:**
    - "**S (Specific — Cụ thể):** ..."
@@ -212,9 +214,12 @@ OPERATIONAL_DELIVERABLE_FORMAT = f"""
 [FULL content — theo template cụ thể của skill. Dùng markdown đầy đủ.
 
 Cấu trúc thường có:
-- Frontmatter metadata (date, channel, target, offer)
-- Body content theo template skill
+- Body content theo template skill (vào thẳng nội dung — KHÔNG mở đầu bằng block "Frontmatter"/metadata date/channel/target/offer rời rạc)
 - Lưu ý vận hành / A/B test / KPI tracking ở cuối nếu có
+
+TUYỆT ĐỐI KHÔNG thêm:
+- Block "Frontmatter" hay bảng metadata kỹ thuật ở đầu (date/channel/target/offer liệt kê rời) — nếu cần nêu, lồng tự nhiên vào câu mở đầu.
+- Section "Ghi chú thuật ngữ" / glossary liệt kê định nghĩa viết tắt ở cuối — thuật ngữ đã được giải thích trong ngoặc ngay lần đầu xuất hiện rồi.
 ]
 
 ---
