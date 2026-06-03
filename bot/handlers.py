@@ -495,6 +495,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         BIZ_CONTEXT_AWAITING, BIZ_CONTEXT_PENDING_SKILL,
         "_awaiting_feedback_for", "_awaiting_rating_for", "_pending_regen_skill",
         "_awaiting_campaign_setup",
+        "_awaiting_campaign_needs",
     )
     _stuck_now = [k for k in _STUCK_FLAGS if session.pending_intake.get(k)]
     _tone_stuck = session.tone_calibration.get("stage") in ("checking_tone", "waiting_feedback")
@@ -614,6 +615,11 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Ads Scheduler: user đang nhập ngưỡng alert
     if session.pending_intake.get("_awaiting_ads_thresholds"):
         await _handle_ads_threshold_text(update, session, text)
+        return
+
+    # Post A→Z: Bot hỏi nhu cầu (mục tiêu/dịp/ngân sách) → parse → đề xuất campaign options
+    if session.pending_intake.get("_awaiting_campaign_needs"):
+        await _handle_campaign_needs_text(update, context, session, text)
         return
 
     # Post A→Z: User mô tả idea campaign → refine với customer + market
@@ -1224,49 +1230,25 @@ async def _handle_callback_inner(update, context, query, session, data, user_id)
         )
         return
 
-    # Branch B: User chưa biết → Max propose 3 options
+    # Branch B: User chưa biết → hỏi nhu cầu trước, rồi Max propose 3 options
     if data == "az_propose_campaign" or data == "campaign_propose_again":
         await query.edit_message_reply_markup(reply_markup=None)
         session.pending_intake.pop("_awaiting_rating_for", None)
-        session.pending_intake.pop("_awaiting_campaign_idea", None)  # cancel free-text mode
+        session.pending_intake.pop("_awaiting_campaign_idea", None)
+        session.pending_intake["_awaiting_campaign_needs"] = "1"
         await save_session(session)
-
+        addr = _addr(session)
         await query.message.reply_text(
-            "🔍 *Em đang phân tích Strategy + Customer + Market để đề xuất campaign...*\n"
-            "_Khoảng 20-40 giây ạ._",
+            f"🔍 *Trước khi đề xuất campaign, em hỏi nhanh {addr} 3 ý nhé:*\n\n"
+            f"1️⃣ *Mục tiêu lúc này là gì?*\n"
+            f"_(Thu khách mới / Bán thêm cho khách cũ / Ra sản phẩm mới / Kéo khách cũ quay lại)_\n\n"
+            f"2️⃣ *Có dịp / mùa vụ nào sắp tới không?*\n"
+            f"_(Tết, 8/3, khai trường, cuối năm, v.v. — hoặc 'không có dịp cụ thể')_\n\n"
+            f"3️⃣ *Ngân sách campaign dự kiến khoảng nào?*\n"
+            f"_(Nhỏ <10 triệu / Vừa 10-50 triệu / Lớn >50 triệu — hoặc gõ con số cụ thể)_\n\n"
+            f"Sếp trả lời cả 3 trong 1 tin giúp em nhé 🙏",
             parse_mode=ParseMode.MARKDOWN,
         )
-        await context.bot.send_chat_action(
-            chat_id=update.effective_chat.id, action=ChatAction.TYPING,
-        )
-
-        try:
-            from agents.campaign_ideation import propose_campaigns, format_options_card
-            options = await propose_campaigns(session)
-            if not options:
-                await query.message.reply_text(
-                    "⚠️ Em đề xuất bị lỗi. Sếp thử lại hoặc gõ idea trực tiếp nhé.",
-                    reply_markup=POST_AZ_CAMPAIGN_KEYBOARD,
-                )
-                return
-
-            # Store options vào pending_intake để pick_X dùng lại
-            import json as _json
-            session.pending_intake["_proposed_campaigns"] = _json.dumps(options, ensure_ascii=False)
-            await save_session(session)
-
-            card = format_options_card(options)
-            await send_long_message(
-                query.message, card,
-                parse_mode=ParseMode.MARKDOWN,
-                reply_markup=CAMPAIGN_OPTION_KEYBOARD,
-            )
-        except Exception as e:
-            logger.exception("Campaign propose failed: %s", e)
-            await query.message.reply_text(
-                f"⚠️ Lỗi khi đề xuất: {str(e)[:200]}",
-                reply_markup=POST_AZ_CAMPAIGN_KEYBOARD,
-            )
         return
 
     # User picks 1/2/3 từ proposed options → show finalize form
@@ -5168,6 +5150,80 @@ async def _send_excel_funnel_map(message: Message, funnel_map: list, campaign_na
 
 # ─── Campaign Ideation Helpers ────────────────────────────────────
 
+async def _handle_campaign_needs_text(update, context, session, text: str):
+    """Parse câu trả lời nhu cầu (mục tiêu/dịp/ngân sách) → lưu vào pending_intake
+    → chạy propose_campaigns với context đầy đủ."""
+    session.pending_intake.pop("_awaiting_campaign_needs", None)
+
+    # Lưu vào pending_intake để propose_campaigns dùng làm context
+    session.pending_intake["_campaign_needs_raw"] = text.strip()
+
+    # Parse nhanh bằng LLM để lưu structured
+    try:
+        from tools.llm_router import call as _rc, TaskType as _TT
+        import json as _json
+        _res = await _rc(
+            task_type=_TT.CRITIC_REVIEW,
+            system="Bạn là parser. Chỉ xuất JSON hợp lệ.",
+            user=(
+                "Trích xuất từ câu trả lời của founder VN về nhu cầu campaign:\n"
+                f"\"{text}\"\n\n"
+                "Trả về JSON:\n"
+                '{"campaign_objective": "<thu khách mới | bán thêm cho khách cũ | ra sản phẩm mới | kéo khách cũ quay lại | khác>", '
+                '"upcoming_occasion": "<dịp/mùa vụ hoặc rỗng>", '
+                '"budget_range": "<nhỏ | vừa | lớn | cụ thể hoặc rỗng>"}'
+            ),
+            max_tokens=200,
+        )
+        _raw = (_res.get("output") or "").strip()
+        _m = re.search(r"\{.*\}", _raw, re.DOTALL)
+        if _m:
+            _d = _json.loads(_m.group(0))
+            if _d.get("campaign_objective"):
+                session.pending_intake["campaign_objective"] = _d["campaign_objective"]
+            if _d.get("upcoming_occasion"):
+                session.pending_intake["upcoming_occasion"] = _d["upcoming_occasion"]
+            if _d.get("budget_range"):
+                session.pending_intake["budget_range"] = _d["budget_range"]
+    except Exception as e:
+        logger.warning("campaign_needs parse failed: %s", e)
+
+    await save_session(session)
+
+    await update.message.reply_text(
+        "🔍 *Em đang đề xuất campaign phù hợp...*\n_Khoảng 20-40 giây ạ._",
+        parse_mode=ParseMode.MARKDOWN,
+    )
+    await context.bot.send_chat_action(
+        chat_id=update.effective_chat.id, action=ChatAction.TYPING,
+    )
+
+    try:
+        from agents.campaign_ideation import propose_campaigns, format_options_card
+        options = await propose_campaigns(session)
+        if not options:
+            await update.message.reply_text(
+                "⚠️ Em đề xuất bị lỗi. Sếp thử lại hoặc gõ idea trực tiếp nhé.",
+                reply_markup=POST_AZ_CAMPAIGN_KEYBOARD,
+            )
+            return
+        import json as _json
+        session.pending_intake["_proposed_campaigns"] = _json.dumps(options, ensure_ascii=False)
+        await save_session(session)
+        card = format_options_card(options)
+        await send_long_message(
+            update.message, card,
+            parse_mode=ParseMode.MARKDOWN,
+            reply_markup=CAMPAIGN_OPTION_KEYBOARD,
+        )
+    except Exception as e:
+        logger.exception("Campaign propose after needs failed: %s", e)
+        await update.message.reply_text(
+            f"⚠️ Lỗi khi đề xuất: {str(e)[:200]}",
+            reply_markup=POST_AZ_CAMPAIGN_KEYBOARD,
+        )
+
+
 async def _handle_campaign_idea_text(update, context, session, text: str):
     """Refine user's campaign idea với customer_insight + market_research, rồi show confirm card."""
     text = (text or "").strip()
@@ -5236,7 +5292,7 @@ async def _show_offer_lever_selection(message: Message, session, campaign: dict)
     await save_session(session)
 
     await message.reply_text(
-        "🎯 *Em đang đề xuất 4 offer levers phù hợp với campaign vừa chốt...*\n"
+        "🎯 *Em đang đề xuất cách ưu đãi phù hợp với campaign vừa chốt...*\n"
         "_Khoảng 15-25 giây ạ._",
         parse_mode=ParseMode.MARKDOWN,
     )

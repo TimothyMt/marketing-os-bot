@@ -126,6 +126,12 @@ PROPOSE_SYSTEM = """Bạn là Max — CMO AI giúp founder VN xác định campa
 
 Dựa vào Strategy synthesis + Customer Insight + Market Research, đề xuất 3 campaign options KHẢ THI nhất.
 
+🔑 QUAN TRỌNG: Context sẽ có section "## Nhu cầu founder vừa chia sẻ" — ĐỌC KỸ và BẮT BUỘC ưu tiên theo đó:
+- Nếu founder muốn "thu khách mới" → 3 options phải xoay quanh acquisition
+- Nếu có dịp/mùa vụ cụ thể → ít nhất 2/3 options bám dịp đó
+- Nếu ngân sách nhỏ → options phải organic-first, chi phí thấp; ngân sách lớn → paid media heavy
+- KHÔNG đề xuất campaign trái ngược với nhu cầu founder đã nêu
+
 Mỗi option phải:
 - Bám sát SAVE Framework + SMART Goals trong synthesis
 - Match với pain point từ Customer Insight (cite cụ thể)
@@ -217,19 +223,31 @@ QUY TẮC:
 
 
 def _build_ideation_context(session: Session) -> str:
-    """Build subset context: profile + customer + market + synthesis (nếu có)."""
+    """Build subset context: profile + customer + market + synthesis + campaign needs."""
     parts = [session.profile.to_context_string()]
 
     for key, label in [
-        ("market_research",  "## Kết quả Nghiên cứu Thị trường"),
-        ("customer_insight", "## Kết quả Customer Insight"),
-        ("synthesis",        "## Marketing Strategy (Synthesis)"),
+        ("market_research",   "## Kết quả Nghiên cứu Thị trường"),
+        ("customer_insight",  "## Kết quả Customer Insight"),
+        ("synthesis",         "## Marketing Strategy (Synthesis)"),
         ("psychology_pricing","## Pricing & Psychology"),
-        ("usp_definition",   "## USP"),
+        ("usp_definition",    "## USP"),
     ]:
         content = session.get_latest_result(key)
         if content:
             parts.append(f"{label}\n{content}")
+
+    # Nhu cầu cụ thể founder vừa trả lời (mục tiêu / dịp / ngân sách)
+    needs = (session.pending_intake.get("_campaign_needs_raw") or "").strip()
+    obj   = (session.pending_intake.get("campaign_objective") or "").strip()
+    occ   = (session.pending_intake.get("upcoming_occasion") or "").strip()
+    bgt   = (session.pending_intake.get("budget_range") or "").strip()
+    if needs:
+        need_lines = [f"## Nhu cầu founder vừa chia sẻ\n_{needs}_"]
+        if obj:  need_lines.append(f"- Mục tiêu: {obj}")
+        if occ:  need_lines.append(f"- Dịp/mùa vụ: {occ}")
+        if bgt:  need_lines.append(f"- Ngân sách: {bgt}")
+        parts.append("\n".join(need_lines))
 
     return "\n\n---\n\n".join(parts)
 
@@ -514,9 +532,9 @@ async def propose_offer_levers(session: Session, campaign: dict) -> Optional[lis
 def format_levers_card(campaign: dict, levers: list[dict]) -> str:
     """Format 4 offer lever options để user pick."""
     lines = [
-        f"🎯 *Em đề xuất 4 OFFER LEVERS cho campaign \"{campaign.get('name', '?')}\":*",
+        f"🎯 *Em đề xuất 4 cách ưu đãi cho campaign \"{campaign.get('name', '?')}\":*",
         "",
-        "_(Lever = cơ chế ưu đãi. KHÔNG mặc định là discount %. Mỗi lever phù hợp với 1 chiến thuật khác nhau.)_",
+        "_(Đây là cơ chế ưu đãi để kéo khách action — không nhất thiết phải discount %. Mỗi cách phù hợp với 1 mục tiêu khác nhau.)_",
         "",
     ]
 
@@ -534,7 +552,7 @@ def format_levers_card(campaign: dict, levers: list[dict]) -> str:
         lines.append("")
 
     lines.append("━━━━━━━━━━━━━━━━━━━━")
-    lines.append("\n👇 *Sếp chọn lever nào?*")
+    lines.append("\n👇 *Sếp chọn cách ưu đãi nào?*")
     return "\n".join(lines)
 
 
@@ -551,7 +569,7 @@ def format_dynamic_finalize_form(campaign: dict, lever: dict) -> str:
 
     lines = [
         f"✅ *Đã chốt: \"{campaign.get('name', '?')}\"*",
-        f"🎟 *Lever:* {lever.get('name', '?')}",
+        f"🎟 *Cách ưu đãi:* {lever.get('name', '?')}",
         "",
         "━━━━━━━━━━━━━━━━━━━━",
         "*🔧 Sếp điền chi tiết:*",
