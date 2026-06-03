@@ -312,7 +312,13 @@ class StrategySynthesisSkill(AgentSkill):
             stage=session.profile.stage or "growth",
             goals=[session.profile.primary_goal or "tăng doanh thu"],
         )
-        return f"""Tổng hợp tất cả insights đã phân tích thành Marketing Strategy hoàn chỉnh.
+        direction = (session.pending_intake or {}).get("_strategy_direction", "")
+        direction_block = (
+            f"\n\n## Hướng chiến lược sếp chọn:\n{direction}\n\n"
+            f"→ Tập trung kế hoạch theo hướng này. Các phần khác là hỗ trợ."
+        ) if direction else ""
+
+        return f"""Tổng hợp tất cả insights đã phân tích thành Marketing Strategy hoàn chỉnh.{direction_block}
 
 {save_prompt}
 

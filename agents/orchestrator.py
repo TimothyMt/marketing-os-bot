@@ -252,9 +252,8 @@ def get_strategic_pipeline_tiers() -> list[TierConfig]:
     - T4: synthesizer_agent (đầu ra cuối cùng cho user)
 
     nice_to_have (degraded mode — pipeline continues):
-    - T1 market/competitor: nếu fail, Synthesis có ghi "data thiếu"
-    - T2 cả 2: optional polish, không block downstream
-    - T3 cả 2: nếu fail, Synthesis có mention "retention/winback chưa định nghĩa"
+    - T1 market/competitor: nếu fail, strategy summary có ghi "data thiếu"
+    - T2 cả 2: optional polish, không block direction-picking step
     """
     from agents.agent_wrappers import (
         market_research_agent,
@@ -262,10 +261,6 @@ def get_strategic_pipeline_tiers() -> list[TierConfig]:
         customer_insight_agent,
         usp_definition_agent,
         psychology_pricing_agent,
-        retention_strategy_agent,
-        winback_vision_agent,
-        synthesizer_agent,
-        retention_then_winback_chain,
     )
 
     return [
@@ -278,8 +273,8 @@ def get_strategic_pipeline_tiers() -> list[TierConfig]:
             ],
             must_have={"customer_insight_agent"},
             nice_to_have={"market_research_agent", "competitor_agent"},
-            timeout_per_agent=180,   # 3 phút mỗi agent
-            max_concurrent=3,         # 3 agents same tier, đủ TPM Tier 3+
+            timeout_per_agent=180,
+            max_concurrent=3,
         ),
         TierConfig(
             name="T2 Strategy",
@@ -287,28 +282,10 @@ def get_strategic_pipeline_tiers() -> list[TierConfig]:
                 usp_definition_agent,
                 psychology_pricing_agent,
             ],
-            must_have=set(),  # Cả 2 đều nice-to-have (Synthesis có thể fallback)
-            nice_to_have={"usp_definition_agent", "psychology_pricing_agent"},
-            timeout_per_agent=260,   # bumped: Sonnet(55s) + GPT-5(90s) + overhead ~20s = 165s; 260 gives buffer
-            max_concurrent=2,
-        ),
-        TierConfig(
-            name="T3 CustomerJourney",
-            # SEQUENTIAL chain — Winback needs Retention output
-            # Wrap thành 1 chain function thay vì 2 agents parallel
-            agents=[retention_then_winback_chain],
             must_have=set(),
-            nice_to_have={"retention_then_winback_chain"},
-            timeout_per_agent=360,   # 6 phút — 2 calls sequential
-            max_concurrent=1,
-        ),
-        TierConfig(
-            name="T4 Synthesis",
-            agents=[synthesizer_agent],
-            must_have={"synthesizer_agent"},  # ABORT nếu fail (user không có deliverable)
-            nice_to_have=set(),
-            timeout_per_agent=300,   # 5 phút — Gemini Pro 1M ctx có buffer
-            max_concurrent=1,
+            nice_to_have={"usp_definition_agent", "psychology_pricing_agent"},
+            timeout_per_agent=260,
+            max_concurrent=2,
         ),
     ]
 
@@ -321,13 +298,16 @@ async def run_multi_agent_pipeline(
     session: Any,
     progress_callback: Optional[Callable[[str], Awaitable[None]]] = None,
 ) -> dict[str, AgentResult]:
-    """Top-level orchestrator — chạy 4-tier strategic pipeline.
+    """Top-level orchestrator — chạy 2-tier research pipeline.
 
     Tier-by-tier execution:
     - Tier N wait Tier N-1 hoàn thành
     - Agents trong cùng tier chạy parallel
     - Critical fail → abort + raise PipelineAbortError
     - Nice-to-have fail → log + continue
+
+    Synthesis (strategy plan) runs interactively AFTER user picks a direction.
+    See handlers._run_strategy_plan for the post-pipeline flow.
 
     Yields: tuple(stage_key, output) per agent — tương thích với pipeline.py
     interface để handler.py không phải sửa logic stream.

@@ -57,7 +57,7 @@ STRATEGIC_TASKS: dict[str, TaskConfig] = {
         label="Nghiên Cứu & Phân Tích Thị Trường",
         button_emoji="🔬",
         category="full",
-        description="Phân tích thị trường toàn diện — Market + Đối thủ + Customer + Pricing + USP + Retention + Strategy",
+        description="Phân tích thị trường toàn diện — Market + Đối thủ + Customer + Pricing + USP → Sếp chọn hướng → Kế hoạch chiến lược",
         skill_class_name="",  # Composite
         pipeline_stages=[
             "market_research",
@@ -65,9 +65,7 @@ STRATEGIC_TASKS: dict[str, TaskConfig] = {
             "customer_insight",
             "psychology_pricing",
             "usp_definition",
-            "retention_strategy",
-            "winback_campaign",
-            "synthesis",
+            # synthesis runs interactively after user picks strategic direction
         ],
         intake_required_fields=[
             "industry", "product_service", "target_customer",

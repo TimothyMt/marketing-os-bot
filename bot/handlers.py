@@ -74,7 +74,7 @@ STAGE_HEADERS = {
 }
 
 TASK_LABELS = {
-    "full":       "Phân tích toàn diện (5 bước)",
+    "full":       "Nghiên Cứu & Phân Tích Thị Trường",
     "market":     "Nghiên cứu thị trường",
     "competitor": "Phân tích đối thủ",
     "customer":   "Customer Insight & ICP",
@@ -84,7 +84,7 @@ TASK_LABELS = {
 }
 
 TASK_PIPELINE_STEPS = {
-    "full":       "1️⃣ Thị trường · 2️⃣ Đối thủ · 3️⃣ Customer · 4️⃣ Psychology & Pricing · 5️⃣ Strategy",
+    "full":       "1️⃣ Thị trường · 2️⃣ Đối thủ · 3️⃣ Customer · 4️⃣ Psychology & Pricing · 5️⃣ USP → Sếp chọn hướng → Kế hoạch chiến lược",
     "market":     "📊 Phân tích TAM/SAM/SOM + market dynamics",
     "competitor": "🕵️ Landscape đối thủ + market gap analysis",
     "customer":   "👥 ICP profile + Jobs-to-be-Done + Customer Journey",
@@ -94,10 +94,9 @@ TASK_PIPELINE_STEPS = {
 }
 
 TASK_STAGE_COUNT = {
-    # Sprint 2+3: full pipeline mở rộng 5 → 8 stages
-    # market + competitor + customer + psychology+pricing + usp_definition (conditional)
-    # + retention_strategy + winback_campaign + synthesis
-    "full": 8,
+    # Research pipeline: market + competitor + customer + psychology_pricing + usp_definition
+    # Synthesis runs interactively after user picks direction — not counted here
+    "full": 5,
     "market": 1,
     "competitor": 1,
     "customer": 1,
@@ -499,6 +498,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "_awaiting_campaign_needs",
         "_awaiting_offer_prefs",
         "_awaiting_research_paste",
+        "_awaiting_direction_custom",
     )
     _stuck_now = [k for k in _STUCK_FLAGS if session.pending_intake.get(k)]
     _tone_stuck = session.tone_calibration.get("stage") in ("checking_tone", "waiting_feedback")
@@ -658,6 +658,13 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             parse_mode=ParseMode.MARKDOWN,
             reply_markup=MAIN_MENU_KEYBOARD,
         )
+        return
+
+    # Direction Gate: user gõ hướng chiến lược riêng (thay vì chọn button)
+    if session.pending_intake.get("_awaiting_direction_custom"):
+        session.pending_intake.pop("_awaiting_direction_custom", None)
+        await save_session(session)
+        await _run_strategy_plan(update.message, session, direction=text)
         return
 
     # Sprint 2: Q&A follow-up (stage COMPLETE + awaiting_followup_for OR stage COMPLETE)
@@ -1440,6 +1447,33 @@ async def _handle_callback_inner(update, context, query, session, data, user_id)
     if data == "research_analyze":
         await query.edit_message_reply_markup(reply_markup=None)
         await _send_single_shot_form(query.message, session, "full")
+        return
+
+    if data == "direction_custom":
+        await query.edit_message_reply_markup(reply_markup=None)
+        session.pending_intake["_awaiting_direction_custom"] = "1"
+        await save_session(session)
+        await query.message.reply_text(
+            "✏️ *Sếp mô tả hướng muốn đánh ạ.*\n\n"
+            "_Ví dụ: \"Tập trung vào TikTok + khách trẻ 18-24\" hoặc \"Đánh premium, bỏ phân khúc rẻ\"_",
+            parse_mode=ParseMode.MARKDOWN,
+        )
+        return
+
+    if data.startswith("direction_"):
+        import json as _json
+        await query.edit_message_reply_markup(reply_markup=None)
+        try:
+            idx = int(data.split("_", 1)[1])
+            raw = session.pending_intake.get("_direction_options", "[]")
+            directions = _json.loads(raw)
+            chosen = directions[idx]
+            direction_text = f"{chosen.get('emoji','')} {chosen.get('title','')} — {chosen.get('desc','')}"
+        except Exception:
+            direction_text = data.replace("direction_", "")
+        session.pending_intake.pop("_direction_options", None)
+        await save_session(session)
+        await _run_strategy_plan(query.message, session, direction=direction_text)
         return
 
     # ── Rating callback (Sprint 2) ───────────────────────────────
@@ -3558,6 +3592,175 @@ async def _handle_bizname_text(update, context, session, text: str):
     await _proceed_after_confirm(update.message, session)
 
 
+# ─── Synthesis split: summary → direction → strategy plan ────────
+
+async def _run_synthesis_summary(session) -> list[dict]:
+    """Quick LLM call to identify 3-4 strategic directions from research results."""
+    import json as _json
+    from tools.llm_router import call as router_call, TaskType
+
+    g = session.get_latest_result
+    parts = []
+    for key, label in [
+        ("market_research",    "Thị trường"),
+        ("competitor",         "Đối thủ"),
+        ("customer_insight",   "Khách hàng"),
+        ("psychology_pricing", "Định giá & Psychology"),
+        ("usp_definition",     "USP"),
+    ]:
+        val = g(key)
+        if val:
+            parts.append(f"## {label}\n{val[:1500]}")
+
+    if not parts:
+        return _default_strategy_directions()
+
+    system = (
+        "Bạn là marketing strategist. Đọc kết quả nghiên cứu và xác định 3-4 hướng "
+        "chiến lược nổi bật nhất DỰA VÀO DATA có trong nghiên cứu.\n\n"
+        "Trả về JSON array (không có text khác):\n"
+        "[\n"
+        "  {\"emoji\": \"📱\", \"title\": \"Tên hướng ngắn (5-8 chữ)\", "
+        "\"desc\": \"1 câu mô tả cơ hội cụ thể từ data\"},\n"
+        "  ...\n"
+        "]\n\n"
+        "Mỗi hướng PHẢI dựa vào bằng chứng cụ thể từ nghiên cứu "
+        "(số liệu, insight, gap đối thủ, nhu cầu khách...)."
+    )
+    user = "Nghiên cứu:\n\n" + "\n\n".join(parts)
+
+    try:
+        result = await router_call(
+            task_type=TaskType.INTAKE_JSON,
+            system=system,
+            user=user,
+            max_tokens=600,
+        )
+        import re as _re
+        raw = result["output"]
+        match = _re.search(r'\[.*\]', raw, _re.DOTALL)
+        if match:
+            directions = _json.loads(match.group())
+            if isinstance(directions, list) and directions:
+                return directions[:4]
+    except Exception:
+        logger.warning("_run_synthesis_summary LLM call failed, using defaults")
+
+    return _default_strategy_directions()
+
+
+def _default_strategy_directions() -> list[dict]:
+    return [
+        {"emoji": "📱", "title": "Đánh mạnh digital & content", "desc": "Tập trung kênh online, content marketing & paid ads"},
+        {"emoji": "🎯", "title": "Chiếm thị phần đối thủ",     "desc": "Tấn công trực tiếp điểm yếu của đối thủ chính"},
+        {"emoji": "💎", "title": "Positioning premium",         "desc": "Nâng giá trị thương hiệu, thoát cuộc chiến giá"},
+    ]
+
+
+async def _ask_strategy_direction(message: Message, session) -> None:
+    """After research pipeline: run synthesis summary → present directions → ask user to pick."""
+    import json as _json
+    from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+
+    addr = _addr(session)
+    await message.reply_text(
+        "🔬 *Em đang tóm tắt nghiên cứu và xác định các hướng chiến lược...*",
+        parse_mode=ParseMode.MARKDOWN,
+    )
+
+    directions = await _run_synthesis_summary(session)
+    session.pending_intake["_direction_options"] = _json.dumps(directions, ensure_ascii=False)
+    await save_session(session)
+
+    summary_lines = "\n".join(
+        f"• *{d.get('emoji','')} {d.get('title','')}* — {d.get('desc','')}"
+        for d in directions
+    )
+    buttons = [
+        [InlineKeyboardButton(
+            f"{d.get('emoji','')} {d.get('title','')}",
+            callback_data=f"direction_{i}",
+        )]
+        for i, d in enumerate(directions)
+    ]
+    buttons.append([InlineKeyboardButton("✏️ Tôi có hướng riêng", callback_data="direction_custom")])
+    direction_kb = InlineKeyboardMarkup(buttons)
+
+    await message.reply_text(
+        f"✅ *Nghiên cứu hoàn tất!* Em tổng hợp được {len(directions)} hướng nổi bật từ data:\n\n"
+        f"{summary_lines}\n\n"
+        f"─────────────────────\n"
+        f"🎯 *{addr.capitalize()} muốn Max xây kế hoạch theo hướng nào?*\n"
+        f"_(Chọn 1 hướng chính — hoặc gõ hướng riêng nếu có ý khác)_",
+        parse_mode=ParseMode.MARKDOWN,
+        reply_markup=direction_kb,
+    )
+
+
+async def _run_strategy_plan(message: Message, session, direction: str) -> None:
+    """Run synthesis with chosen direction → store as synthesis → show confirm keyboard."""
+    import asyncio as _asyncio
+    from agents.pipeline import run_strategy_synthesis
+    from bot.html_report import parse_agent_output
+    from tools.token_tracker import get_latest_skill_entry
+
+    addr = _addr(session)
+    await message.reply_text(
+        f"🚀 *Max đang xây kế hoạch chiến lược theo hướng:*\n_{direction}_\n\n_~2-3 phút..._",
+        parse_mode=ParseMode.MARKDOWN,
+    )
+    await context_bot_typing(message)
+
+    session.pending_intake["_strategy_direction"] = direction
+    await save_session(session)
+
+    try:
+        result = await _asyncio.wait_for(run_strategy_synthesis(session), timeout=300)
+    except _asyncio.TimeoutError:
+        session.pending_intake.pop("_strategy_direction", None)
+        await save_session(session)
+        await message.reply_text("⚠️ Xây kế hoạch chiến lược timeout. Sếp thử lại sau nhé.")
+        return
+    except Exception as e:
+        session.pending_intake.pop("_strategy_direction", None)
+        await save_session(session)
+        await message.reply_text(f"⚠️ Lỗi: {str(e)[:200]}")
+        return
+
+    session.pending_intake.pop("_strategy_direction", None)
+    await save_session(session)
+
+    parsed = parse_agent_output(result)
+    token_entry = get_latest_skill_entry(session, "synthesis")
+    card_text = _format_card("synthesis", parsed, token_entry=token_entry)
+    await send_long_message(message, card_text, parse_mode=ParseMode.MARKDOWN, reply_markup=None)
+
+    session.pending_intake["_awaiting_rating_for"] = "full"
+    await save_session(session)
+
+    await message.reply_text(
+        f"✅ *Kế hoạch chiến lược hoàn tất!*\n\n"
+        f"─────────────────────\n"
+        f"🔎 *{addr.capitalize()} xem qua giúp em:* kế hoạch trên đã chính xác chưa ạ? "
+        f"Có chỗ nào cần sửa hoặc bổ sung không?\n\n"
+        f"• *Chuẩn rồi* → em chuyển sang lên kế hoạch campaign cụ thể.\n"
+        f"• *Cần sửa* → {addr} chỉ rõ phần nào, em chỉnh đúng chỗ đó.",
+        parse_mode=ParseMode.MARKDOWN,
+        reply_markup=CONFIRM_STRATEGY_KEYBOARD,
+    )
+
+
+async def context_bot_typing(message: Message) -> None:
+    """Send typing action — best-effort, ignore failures."""
+    try:
+        from telegram.constants import ChatAction
+        await message.get_bot().send_chat_action(
+            chat_id=message.chat_id, action=ChatAction.TYPING,
+        )
+    except Exception:
+        pass
+
+
 async def _run_pipeline_sequentially(message: Message, session):
     from bot.html_report import parse_agent_output, build_report
 
@@ -3695,17 +3898,17 @@ async def _run_pipeline_sequentially(message: Message, session):
         session.pending_intake["_awaiting_rating_for"] = task
         await save_session(session)
 
-        if total_stages > 1:
-            # A→Z xong — XÁC NHẬN strategy trước khi sang campaign planning.
-            # User duyệt → POST_AZ_CAMPAIGN; user sửa → surgical edit loop.
+        if total_stages > 1 and task == "full":
+            # Research done — run synthesis summary, ask user which direction to pursue
+            await _ask_strategy_direction(message, session)
+        elif total_stages > 1:
             addr = _addr(session)
             await message.reply_text(
-                f"✅ *Hoàn thành Nghiên Cứu & Phân Tích Thị Trường!* Mở file HTML để xem báo cáo đầy đủ.\n\n"
+                f"✅ *Hoàn thành {task_label}!* Mở file HTML để xem báo cáo đầy đủ.\n\n"
                 f"─────────────────────\n"
-                f"🔎 *{addr.capitalize()} xem qua giúp em:* những phân tích & chiến lược ở trên "
-                f"đã chính xác chưa ạ? Có chỗ nào cần sửa hoặc bổ sung không?\n\n"
+                f"🔎 *{addr.capitalize()} xem qua giúp em:* phân tích trên đã chính xác chưa ạ?\n\n"
                 f"• *Chuẩn rồi* → em chuyển sang lên kế hoạch campaign cụ thể.\n"
-                f"• *Cần sửa* → {addr} chỉ rõ phần nào, em chỉnh đúng chỗ đó (không làm lại từ đầu).",
+                f"• *Cần sửa* → {addr} chỉ rõ phần nào.",
                 parse_mode=ParseMode.MARKDOWN,
                 reply_markup=CONFIRM_STRATEGY_KEYBOARD,
             )

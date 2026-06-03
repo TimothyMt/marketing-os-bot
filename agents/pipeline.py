@@ -646,11 +646,9 @@ PIPELINE_SEQUENCE = [
     (PipelineStage.COMPETITOR, run_competitor_analysis, "competitor"),
     (PipelineStage.CUSTOMER_INSIGHT, run_customer_insight, "customer_insight"),
     (PipelineStage.PSYCHOLOGY_PRICING, run_psychology_and_pricing, "psychology_pricing"),
-    # Sprint 2 — USP Definition (conditional, skip if usp_confidence='clear')
     (PipelineStage.USP_DEFINITION, run_usp_definition, "usp_definition"),
-    # Synthesis = kế hoạch tổng dựa trên 5 bước phân tích trên.
-    # Retention / Winback đã tách sang Layer 3 (Khoa persona — operational skills).
-    (PipelineStage.SYNTHESIS, run_strategy_synthesis, "synthesis"),
+    # Synthesis is now interactive — user picks direction first, then strategy_plan runs.
+    # See handlers._run_strategy_plan for the post-pipeline synthesis flow.
 ]
 
 
@@ -746,8 +744,6 @@ _AGENT_TO_STAGE_KEYS: dict[str, list[str]] = {
     "customer_insight_agent":        ["customer_insight"],
     "usp_definition_agent":          ["usp_definition"],
     "psychology_pricing_agent":      ["psychology_pricing"],
-    "retention_then_winback_chain":  ["retention_strategy", "winback_campaign"],
-    "synthesizer_agent":             ["synthesis"],
 }
 
 
