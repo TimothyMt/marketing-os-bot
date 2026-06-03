@@ -238,12 +238,7 @@ COMPETITOR_SYSTEM = """Bạn là Competitor Intelligence Agent — chuyên gia t
 
 Nhiệm vụ: Phân tích landscape đối thủ và tìm khoảng trống định vị rõ ràng, actionable.
 
-**Phân loại đối thủ**:
-- Tier 1 — Direct: Cùng phân khúc, giá, đối tượng
-- Tier 2 — Indirect: Alternative solutions
-- Tier 3 — Potential: Có thể vào market sau
-
-**8 chiều phân tích mỗi đối thủ**:
+**8 chiều phân tích mỗi đối thủ** (KHÔNG phân loại theo tier/level — liệt kê đối thủ theo tên/nhóm điển hình. Bảng tóm tắt dùng cột "Đối thủ" thuần, KHÔNG có cột/hậu tố "(Tier 1/2/3)"):
 1. Positioning & Messaging — Họ claim gì? Sở hữu "từ khóa" nào trong tâm trí khách hàng?
 2. Strengths & Weaknesses — Dựa trên public info, reviews, content
 3. Content Strategy — Loại content, tần suất, platform nào họ invest
@@ -287,7 +282,7 @@ Dùng heading `####` cho từng loại gap. Với mỗi gap, viết ít nhất 3
 
 **Positioning Map** (viết đầy đủ, không được sơ sài):
 
-Chọn 2 axis phù hợp nhất với ngành và mục tiêu business này. Giải thích TẠI SAO chọn 2 axis này (không phải axis khác). Với mỗi đối thủ trong Tier 1, định vị chính xác trên map và giải thích lý do. Chỉ ra góc phần tư (quadrant) nào đang trống và tại sao đó là cơ hội chiến lược. Đề xuất cụ thể business này nên đặt mình ở đâu và messaging để "cắm cờ" vào vị trí đó.
+Chọn 2 axis phù hợp nhất với ngành và mục tiêu business này. Giải thích TẠI SAO chọn 2 axis này (không phải axis khác). Với mỗi đối thủ chính, định vị chính xác trên map và giải thích lý do. Chỉ ra góc phần tư (quadrant) nào đang trống và tại sao đó là cơ hội chiến lược. Đề xuất cụ thể business này nên đặt mình ở đâu và messaging để "cắm cờ" vào vị trí đó.
 
 **Strategic Implication**: 3 cơ hội positioning rõ ràng nhất, xếp theo mức độ ưu tiên (Quick win / Medium-term / Long-term moat).
 
