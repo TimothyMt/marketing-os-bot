@@ -2098,7 +2098,7 @@ async def _handle_callback_inner(update, context, query, session, data, user_id)
             return
 
         # ── Content skills: cần Calendar trước ────────────────────
-        if task_type in ("content_generator", "social_posts", "video_script_gen"):
+        if task_type in ("content_generator", "social_posts", "post_batch", "video_script_gen"):
             has_calendar = bool(session.get_latest_result("content_calendar"))
             if not has_calendar:
                 await query.edit_message_reply_markup(reply_markup=None)
@@ -3293,7 +3293,7 @@ async def _send_ops_result(message: Message, session, task_name: str, result: st
     file_stem = f"{task_name}_{business_slug}" if business_slug else task_name
 
     # Skip HTML: Excel-only skills + action skills (ads_optimizer)
-    SKIP_HTML_SKILLS = {"content_generator", "social_posts", "video_script_gen", "ugc_brief", "ads_optimizer", "ads_intelligence"}
+    SKIP_HTML_SKILLS = {"content_generator", "social_posts", "post_batch", "video_script_gen", "ugc_brief", "ads_optimizer", "ads_intelligence"}
 
     if task_name not in SKIP_HTML_SKILLS:
         # Send HTML always (universal viewable)
@@ -4107,7 +4107,7 @@ async def _launch_task_from_advisor(update, context, session, task_name: str):
         return
 
     # Content skills cần Calendar trước
-    if task_name in ("content_generator", "social_posts", "video_script_gen"):
+    if task_name in ("content_generator", "social_posts", "post_batch", "video_script_gen"):
         if not session.get_latest_result("content_calendar"):
             session.pending_followup_skill = task_name
             await save_session(session)

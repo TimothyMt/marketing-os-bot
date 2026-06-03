@@ -38,6 +38,7 @@ SKILL_TEMPLATE_SHEET: dict[str, str] = {
     # post 15-cột → ép vào template chỉ ra file rỗng. Dùng dynamic extraction
     # (render_excel_file) để dựng workbook từ chính các bảng kế hoạch của nó.
     "social_posts":        "📅 Content Calendar",
+    "post_batch":          "📅 Content Calendar",   # Content Suite v2
     "ads_generator":       "✍️ Ad Copy",
     "ads_copy":            "✍️ Ad Copy",
     "video_scripts":       "🎬 Video Script",
@@ -449,6 +450,12 @@ def render_template_excel(
         current = title_cell.value or ""
         if business_name not in current:
             title_cell.value = f"{current} — {business_name}"
+
+    # Prune: send only the relevant sheet + instructions; drop the other 6 sheets
+    KEEP = {target_sheet, "📖 Hướng dẫn"}
+    for sheet_name in list(wb.sheetnames):
+        if sheet_name not in KEEP:
+            del wb[sheet_name]
 
     buf = io.BytesIO()
     wb.save(buf)

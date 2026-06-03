@@ -250,37 +250,49 @@ class ContentGeneratorPipeline:
     primary_deliverable = PrimaryDeliverable.EXCEL
     output_format = OutputFormat.OPERATIONAL_DELIVERABLE
     SUB_SKILLS = [
-        "social_posts",       # content_gen — bài viết
+        "post_batch",         # bài đăng — Content Suite v2, narrative output
         "video_script_gen",   # kịch bản video
         "ugc_brief",          # creator brief
         "ads_generator",      # ads copy
-        "email_zalo_sequence",  # chuỗi email/zalo
     ]
 
     def _prefill_intake(self, session) -> None:
-        """Pre-fill intake cho các skill cần form (ads/email) từ profile + campaign.
+        """Pre-fill intake cho các sub-skill từ gate answers + profile.
 
-        Pipeline auto-chain nên không có user paste form — suy default hợp lý
-        để skill chạy được. User vẫn chạy riêng từng skill nếu muốn input kỹ.
+        Gate answers (weeks, highlight_angles, video_type, fgc_channel_mode,
+        ugc_outsource, ads_usp) đã được user cung cấp qua form content_generator.
+        Pipeline auto-chain đọc từ pending_intake thay vì hardcode defaults.
         """
         pi = session.pending_intake
         profile = session.profile
-        brief = session.get_latest_result("campaign_brief") or ""
-        campaign = pi.get("current_campaign") or pi.get("campaign_name") or "Campaign"
         goal = pi.get("campaign_goal") or profile.primary_goal or "Thu lead / chốt đơn"
 
-        # ads_generator (AdsCopySkill)
+        # video_script_gen — derive creator_type from gate video_type answer
+        video_type_raw = (pi.get("video_type") or "").lower()
+        if not pi.get("creator_type"):
+            if "fgc" in video_type_raw:
+                pi["creator_type"] = "fgc"
+            elif "egc" in video_type_raw:
+                pi["creator_type"] = "egc"
+            elif "kol" in video_type_raw:
+                pi["creator_type"] = "kol"
+            else:
+                pi["creator_type"] = "ugc"
+
+        # video_script_gen + VideoScriptsSkill — pass scope from gate
+        pi.setdefault("scope", pi.get("scope") or f"{pi.get('weeks', '4 tuần')} — theo calendar")
+        pi.setdefault("funnel", "TOFU")
+        pi.setdefault("duration", "45s")
+
+        # ugc_brief — pass outsource flag so prompt knows context
+        pi.setdefault("creator_types", pi.get("ugc_outsource") or "UGC micro (1K-10K)")
+
+        # ads_generator (AdsCopySkill) — prefer gate answers, fallback to profile
         pi.setdefault("selected_tiers", "all")
         pi.setdefault("product", profile.product_service or "Sản phẩm/dịch vụ chính")
         pi.setdefault("insight", profile.target_customer or "Tệp khách mục tiêu")
         pi.setdefault("campaign_goal", goal)
-        pi.setdefault("offer", pi.get("key_offer") or "Ưu đãi theo campaign")
-
-        # email_zalo_sequence
-        pi.setdefault("audience_segment", "Lead đã quan tâm chưa chốt + khách cũ")
-        pi.setdefault("sequence_goal", goal)
-        pi.setdefault("channel_preference", "Cả 2 — Email long-form + Zalo reminder")
-        pi.setdefault("duration", "7 ngày")
+        pi.setdefault("offer", pi.get("ads_usp") or pi.get("key_offer") or "Ưu đãi theo campaign")
 
     async def run_pipeline(self, session) -> str:
         from agents.pipeline import run_operational_skill as _run_ops
@@ -744,14 +756,36 @@ class VideoScriptsSkill(AgentSkill):
     def build_user_msg(self, session: Session) -> str:
         intake = session.pending_intake or {}
         creator_type = (intake.get("creator_type") or "ugc").lower()
+        fgc_channel_mode = (intake.get("fgc_channel_mode") or "").lower()
         profile = session.profile
 
-        creator_guidance = {
-            "ugc": "UGC (User-Generated Content) — khách hàng thật chia sẻ. Tone bình thản, kể chuyện với bạn thân. Authentic > polished. Style: tự nhiên, đứng trước cửa sổ.",
-            "egc": "EGC (Employee-Generated Content) — nhân viên chia sẻ insider knowledge. Tone expert nhẹ, backstage style. Style: trong workspace, có sản phẩm/thiết bị xung quanh.",
-            "fgc": "FGC (Founder-Generated Content) — founder tự quay storytelling. Tone depth + vision, lessons learned. Style: founder vibe, background chỉn chu.",
-            "kol": "KOL/KOC (Paid Creator) — creator paid để promote. Tone theo persona của KOC, integrated organic. KOC tự quyết góc quay theo style của họ. Brief tập trung message + Do/Don't, không gò cách quay.",
-        }.get(creator_type, "UGC — authentic style.")
+        # FGC has two modes: separate founder channel vs merged into brand channel
+        if creator_type == "fgc":
+            is_rieng = any(k in fgc_channel_mode for k in ("riêng", "rièng", "rieng", "separate", "cá nhân"))
+            if is_rieng:
+                creator_guidance = (
+                    "FGC (Founder-Generated Content) — KÊNH RIÊNG CỦA FOUNDER.\n"
+                    "• Tone: cá nhân hoàn toàn — viết như người thật nói chuyện thật, KHÔNG mention brand trực tiếp.\n"
+                    "• Story: hành trình founder, cuộc sống, bài học kinh doanh, góc nhìn ngành.\n"
+                    "• CTA mềm: 'Follow theo dõi hành trình' / 'Save để đọc lại' — KHÔNG đẩy product.\n"
+                    "• Style: authentic, không chỉn chu quá — vibe founder thật, đời thường hơn brand channel.\n"
+                    "• Background: nhà/văn phòng riêng, KHÔNG có logo brand hay banner sản phẩm."
+                )
+            else:  # merge / kết hợp brand
+                creator_guidance = (
+                    "FGC (Founder-Generated Content) — KẾT HỢP VÀO KÊNH BRAND.\n"
+                    "• Tone: founder voice + brand-connected — câu chuyện liên quan đến sản phẩm/dịch vụ.\n"
+                    "• Story: OK mention brand nhẹ, dẫn đến product benefit một cách tự nhiên.\n"
+                    "• CTA rõ hơn: 'Xem chi tiết link bio' / 'Inbox để tư vấn' / 'Comment hỏi em'.\n"
+                    "• Style: founder vibe nhưng brand-forward hơn kênh riêng — chỉn chu vừa phải.\n"
+                    "• Background: có thể xuất hiện sản phẩm/không gian brand, logo nhỏ OK."
+                )
+        else:
+            creator_guidance = {
+                "ugc": "UGC (User-Generated Content) — khách hàng thật chia sẻ. Tone bình thản, kể chuyện với bạn thân. Authentic > polished. Style: tự nhiên, đứng trước cửa sổ.",
+                "egc": "EGC (Employee-Generated Content) — nhân viên chia sẻ insider knowledge. Tone expert nhẹ, backstage style. Style: trong workspace, có sản phẩm/thiết bị xung quanh.",
+                "kol": "KOL/KOC (Paid Creator) — creator paid để promote. Tone theo persona của KOC, integrated organic. KOC tự quyết góc quay theo style của họ. Brief tập trung message + Do/Don't, không gò cách quay.",
+            }.get(creator_type, "UGC — authentic style.")
 
         return f"""## Yêu cầu: Viết Video Script
 
