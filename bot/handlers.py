@@ -3800,7 +3800,9 @@ async def _run_pipeline_sequentially(message: Message, session):
 
     if total_stages > 1:
         await message.reply_text(
-            f"🚀 *Bắt đầu {task_label}!*\n\nTôi sẽ chạy {total_stages} bước và gửi card tóm tắt từng bước.\nFile HTML đầy đủ sẽ được gửi ở cuối.",
+            f"🔬 *Bắt đầu {task_label}!*\n\n"
+            f"Em chạy {total_stages} bước phân tích, gửi card tóm tắt từng bước.\n"
+            f"Xong xuôi em hỏi sếp muốn đánh theo hướng nào → mới lập kế hoạch.",
             parse_mode=ParseMode.MARKDOWN,
         )
     else:
