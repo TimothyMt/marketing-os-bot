@@ -5390,6 +5390,7 @@ async def _show_dynamic_finalize_form(message: Message, session, campaign: dict,
 
     session.pending_intake["_chosen_lever"] = _json.dumps(lever, ensure_ascii=False)
     session.pending_intake["_awaiting_campaign_finalize"] = "1"
+    session.pending_intake.pop("_finalize_partial", None)  # fresh form → reset tích lũy
     session.stage = PipelineStage.INTAKE
     await save_session(session)
 
@@ -5459,31 +5460,51 @@ async def _handle_campaign_finalize_text(update, context, session, text: str):
         return
 
     fields = get_finalize_fields(lever)
-    parsed, missing = parse_dynamic_finalize_form(text, fields)
 
-    # Fallback: user trả lời free-form / positional (không kèm nhãn) → dùng LLM extract
+    # Tích lũy đáp án qua NHIỀU tin nhắn — sếp có thể trả lời từng phần.
+    # _finalize_partial giữ các field đã thu được ở các lần trước.
+    parsed = {}
+    raw_partial = session.pending_intake.get("_finalize_partial", "{}")
+    try:
+        parsed = {k: v for k, v in _json.loads(raw_partial).items() if v}
+    except (_json.JSONDecodeError, AttributeError):
+        parsed = {}
+
+    new_parsed, _ = parse_dynamic_finalize_form(text, fields)
+    for k, v in new_parsed.items():
+        if v:
+            parsed[k] = v
+
+    # Field nào còn thiếu sau khi merge → thử LLM extract từ tin hiện tại
+    missing = [f["label"] for f in fields
+               if f.get("required", True) and not parsed.get(f["label"])]
     if missing:
         extra = await _haiku_extract_finalize(text, fields, session)
         for k, v in extra.items():
             if v and not parsed.get(k):
                 parsed[k] = v
-        missing = [
-            f["label"] for f in fields
-            if f.get("required", True) and not parsed.get(f["label"])
-        ]
+        missing = [f["label"] for f in fields
+                   if f.get("required", True) and not parsed.get(f["label"])]
 
     if missing:
+        # Lưu phần đã thu để lần sau không hỏi lại → tránh loop vô hạn
+        session.pending_intake["_finalize_partial"] = _json.dumps(parsed, ensure_ascii=False)
+        await save_session(session)
+        got = [f["label"] for f in fields if parsed.get(f["label"])]
+        got_line = ("✅ Đã nhận: " + ", ".join(got) + "\n\n") if got else ""
         await update.message.reply_text(
-            "⚠️ *Còn thiếu thông tin:*\n"
+            got_line
+            + "⚠️ *Còn thiếu thông tin:*\n"
             + "\n".join(f"• {lbl}" for lbl in missing)
-            + "\n\nSếp gửi lại form đầy đủ giúp em ạ.",
+            + "\n\nSếp gửi nốt các mục còn thiếu giúp em ạ (không cần gửi lại phần đã có).",
             parse_mode=ParseMode.MARKDOWN,
         )
         return
 
     # Cleanup ideation states
     for k in ("_awaiting_campaign_finalize", "_chosen_campaign", "_chosen_lever",
-              "_offer_levers", "_offer_prefs_raw", "_campaign_needs_raw"):
+              "_offer_levers", "_offer_prefs_raw", "_campaign_needs_raw",
+              "_finalize_partial"):
         session.pending_intake.pop(k, None)
 
     # Merge campaign + lever + user inputs → 4 fields cho campaign_brief
