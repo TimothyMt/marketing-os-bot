@@ -3837,7 +3837,13 @@ async def _run_pipeline_sequentially(message: Message, session):
         if task == "full":
             logger.info("Multi-Agent disabled (USE_MULTI_AGENT=false) — using legacy path")
 
+    pipeline_aborted = False
     async for stage_key, result in pipeline_runner(session, progress_callback=progress_cb):
+        if stage_key == "pipeline_abort":
+            pipeline_aborted = True
+            parsed_stages.append((stage_key, parse_agent_output(result)))
+            continue
+
         stage_count += 1
         is_last = stage_count == total_stages
 
@@ -3892,8 +3898,14 @@ async def _run_pipeline_sequentially(message: Message, session):
 
         if html_str:
             try:
-                await _send_html_report(message, html_str, session)
-                if skipped_count > 0:
+                await _send_html_report(
+                    message, html_str, session,
+                    caption=(
+                        "📄 *Kết quả một phần* — một số bước bị timeout, đây là phần đã hoàn thành."
+                        if pipeline_aborted else None
+                    ),
+                )
+                if not pipeline_aborted and skipped_count > 0:
                     await message.reply_text(
                         f"ℹ️ Report HTML đã gửi, nhưng có {skipped_count} bước bị timeout/lỗi — "
                         "không xuất hiện trong report. Sếp có thể chạy lại các bước đó riêng lẻ."
@@ -5436,7 +5448,7 @@ async def _gen_content_calendar_after_approval(message, session, context, update
     await _start_tone_calibration(message, session, result)
 
 
-async def _send_html_report(message: Message, html_str: str, session):
+async def _send_html_report(message: Message, html_str: str, session, caption: str = None):
     """Send HTML report as document attachment."""
     import io
     bizname = (session.profile.business_name or "").strip()
@@ -5444,7 +5456,6 @@ async def _send_html_report(message: Message, html_str: str, session):
         business_slug = re.sub(r"[^a-zA-Z0-9_-]", "_", bizname)[:30].strip("_")
         filename = f"marketing_report_{business_slug}.html"
     else:
-        # business_name rỗng → tránh tên kiểu "marketing_report_report.html"
         filename = "marketing_report.html"
 
     buf = io.BytesIO(html_str.encode("utf-8"))
@@ -5453,7 +5464,7 @@ async def _send_html_report(message: Message, html_str: str, session):
     await message.reply_document(
         document=buf,
         filename=filename,
-        caption="📄 *Báo cáo đầy đủ* — mở để xem full analysis với layout đẹp.",
+        caption=caption or "📄 *Báo cáo đầy đủ* — mở để xem full analysis với layout đẹp.",
         parse_mode=ParseMode.MARKDOWN,
     )
 
