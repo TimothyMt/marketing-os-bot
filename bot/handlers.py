@@ -2406,23 +2406,23 @@ def _format_card(stage_key: str, parsed: dict, token_entry: dict | None = None) 
     if parsed.get("insight"):
         insight = parsed["insight"].strip().strip('"').strip("'")
         parts.append("💡 *Insight quan trọng nhất:*")
-        parts.append(f"_{insight}_")
+        parts.append(f"_{_sanitize_telegram_md(insight)}_")
         parts.append("")
 
     if parsed.get("summary"):
         parts.append("📌 *Tóm tắt:*")
-        parts.append(parsed["summary"].strip())
+        parts.append(_sanitize_telegram_md(parsed["summary"].strip()))
         parts.append("")
 
     if parsed.get("benchmarks"):
         parts.append("📊 *Benchmarks:*")
-        parts.append(parsed["benchmarks"].strip())
+        parts.append(_sanitize_telegram_md(parsed["benchmarks"].strip()))
         parts.append("")
 
     # If nothing parsed, fallback to raw detail (truncated)
     if not any(parsed.get(k) for k in ("insight", "summary", "benchmarks")):
         detail = parsed.get("detail", "")[:1500]
-        parts.append(detail)
+        parts.append(_sanitize_telegram_md(detail))
 
     parts.append("📎 _Xem full analysis trong file HTML cuối pipeline_")
 
@@ -3607,6 +3607,9 @@ async def _run_pipeline_sequentially(message: Message, session):
         )
 
     if valid_stages:
+        # Tách BUILD (generate) khỏi SEND — lỗi mạng khi gửi file lớn (Telegram
+        # đã nhận file nhưng response timeout) KHÔNG được báo nhầm "không generate được".
+        html_str = None
         try:
             html_str = build_report(
                 business_name=session.profile.business_name or "Business",
@@ -3614,17 +3617,24 @@ async def _run_pipeline_sequentially(message: Message, session):
                 stage=session.profile.stage or "",
                 parsed_stages=valid_stages,
             )
-            await _send_html_report(message, html_str, session)
-            if skipped_count > 0:
-                await message.reply_text(
-                    f"ℹ️ Report HTML đã gửi, nhưng có {skipped_count} bước bị timeout/lỗi — "
-                    "không xuất hiện trong report. Sếp có thể chạy lại các bước đó riêng lẻ."
-                )
         except Exception as e:
-            logger.exception("Failed to generate HTML report: %s", e)
+            logger.exception("Failed to BUILD HTML report: %s", e)
             await message.reply_text(
-                "⚠️ Không generate được file HTML — phần tóm tắt ở trên đã đủ. Sếp có thể hỏi thêm tự do."
+                "⚠️ Không dựng được file HTML — phần tóm tắt ở trên đã đủ. Sếp có thể hỏi thêm tự do."
             )
+
+        if html_str:
+            try:
+                await _send_html_report(message, html_str, session)
+                if skipped_count > 0:
+                    await message.reply_text(
+                        f"ℹ️ Report HTML đã gửi, nhưng có {skipped_count} bước bị timeout/lỗi — "
+                        "không xuất hiện trong report. Sếp có thể chạy lại các bước đó riêng lẻ."
+                    )
+            except Exception as e:
+                # File có thể ĐÃ tới user dù await raise (timeout response). Không
+                # báo "không generate được" — chỉ log + nhắc nhẹ.
+                logger.warning("HTML report send raised (file may still have arrived): %s", e)
     elif stage_count > 0:
         # All stages failed/skipped → no valid content for HTML
         await message.reply_text(
@@ -5113,8 +5123,13 @@ async def _gen_content_calendar_after_approval(message, session, context, update
 async def _send_html_report(message: Message, html_str: str, session):
     """Send HTML report as document attachment."""
     import io
-    business_slug = re.sub(r"[^a-zA-Z0-9_-]", "_", (session.profile.business_name or "report"))[:30]
-    filename = f"marketing_report_{business_slug}.html"
+    bizname = (session.profile.business_name or "").strip()
+    if bizname:
+        business_slug = re.sub(r"[^a-zA-Z0-9_-]", "_", bizname)[:30].strip("_")
+        filename = f"marketing_report_{business_slug}.html"
+    else:
+        # business_name rỗng → tránh tên kiểu "marketing_report_report.html"
+        filename = "marketing_report.html"
 
     buf = io.BytesIO(html_str.encode("utf-8"))
     buf.name = filename
