@@ -38,43 +38,63 @@ def parse_first_post(calendar_text: str) -> Optional[dict]:
     Trả về dict {preview, full_block} hoặc None nếu không parse được.
 
     Hỗ trợ cả 2 format:
-    1. Markdown table: | Ngày | Kênh | ... | Topic | Format | Owner | Giờ | (11 cột)
+    1. Markdown table: tìm đúng weekly grid (có cột Ngày/Kênh/Pillar/Topic)
+       — bỏ qua các bảng phụ (Pillar Breakdown, Repurpose Matrix, Team, Story Arc)
     2. Block format: "Tuần 1 — ... Hook: ..."
     """
-    # ── Format 1: Markdown table row ─────────────────────────────────
-    # Tìm header row để lấy column index của Topic + Hook angle
-    header_match = re.search(r"\|([^\n]+)\|\s*\n\|[-| ]+\|\s*\n(\|[^\n]+\|)", calendar_text)
-    if header_match:
-        header_cells = [c.strip() for c in header_match.group(1).split("|") if c.strip()]
-        first_data_row = [c.strip() for c in header_match.group(2).split("|") if c.strip()]
-        if first_data_row and len(first_data_row) >= 4:
-            # Tìm index của các cột quan trọng
-            topic_idx = next(
-                (i for i, h in enumerate(header_cells)
-                 if any(k in h.lower() for k in ["topic", "chủ đề", "nội dung", "content"])),
-                min(7, len(first_data_row) - 1),
-            )
-            hook_idx = next(
-                (i for i, h in enumerate(header_cells)
-                 if any(k in h.lower() for k in ["hook", "angle"])),
-                min(6, len(first_data_row) - 1),
-            )
-            day_idx = 0
-            channel_idx = next(
-                (i for i, h in enumerate(header_cells)
-                 if any(k in h.lower() for k in ["kênh", "channel", "nền tảng"])),
-                1,
-            )
+    # ── Format 1: Find weekly grid table specifically ─────────────────
+    # Weekly grid signature: có ít nhất 3 trong các cột đặc trưng
+    WEEKLY_GRID_KEYS = {"ngày", "kênh", "channel", "nền tảng", "pillar", "funnel", "topic", "chủ đề"}
 
-            topic = first_data_row[topic_idx] if topic_idx < len(first_data_row) else ""
-            hook = first_data_row[hook_idx] if hook_idx < len(first_data_row) else ""
-            day = first_data_row[day_idx] if day_idx < len(first_data_row) else ""
-            channel = first_data_row[channel_idx] if channel_idx < len(first_data_row) else ""
+    table_pattern = re.compile(
+        r"\|([^\n]+)\|\s*\n\|[-| ]+\|\s*\n((?:\|[^\n]+\|[ \t]*\n?)+)",
+        re.MULTILINE,
+    )
 
-            if topic and len(topic) > 10:
-                preview = f"📅 {day} | {channel}\n🎯 Hook: {hook}\n📝 Topic: {topic}"
-                full_block = "\n".join(f"| {c}" for c in first_data_row)
-                return {"preview": preview, "full_block": full_block}
+    for m in table_pattern.finditer(calendar_text):
+        header_raw = m.group(1)
+        header_cells_lower = [c.strip().lower() for c in header_raw.split("|") if c.strip()]
+
+        # Must match ≥3 weekly-grid column keywords — skips Pillar/Repurpose/Team tables
+        matched = sum(1 for h in header_cells_lower if any(k in h for k in WEEKLY_GRID_KEYS))
+        if matched < 3:
+            continue
+
+        # Extract first data row
+        data_block = m.group(2)
+        first_row_raw = data_block.split("\n")[0].strip()
+        first_data_row = [c.strip() for c in first_row_raw.split("|") if c.strip()]
+        header_cells_orig = [c.strip() for c in header_raw.split("|") if c.strip()]
+
+        if not first_data_row or len(first_data_row) < 4:
+            continue
+
+        # Find important column indices
+        topic_idx = next(
+            (i for i, h in enumerate(header_cells_orig)
+             if any(k in h.lower() for k in ["topic", "chủ đề", "nội dung", "content"])),
+            min(7, len(first_data_row) - 1),
+        )
+        hook_idx = next(
+            (i for i, h in enumerate(header_cells_orig)
+             if any(k in h.lower() for k in ["hook", "angle"])),
+            min(6, len(first_data_row) - 1),
+        )
+        day_idx = 0
+        channel_idx = next(
+            (i for i, h in enumerate(header_cells_orig)
+             if any(k in h.lower() for k in ["kênh", "channel", "nền tảng"])),
+            1,
+        )
+
+        topic   = first_data_row[topic_idx]   if topic_idx   < len(first_data_row) else ""
+        hook    = first_data_row[hook_idx]    if hook_idx    < len(first_data_row) else ""
+        day     = first_data_row[day_idx]     if day_idx     < len(first_data_row) else ""
+        channel = first_data_row[channel_idx] if channel_idx < len(first_data_row) else ""
+
+        if topic and len(topic) > 10:
+            preview = f"📅 {day} | {channel}\n🎯 Hook angle: {hook}\n📝 Topic: {topic}"
+            return {"preview": preview, "full_block": first_row_raw}
 
     # ── Format 2: Block / labelled sections ──────────────────────────
     patterns = [
