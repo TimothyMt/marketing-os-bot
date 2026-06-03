@@ -273,7 +273,7 @@ def get_strategic_pipeline_tiers() -> list[TierConfig]:
             ],
             must_have=set(),  # Partial results better than abort — direction-picking works without all 3
             nice_to_have={"market_research_agent", "competitor_agent", "customer_insight_agent"},
-            timeout_per_agent=260,  # Match T2 — Sonnet customer insight can hit 180s
+            timeout_per_agent=500,
             max_concurrent=3,
         ),
         TierConfig(
@@ -284,7 +284,7 @@ def get_strategic_pipeline_tiers() -> list[TierConfig]:
             ],
             must_have=set(),
             nice_to_have={"usp_definition_agent", "psychology_pricing_agent"},
-            timeout_per_agent=260,
+            timeout_per_agent=500,
             max_concurrent=2,
         ),
     ]
