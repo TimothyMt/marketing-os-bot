@@ -73,8 +73,17 @@ async def generate_funnel_map(session: Session, campaign: dict) -> list:
     except AllProvidersFailedError as e:
         logger.error("generate_funnel_map failed: %s", e)
 
+    # channels có thể là list (channels_list) hoặc chuỗi "A + B" → chuẩn hoá về list
+    _ch = campaign.get("channels_list")
+    if not _ch:
+        _raw_ch = campaign.get("channels") or []
+        if isinstance(_raw_ch, str):
+            import re as _re
+            _ch = [c.strip() for c in _re.split(r"[+,/]| và ", _raw_ch) if c.strip()]
+        else:
+            _ch = _raw_ch
     return _fallback_funnel_map(
-        channels  = campaign.get("channels") or [],
+        channels  = _ch or ["Facebook", "TikTok"],
         objective = campaign.get("objective", "mix"),
     )
 

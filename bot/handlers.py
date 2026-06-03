@@ -3284,8 +3284,13 @@ async def _send_ops_result(message: Message, session, task_name: str, result: st
 
     await _safe_reply(message, card_text, parse_mode=ParseMode.MARKDOWN)
 
-    business_slug = re.sub(r"[^a-zA-Z0-9_-]", "_", session.profile.business_name or task_name)[:30]
-    business_name = session.profile.business_name or "Business"
+    _bizname = (session.profile.business_name or "").strip()
+    # business_name rỗng → KHÔNG fallback về task_name (tránh tên kiểu
+    # "campaign_brief_campaign_brief.html"); để slug rỗng, xử lý ở filename.
+    business_slug = re.sub(r"[^a-zA-Z0-9_-]", "_", _bizname)[:30].strip("_") if _bizname else ""
+    business_name = _bizname or "Business"
+    # Stem chung cho mọi file (tránh trailing "_" khi slug rỗng)
+    file_stem = f"{task_name}_{business_slug}" if business_slug else task_name
 
     # Skip HTML: Excel-only skills + action skills (ads_optimizer)
     SKIP_HTML_SKILLS = {"content_generator", "social_posts", "video_script_gen", "ugc_brief", "ads_optimizer", "ads_intelligence"}
@@ -3300,7 +3305,7 @@ async def _send_ops_result(message: Message, session, task_name: str, result: st
                 stage=session.profile.stage or "",
             )
             buf = io.BytesIO(html_str.encode("utf-8"))
-            buf.name = f"{task_name}_{business_slug}.html"
+            buf.name = f"{file_stem}.html"
             await message.reply_document(
                 document=buf,
                 filename=buf.name,
@@ -3317,7 +3322,7 @@ async def _send_ops_result(message: Message, session, task_name: str, result: st
     if task_name not in SKIP_HTML_SKILLS and skill.primary_deliverable == PrimaryDeliverable.MARKDOWN:
         md_bytes = render_markdown_file(task_name, task.label, parsed, skill.output_format, business_name)
         buf = io.BytesIO(md_bytes)
-        buf.name = f"{task_name}_{business_slug}.md"
+        buf.name = f"{file_stem}.md"
         await message.reply_document(
             document=buf,
             filename=buf.name,
@@ -3331,7 +3336,7 @@ async def _send_ops_result(message: Message, session, task_name: str, result: st
                 xlsx_bytes = render_excel_file(task_name, task.label, parsed, skill.output_format, business_name)
                 if xlsx_bytes:
                     buf2 = io.BytesIO(xlsx_bytes)
-                    buf2.name = f"{task_name}_{business_slug}.xlsx"
+                    buf2.name = f"{file_stem}.xlsx"
                     await message.reply_document(
                         document=buf2,
                         filename=buf2.name,
@@ -3360,7 +3365,7 @@ async def _send_ops_result(message: Message, session, task_name: str, result: st
         if xlsx_bytes:
             try:
                 buf = io.BytesIO(xlsx_bytes)
-                buf.name = f"{task_name}_{business_slug}.xlsx"
+                buf.name = f"{file_stem}.xlsx"
                 await message.reply_document(
                     document=buf,
                     filename=buf.name,
@@ -4995,9 +5000,11 @@ async def _confirm_brief_and_gen_calendar(message, session, context, update):
     # user duyệt (nút). Duyệt mới dựng Content Calendar. Lỗi → vẫn cho
     # user duyệt bằng nút để qua bước calendar.
     funnel_ok = False
+    _funnel_map = None
     try:
         from agents.funnel_mapper import (
             generate_funnel_map, render_funnel_map_summary, build_funnel_map_markdown,
+            _fallback_funnel_map,
         )
         from agents.campaign_execution import (
             generate_execution_plan, classify_goal_type, funnel_map_objective,
@@ -5005,11 +5012,15 @@ async def _confirm_brief_and_gen_calendar(message, session, context, update):
         import json as _json_fm
 
         _goal_slug = classify_goal_type(campaign_goal or "")
+        _channels_str = session.pending_intake.get("channels", "Facebook + TikTok")
+        # Tách chuỗi kênh thành list (cho fallback dùng đúng từng kênh)
+        _channels_list = [c.strip() for c in re.split(r"[+,/]| và ", _channels_str) if c.strip()]
         _campaign_dict = {
             "name":             campaign_name,
             "objective":        funnel_map_objective(_goal_slug),
             "objective_detail": campaign_goal or "",
-            "channels":         session.pending_intake.get("channels", "Facebook + TikTok"),
+            "channels":         _channels_str,
+            "channels_list":    _channels_list,
             "audience":         session.profile.target_customer or "",
             "duration_days":    _duration_to_days(session.pending_intake.get("duration")),
             "extra_notes":      session.pending_intake.get("key_offer", ""),
@@ -5023,35 +5034,51 @@ async def _confirm_brief_and_gen_calendar(message, session, context, update):
             chat_id=update.effective_chat.id, action=ChatAction.TYPING,
         )
 
-        _funnel_map = await asyncio.wait_for(
-            generate_funnel_map(session, _campaign_dict), timeout=60,
-        )
+        # Funnel map: nếu timeout/lỗi → DÙNG FALLBACK (không bỏ cuộc).
+        try:
+            _funnel_map = await asyncio.wait_for(
+                generate_funnel_map(session, _campaign_dict), timeout=75,
+            )
+        except (asyncio.TimeoutError, Exception) as _fme:
+            logger.warning("funnel_map gen failed/timeout → fallback: %s", _fme)
+            _funnel_map = _fallback_funnel_map(
+                channels=_channels_list or ["Facebook", "TikTok"],
+                objective=_campaign_dict["objective"],
+            )
+
         session.pending_intake["_funnel_map_json"] = _json_fm.dumps(_funnel_map, ensure_ascii=False)
         session.add_result("funnel_map", _json_fm.dumps(_funnel_map, ensure_ascii=False))
         await save_session(session)
+        funnel_ok = True  # đã có map (thật hoặc fallback) → coi như OK
 
-        await context.bot.send_chat_action(
-            chat_id=update.effective_chat.id, action=ChatAction.TYPING,
-        )
-        _exec_plan = await asyncio.wait_for(
-            generate_execution_plan(session, _funnel_map, campaign_name, campaign_goal or ""),
-            timeout=45,
-        )
+        # Execution plan: optional — lỗi thì bỏ qua, vẫn show funnel.
+        _exec_plan = ""
+        try:
+            await context.bot.send_chat_action(
+                chat_id=update.effective_chat.id, action=ChatAction.TYPING,
+            )
+            _exec_plan = await asyncio.wait_for(
+                generate_execution_plan(session, _funnel_map, campaign_name, campaign_goal or ""),
+                timeout=45,
+            )
+        except (asyncio.TimeoutError, Exception) as _epe:
+            logger.warning("execution_plan failed/timeout → skip: %s", _epe)
 
-        # 1) Telegram: chỉ TÓM TẮT funnel + execution roadmap (đã ngắn)
+        # 1) Telegram: TÓM TẮT funnel + execution roadmap
         await message.reply_text(render_funnel_map_summary(_funnel_map), parse_mode=ParseMode.MARKDOWN)
-        await message.reply_text(_exec_plan, parse_mode=ParseMode.MARKDOWN)
+        if _exec_plan:
+            await message.reply_text(_exec_plan, parse_mode=ParseMode.MARKDOWN)
 
-        # 2) HTML: chi tiết đầy đủ funnel + execution plan
+        # 2) HTML: chi tiết đầy đủ funnel (+ execution plan nếu có)
         try:
             from bot.html_report import build_single_skill_report
             from agents.skills import OutputFormat
             plan_md = (
                 "## 🗺 Funnel Map — Chiến lược từng kênh\n\n"
                 + build_funnel_map_markdown(_funnel_map)
-                + "\n\n---\n\n## 🚀 Kế hoạch thực thi\n\n"
-                + _exec_plan
             )
+            if _exec_plan:
+                plan_md += "\n\n---\n\n## 🚀 Kế hoạch thực thi\n\n" + _exec_plan
             html_str = build_single_skill_report(
                 "campaign_plan",
                 {"summary": f"Kế hoạch triển khai campaign *{campaign_name}* — funnel ToFu/MoFu/BoFu theo kênh + roadmap thực thi.",
@@ -5071,11 +5098,8 @@ async def _confirm_brief_and_gen_calendar(message, session, context, update):
         except Exception as _xe:
             logger.warning("funnel_map Excel export skipped: %s", _xe)
 
-        funnel_ok = True
-    except asyncio.TimeoutError:
-        logger.warning("funnel_map/execution_plan timed out")
     except Exception as _fe:
-        logger.warning("funnel_map/execution_plan skipped: %s", _fe)
+        logger.warning("funnel_map/execution_plan block skipped: %s", _fe)
 
     # ── DỪNG chờ user duyệt — KHÔNG auto dựng calendar ────────────────
     session.pending_intake["_awaiting_funnel_approve"] = "1"
