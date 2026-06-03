@@ -19,6 +19,7 @@ Sonnet — pipeline hiện tại vẫn chạy.
 """
 from __future__ import annotations
 
+import asyncio
 import logging
 import os
 import time
@@ -630,6 +631,26 @@ PROVIDER_CALLERS = {
 }
 
 
+# Per-provider hard timeout (seconds).
+# Prevents a slow/overloaded provider (e.g. Sonnet 529) from sitting
+# for the full client-level timeout (300s) and consuming the outer
+# asyncio.wait_for budget before failover can happen.
+_PER_PROVIDER_TIMEOUT: dict[Provider, float] = {
+    Provider.ANTHROPIC_SONNET:    55.0,   # bail early → let GPT-5 take over within outer budget
+    Provider.ANTHROPIC_HAIKU:     45.0,
+    Provider.OPENAI_GPT5:         90.0,   # reasoning model — needs more time
+    Provider.OPENAI_GPT5_MINI:    75.0,
+    Provider.OPENAI_GPT5_NANO:    45.0,
+    Provider.OPENAI_GPT_4_1_MINI: 75.0,
+    Provider.OPENAI_GPT4O:        60.0,
+    Provider.OPENAI_GPT4O_MINI:   45.0,
+    Provider.GEMINI_PRO:          90.0,
+    Provider.GEMINI_PRO_GROUNDED: 90.0,
+    Provider.GEMINI_FLASH:        60.0,
+    Provider.PERPLEXITY_SONAR:    45.0,
+}
+
+
 # ─────────────────────────────────────────────────────────────────
 # Top-level router
 # ─────────────────────────────────────────────────────────────────
@@ -658,13 +679,17 @@ async def call(
             logger.error(f"No caller registered for provider {provider}")
             continue
 
+        per_timeout = _PER_PROVIDER_TIMEOUT.get(provider, 60.0)
         start = time.monotonic()
         try:
-            result = await caller(
-                system=system,
-                user=user,
-                max_tokens=max_tokens,
-                json_schema=json_schema,
+            result = await asyncio.wait_for(
+                caller(
+                    system=system,
+                    user=user,
+                    max_tokens=max_tokens,
+                    json_schema=json_schema,
+                ),
+                timeout=per_timeout,
             )
             result["latency_sec"] = time.monotonic() - start
             logger.info(
@@ -673,6 +698,14 @@ async def call(
                 f"latency={result['latency_sec']:.1f}s"
             )
             return result
+
+        except asyncio.TimeoutError as e:
+            logger.warning(
+                f"[router] provider={provider.value} exceeded per-provider timeout "
+                f"({per_timeout}s) → failover to next"
+            )
+            last_error = e
+            continue
 
         except ProviderUnavailable as e:
             # Provider chưa setup — silently failover

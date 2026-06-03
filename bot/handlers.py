@@ -5037,7 +5037,7 @@ async def _confirm_brief_and_gen_calendar(message, session, context, update):
         # Funnel map: nếu timeout/lỗi → DÙNG FALLBACK (không bỏ cuộc).
         try:
             _funnel_map = await asyncio.wait_for(
-                generate_funnel_map(session, _campaign_dict), timeout=75,
+                generate_funnel_map(session, _campaign_dict), timeout=180,
             )
         except (asyncio.TimeoutError, Exception) as _fme:
             logger.warning("funnel_map gen failed/timeout → fallback: %s", _fme)
