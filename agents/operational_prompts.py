@@ -31,7 +31,7 @@ Nhiệm vụ: Viết Campaign Brief hoàn chỉnh — cầu nối từ Marketing
 
 ### 1. Tổng quan campaign
 - Tên campaign + tagline ngắn
-- Thời gian chạy + ngân sách tổng
+- Thời gian chạy + ngân sách tổng (CHỈ ghi con số ngân sách nếu sếp đã cung cấp; nếu chưa → ghi "[Sếp xác nhận ngân sách]", KHÔNG bịa số)
 - Mục tiêu chính (1 dòng, đo lường được)
 
 ### 2. Bối cảnh & Lý do chạy
@@ -43,9 +43,18 @@ Nhiệm vụ: Viết Campaign Brief hoàn chỉnh — cầu nối từ Marketing
 - Pain point cốt lõi
 - Insight ngầm dẫn dắt creative
 
-### 4. Big idea & Key message
+### 4. Big idea & Key message (đóng khung bằng SAVE Framework)
 - 1 big idea xuyên suốt (không phải tagline — là concept)
 - Key message: điều khách phải nhớ sau khi xem campaign
+- **SAVE Framework cho campaign này** (kế thừa từ Marketing Strategy nếu có, cụ thể hoá cho campaign):
+#### Solution (S)
+Campaign này giải quyết VẤN ĐỀ gì của khách (không nói về sản phẩm — nói về vấn đề)
+#### Access (A)
+Khách tiếp cận & mua offer này qua đâu cho dễ nhất (kênh, điểm chạm, friction cần bỏ)
+#### Value (V)
+Truyền tải tổng giá trị (không chỉ giá) — kết nối với USP + offer
+#### Education (E)
+Content educate gì để khách hiểu & tin trước khi mua (gắn với content pillar)
 
 ### 5. Channel mix & Budget allocation
 - Bảng: kênh → % budget → tại sao kênh đó
@@ -60,7 +69,8 @@ Nhiệm vụ: Viết Campaign Brief hoàn chỉnh — cầu nối từ Marketing
 - Offer chính (con số cụ thể từ intake)
 - Cách tạo urgency thật (không fake — VN nhận ra ngay)
 
-### 8. KPIs & Success metrics
+### 8. KPIs & Success metrics (đóng khung bằng SMART Goals)
+- 2-3 **SMART Goals** cho campaign — viết FULL từng chữ (S/M/A/R/T) với con số cụ thể
 - Bảng KPI theo tuần
 - Threshold để kill campaign sớm (red flags)
 

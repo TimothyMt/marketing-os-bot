@@ -4799,20 +4799,20 @@ async def _ask_campaign_setup(message, session):
     """Hỏi kênh + organic/ads + kênh chủ lực (text, ghi nhận — không nút bấm)
     TRƯỚC khi viết Brief. Sếp trả lời → _handle_campaign_setup_text → viết Brief."""
     # Reset answer cũ để campaign mới không kế thừa
-    for k in ("media_mix", "hero_channel"):
+    for k in ("media_mix", "hero_channel", "total_budget"):
         session.pending_intake.pop(k, None)
     session.pending_intake["_awaiting_campaign_setup"] = "1"
     await save_session(session)
     addr = _addr(session)
     suggested = session.profile.current_channels or "Facebook, TikTok, Zalo OA, Instagram"
     await message.reply_text(
-        f"📝 *Đã nhận đủ thông tin!* Trước khi em viết Brief, cho em hỏi 3 ý về kênh ạ:\n\n"
+        f"📝 *Đã nhận đủ thông tin!* Trước khi em viết Brief, cho em hỏi 3 ý ạ:\n\n"
         f"1️⃣ *Triển khai ở những kênh nào?*\n"
         f"_(Gợi ý từ profile: {suggested})_\n\n"
-        f"2️⃣ *Đăng tự nhiên (organic) hay có chạy quảng cáo (ads)?*\n"
-        f"_Nếu có ads thì ngân sách ads khoảng bao nhiêu — vd \"TikTok organic, Facebook chạy ads 10tr\"_\n\n"
+        f"2️⃣ *Tổng ngân sách campaign + phân bổ organic/ads?*\n"
+        f"_(Gồm cả tiền ads + sản xuất nội dung — vd \"Tổng 30tr: Facebook ads 15tr, còn lại quay chụp; TikTok đăng organic\")_\n\n"
         f"3️⃣ *Kênh nào là chủ lực, kênh nào hỗ trợ?*\n"
-        f"_(Dồn lực 1 kênh chính sẽ hiệu quả hơn rải đều — vd \"TikTok chủ lực, Facebook + Zalo hỗ trợ\")_\n\n"
+        f"_(Dồn lực 1 kênh chính hiệu quả hơn rải đều — vd \"TikTok chủ lực, Facebook + Zalo hỗ trợ\")_\n\n"
         f"_Sếp trả lời cả 3 trong 1 tin. Chưa rõ ý nào thì bỏ qua, em tự cân ạ 🙏_",
         parse_mode=ParseMode.MARKDOWN,
     )
@@ -4825,19 +4825,21 @@ async def _handle_campaign_setup_text(update, context, session, text):
 
     # Parse 3 ý bằng LLM (CRITIC_REVIEW) — robust với free-form tiếng Việt
     channels = ""
+    total_budget = ""
     media_mix = ""
     hero_channel = ""
     try:
         from tools.llm_router import call as _router_call, TaskType as _TT
         import json as _json
         _prompt = (
-            "Trích xuất từ câu trả lời của founder VN về kênh triển khai campaign:\n"
+            "Trích xuất từ câu trả lời của founder VN về kênh + ngân sách campaign:\n"
             f"\"{text}\"\n\n"
             "Trả về DUY NHẤT 1 JSON:\n"
             "{"
             '"channels": "<danh sách kênh, cách nhau dấu +; vd \'Facebook + TikTok\'; rỗng nếu không nêu>", '
-            '"media_mix": "<organic/ads theo từng kênh + ngân sách ads nếu có; '
-            'vd \'TikTok organic, Facebook ads 10tr\'; rỗng nếu không nêu>", '
+            '"total_budget": "<tổng ngân sách campaign nếu nêu; vd \'30 triệu\'; rỗng nếu không nêu>", '
+            '"media_mix": "<phân bổ organic/ads + ngân sách ads theo từng kênh nếu có; '
+            'vd \'Facebook ads 15tr, TikTok organic\'; rỗng nếu không nêu>", '
             '"hero_channel": "<kênh chủ lực + kênh hỗ trợ; vd \'TikTok chủ lực, Facebook+Zalo hỗ trợ\'; rỗng nếu không nêu>"'
             "}\n"
             "Chỉ JSON, không giải thích."
@@ -4846,13 +4848,14 @@ async def _handle_campaign_setup_text(update, context, session, text):
             task_type=_TT.CRITIC_REVIEW,
             system="Bạn là parser. Chỉ xuất JSON hợp lệ.",
             user=_prompt,
-            max_tokens=300,
+            max_tokens=350,
         )
         _raw = (_res.get("output") or "").strip()
         _m = re.search(r"\{.*\}", _raw, re.DOTALL)
         if _m:
             _d = _json.loads(_m.group(0))
             channels = (_d.get("channels") or "").strip()
+            total_budget = (_d.get("total_budget") or "").strip()
             media_mix = (_d.get("media_mix") or "").strip()
             hero_channel = (_d.get("hero_channel") or "").strip()
     except Exception as e:
@@ -4864,6 +4867,8 @@ async def _handle_campaign_setup_text(update, context, session, text):
         session.pending_intake["channels"] = (
             session.profile.current_channels or "Facebook + TikTok + Zalo OA"
         )
+    if total_budget:
+        session.pending_intake["total_budget"] = total_budget
     if media_mix:
         session.pending_intake["media_mix"] = media_mix
     if hero_channel:
@@ -4872,6 +4877,8 @@ async def _handle_campaign_setup_text(update, context, session, text):
 
     addr = _addr(session)
     ack = f"📝 Ghi nhận:\n*Kênh* = {session.pending_intake.get('channels')}"
+    if total_budget:
+        ack += f"\n*Ngân sách* = {total_budget}"
     if media_mix:
         ack += f"\n*Organic/Ads* = {media_mix}"
     if hero_channel:

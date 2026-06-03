@@ -591,8 +591,22 @@ class CampaignBriefDynamicSkill(OperationalSkill):
         msg = super().build_user_msg(session)
         pi = session.pending_intake
         channels = (pi.get("channels") or "").strip()
+        total_budget = (pi.get("total_budget") or "").strip()
         media_mix = (pi.get("media_mix") or "").strip()
         hero_channel = (pi.get("hero_channel") or "").strip()
+        if total_budget:
+            msg += (
+                "\n\n---\n\n**TỔNG NGÂN SÁCH DO SẾP CHỐT (dùng ĐÚNG con số này):**\n"
+                + total_budget
+                + "\n_(Section 5 Budget allocation phân bổ TRONG tổng này. KHÔNG bịa con số khác.)_"
+            )
+        else:
+            msg += (
+                "\n\n---\n\n**SẾP CHƯA CUNG CẤP NGÂN SÁCH:**\n"
+                "TUYỆT ĐỐI KHÔNG bịa con số ngân sách tuyệt đối (vd '45 triệu'). "
+                "Section 5 trình bày phân bổ theo % + ghi rõ '[Sếp xác nhận ngân sách thực tế]'. "
+                "Có thể đưa khung benchmark gợi ý nhưng PHẢI ghi chú là 'gợi ý tham khảo'."
+            )
         if channels:
             msg += (
                 "\n\n---\n\n**KÊNH TRIỂN KHAI DO SẾP CHỐT (chỉ viết brief cho CÁC KÊNH NÀY):**\n"
