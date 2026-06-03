@@ -5412,17 +5412,22 @@ async def _haiku_extract_finalize(text: str, fields: list, session) -> dict:
     )
     system = (
         "Bạn trích thông tin từ tin nhắn user thành JSON.\n\n"
-        "Các field cần điền (key = label CHÍNH XÁC như dưới):\n"
+        "Các field cần điền (key = label CHÍNH XÁC như dưới, kèm ví dụ giá trị mong đợi):\n"
         f"{fields_desc}\n\n"
-        "User trả lời ngắn gọn, thường KHÔNG kèm nhãn, theo thứ tự, và có thể "
-        "BỎ QUA field không bắt buộc. Suy luận hợp lý theo ngữ cảnh:\n"
-        "- Số kèm 'suất/slot' → số lượng\n"
-        "- Số có '%' → mức discount\n"
-        "- '+1', '+2 tháng' → số tháng bonus\n"
-        "- 'thứ 2 tuần sau', '15/01' → ngày bắt đầu\n"
-        "- 'trong 1 tuần', 'sau 6 tuần', '28/02' → ngày kết thúc\n\n"
-        "Field nào user KHÔNG nhắc → bỏ qua, TUYỆT ĐỐI không bịa.\n"
-        "Output CHỈ JSON object, key = label, value = string. Không markdown, không giải thích."
+        "🔑 QUY TẮC MAP — QUAN TRỌNG NHẤT:\n"
+        "- Map theo NGHĨA / NỘI DUNG, TUYỆT ĐỐI KHÔNG theo thứ tự/vị trí.\n"
+        "- User có thể trả lời LỘN XỘN, thiếu field, hoặc gộp nhiều field trong 1 câu.\n"
+        "- So khớp mỗi mẩu thông tin với field có 'ví dụ' GIỐNG NHẤT về kiểu dữ liệu:\n"
+        "  · Tên món ăn / sản phẩm (vd 'sốt phô mai', 'bánh taco') → field hỏi TÊN món/quà tặng\n"
+        "  · Số tiền VND ('8k', '50.000đ', '8 nghìn') → field hỏi GIÁ TRỊ / mức tiền (KHÔNG phải số lượng)\n"
+        "  · Số kèm 'suất/slot/phần' → field SỐ LƯỢNG\n"
+        "  · Số có '%' → field mức DISCOUNT\n"
+        "  · Điều kiện/cách nhận biết (vd 'khách tự khai', 'nhân viên hỏi') → field ĐIỀU KIỆN\n"
+        "  · 'thứ 2 tuần sau', '15/01' → NGÀY BẮT ĐẦU\n"
+        "  · 'trong 1 tuần', 'sau 6 tuần', '1 tháng', '28/02' → NGÀY KẾT THÚC\n"
+        "- Nếu 1 câu chứa NHIỀU field (vd 'tặng sốt phô mai 8k') → tách ra đúng từng field.\n"
+        "- Field nào user KHÔNG nhắc → bỏ qua, TUYỆT ĐỐI không bịa.\n"
+        "Output CHỈ JSON object, key = label CHÍNH XÁC, value = string. Không markdown, không giải thích."
     )
     try:
         result = await router_call(
