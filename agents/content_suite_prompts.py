@@ -406,6 +406,34 @@ Nhiệm vụ: Gen N bài content cùng lúc dựa trên Calendar (1 tuần / 1 t
 
 {_SHARED_RULES}
 
+---
+
+## 5 HOOK ANGLES — diversify mỗi tuần (mỗi bài chọn 1)
+
+1. **Tò mò**: câu hỏi tiết lộ paradox — "Tại sao 90% X không Y?"
+2. **Trái ngược**: đảo belief phổ biến — "X KHÔNG cần Y"
+3. **Cảm xúc**: chạm pain sâu — "Sếp đã từng [pain nặng]?"
+4. **Thẩm quyền**: POV insider — "8 năm làm X, đây là sai lầm số 1"
+5. **Đồng cảm**: kể trải nghiệm khán giả — "Bạn đứng trước kệ skincare 30 phút..."
+
+→ Không lặp cùng 1 angle liên tiếp 2 bài. Mỗi tuần phải dùng ít nhất 3/5 angles.
+
+---
+
+## 5 BODY FRAMEWORKS — chọn theo Pillar + Funnel
+
+| Framework | Cấu trúc body | Dùng khi |
+|---|---|---|
+| **PAS** | Problem → Agitate (khoét pain) → Solution | TOFU, Educate pillar |
+| **BAB** | Before (đau) → After (kết quả) → Bridge (cách đạt) | Trust/MOFU, trước-sau |
+| **AIDA** | Hook mở → Story/Interest → Desire → CTA | Facebook dài 300+ chữ, MOFU |
+| **FAB** | Feature → Advantage → Benefit cụ thể | BOFU, Convert pillar, ngắn gọn |
+| **Star-Story** | Nhân vật → Hành trình khó khăn → Giải pháp | Engage pillar, viral potential |
+
+→ Ghi rõ framework đã chọn trong metadata mỗi bài. LLM tự chọn phù hợp với Pillar/Funnel, không cần user chỉ định.
+
+---
+
 📋 **OUTPUT STRUCTURE:**
 
 ```
@@ -430,13 +458,14 @@ Story arc: [Awareness → Trust → Action]
 
 **Pillar:** [X] | **Funnel:** [Y] | **Source:** [Brand/UGC/EGC/FGC]
 **Format:** [Single image / Carousel / Video / Live]
+**Framework:** [PAS / BAB / AIDA / FAB / Star-Story]
 
 ### 🪝 Hook (recommend 1)
-"[Hook 12-15 từ — chọn 1 trong 5 angles]"
+"[Hook 12-15 từ]"
 ↳ Angle: [Tò mò/Trái ngược/Cảm xúc/Thẩm quyền/Đồng cảm]
 
-### 📝 Body (~200 chữ)
-[Content thật]
+### 📝 Body (~200 chữ — follow framework đã chọn)
+[Content thật — cấu trúc theo framework, không generic]
 
 ### 📣 CTA
 [1 dòng cụ thể]
@@ -464,15 +493,17 @@ Story arc: [Awareness → Trust → Action]
 ═══════════════════════════════════════════════════
 📊 Recap:
 - Total: [N] bài
-- Hook angles dùng: [list 5 angles + count]
+- Hook angles dùng: [list angles + count mỗi angle]
+- Frameworks dùng: [list frameworks + count]
 - Channels: [list]
 - Khi nào cần adapt sang TikTok/Zalo → dùng skill Channel Adapter
 ═══════════════════════════════════════════════════
 ```
 
 **Quy tắc:**
-- N bài PHẢI khác nhau về angle hook — không lặp pattern
+- N bài PHẢI khác nhau về hook angle VÀ framework — không lặp pattern
 - Pillar mix follow Calendar input — không tự đổi
 - Mỗi bài body 200 chữ (rút gọn hơn Single Post — vì batch)
+- Framework phải thể hiện rõ trong cấu trúc body, không chỉ ghi tên
 - Cuối output có recap để user overview
 """
