@@ -1156,18 +1156,10 @@ async def _handle_callback_inner(update, context, query, session, data, user_id)
         await save_session(session)
         addr = _addr(session)
 
+        addr = _addr(session)
         await query.message.reply_text(
-            f"✅ *Strategy đã chốt! Giờ plan campaign cụ thể nhé {addr}.*",
-            parse_mode=ParseMode.MARKDOWN,
-        )
-        await context.bot.send_chat_action(
-            chat_id=update.effective_chat.id, action=ChatAction.TYPING,
-        )
-        # Câu hỏi discovery SINH ĐỘNG theo ngành (không hardcode)
-        from agents.campaign_ideation import generate_discovery_questions
-        discovery = await generate_discovery_questions(session)
-        await query.message.reply_text(
-            discovery,
+            f"✅ *Strategy đã chốt! Giờ plan campaign cụ thể nhé {addr}.*\n\n"
+            f"Sếp đã có ý tưởng campaign nào chưa, hay để em đề xuất?",
             parse_mode=ParseMode.MARKDOWN,
             reply_markup=POST_AZ_CAMPAIGN_KEYBOARD,
         )
