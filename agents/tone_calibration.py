@@ -86,15 +86,32 @@ def parse_first_post(calendar_text: str) -> Optional[dict]:
              if any(k in h.lower() for k in ["kênh", "channel", "nền tảng"])),
             1,
         )
+        pillar_idx = next(
+            (i for i, h in enumerate(header_cells_orig) if "pillar" in h.lower()),
+            None,
+        )
+        funnel_idx = next(
+            (i for i, h in enumerate(header_cells_orig) if "funnel" in h.lower()),
+            None,
+        )
 
         topic   = first_data_row[topic_idx]   if topic_idx   < len(first_data_row) else ""
         hook    = first_data_row[hook_idx]    if hook_idx    < len(first_data_row) else ""
         day     = first_data_row[day_idx]     if day_idx     < len(first_data_row) else ""
         channel = first_data_row[channel_idx] if channel_idx < len(first_data_row) else ""
+        pillar_val = (first_data_row[pillar_idx] if pillar_idx is not None and pillar_idx < len(first_data_row) else "Educate")
+        funnel_val = (first_data_row[funnel_idx] if funnel_idx is not None and funnel_idx < len(first_data_row) else "TOFU")
 
         if topic and len(topic) > 10:
             preview = f"📅 {day} | {channel}\n🎯 Hook angle: {hook}\n📝 Topic: {topic}"
-            return {"preview": preview, "full_block": first_row_raw}
+            return {
+                "preview":   preview,
+                "full_block": first_row_raw,
+                "row_meta":  {
+                    "day": day, "channel": channel, "topic": topic,
+                    "hook_angle": hook, "pillar": pillar_val, "funnel": funnel_val,
+                },
+            }
 
     # ── Format 2: Block / labelled sections ──────────────────────────
     patterns = [
@@ -122,7 +139,79 @@ def parse_first_post(calendar_text: str) -> Optional[dict]:
     return None
 
 
-# ─── Extract tone signals from user feedback ──────────────────────────────────
+# ─── Generate sample post from calendar row ───────────────────────────────────
+
+_SAMPLE_POST_SYSTEM = """Bạn là Content Writer viết bài mẫu để kiểm tra tone cho founder Việt Nam.
+
+Nhiệm vụ: Viết 1 bài social post hoàn chỉnh dựa trên metadata từ Content Calendar.
+
+Yêu cầu:
+- Body ~150-200 chữ, dùng framework phù hợp với Pillar/Funnel
+- Hook đầu 12-15 từ, match angle đã chọn
+- CTA cuối 1 dòng cụ thể
+- 3-5 hashtags
+- Tone match với business profile được inject
+- Bài phải viết THẬT — đủ để founder judge tone ngay
+
+KHÔNG viết placeholder kiểu "[tên sản phẩm]" — dùng thông tin từ profile.
+Chỉ trả về bài viết, không giải thích thêm."""
+
+
+async def generate_sample_post(
+    session,
+    row_meta: dict,
+    calendar_context: str = "",
+) -> str:
+    """
+    Dùng Haiku gen 1 bài post mẫu từ calendar row metadata.
+    row_meta: {day, channel, topic, hook_angle, pillar, funnel}
+    Returns written post text, hoặc fallback string nếu fail.
+    """
+    client = _get_client()
+    profile = session.profile
+
+    pillar  = row_meta.get("pillar", "Educate")
+    funnel  = row_meta.get("funnel", "TOFU")
+    channel = row_meta.get("channel", "Facebook")
+    topic   = row_meta.get("topic", "")
+    hook_angle = row_meta.get("hook_angle", "Tò mò")
+
+    framework_hint = {
+        "educate": "PAS hoặc Star-Story",
+        "trust":   "BAB hoặc AIDA",
+        "engage":  "Star-Story hoặc AIDA",
+        "convert": "FAB hoặc PAS",
+    }.get(pillar.lower().strip(), "PAS")
+
+    user_msg = f"""**Thông tin bài cần viết (từ Content Calendar):**
+- Kênh: {channel}
+- Pillar: {pillar} | Funnel: {funnel}
+- Topic: {topic}
+- Hook angle: {hook_angle}
+- Framework gợi ý: {framework_hint}
+
+**Business Profile:**
+- Ngành: {profile.industry or 'chưa rõ'}
+- Sản phẩm/dịch vụ: {profile.product_service or 'chưa rõ'}
+- Khách hàng: {profile.target_customer or 'chưa rõ'}
+- Địa bàn: {profile.location or 'Việt Nam'}
+
+Viết bài {channel} hoàn chỉnh theo thông tin trên."""
+
+    try:
+        resp = await client.messages.create(
+            model=CLAUDE_HAIKU_MODEL,
+            max_tokens=800,
+            system=_SAMPLE_POST_SYSTEM,
+            messages=[{"role": "user", "content": user_msg}],
+        )
+        return resp.content[0].text.strip()
+    except Exception as e:
+        logger.warning("generate_sample_post failed: %s", e)
+        return f"[Topic: {topic}]\n[Hook angle: {hook_angle}]\n\n_(Em không gen được bài mẫu — sếp check tone dựa trên kế hoạch trên nhé.)_"
+
+
+
 
 _EXTRACT_TONE_SYSTEM = """Bạn là chuyên gia phân tích Brand Voice.
 User vừa đọc bài content và cho feedback về tone.

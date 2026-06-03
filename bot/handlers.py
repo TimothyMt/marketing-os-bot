@@ -5943,30 +5943,39 @@ async def cmd_history(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
 async def _start_tone_calibration(message, session, calendar_result: str) -> None:
     """
     Khởi động Tone Calibration Loop sau khi content_calendar gen xong.
-    Extract Post 1 → show với tone check keyboard.
+    Gen 1 sample post từ row đầu tiên → show bài viết thật để user check tone.
     """
-    from agents.tone_calibration import parse_first_post
+    from agents.tone_calibration import parse_first_post, generate_sample_post
     from bot.keyboards import TONE_CHECK_KEYBOARD
 
     first = parse_first_post(calendar_result)
     if not first:
-        # Không parse được → skip calibration
         return
 
-    # Lưu state calibration
+    # Gen sample post từ row metadata (Haiku, ~5s)
+    await message.reply_text(
+        "🎨 _Đang viết thử bài đầu tiên để sếp check tone..._",
+        parse_mode=ParseMode.MARKDOWN,
+    )
+    row_meta = first.get("row_meta", {})
+    sample_post = await generate_sample_post(session, row_meta, calendar_result)
+
+    # Lưu state — post1_content là bài viết thật, không phải raw table row
     session.tone_calibration = {
-        "stage":            "checking_tone",
-        "rejection_count":  0,
-        "post1_content":    first["full_block"],
-        "calendar_full":    calendar_result,
-        "locked_signals":   {},
+        "stage":           "checking_tone",
+        "rejection_count": 0,
+        "post1_content":   sample_post,
+        "calendar_full":   calendar_result,
+        "locked_signals":  {},
     }
     await save_session(session)
 
-    preview = first["preview"][:500]
+    meta_line = first["preview"]  # "📅 21/06 | Facebook\n🎯 Hook: ...\n📝 Topic: ..."
+    preview = sample_post[:600]
     await message.reply_text(
-        "🎨 *Kiểm tra Tone — Bài đăng đầu tiên*\n\n"
-        "_Em extract bài đầu tiên để sếp check tone trước khi em apply cho toàn bộ calendar:_\n\n"
+        "🎨 *Kiểm tra Tone — Bài mẫu đầu tiên*\n\n"
+        f"_{meta_line}_\n\n"
+        "Em đã viết thử 1 bài từ Calendar để sếp check tone:\n\n"
         f"```\n{preview}\n```\n\n"
         "Tone ổn chưa sếp? Nếu muốn chỉnh, gõ feedback sau khi bấm *Chỉnh tone*.",
         parse_mode=ParseMode.MARKDOWN,
