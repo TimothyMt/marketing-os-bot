@@ -170,7 +170,17 @@ Lịch nội dung KHÔNG phải list bài rời rạc — phải là 1 NARRATIVE
 Mỗi tuần cần build context cho tuần sau.
 
 ### 3. Pillar breakdown
-- 4 pillars + % + số bài/tháng + 3 angle chính mỗi pillar
+
+Bảng 4 pillars (LUÔN có 1 dòng trống TRƯỚC bảng để render đúng):
+
+| Pillar | % | Số bài/kỳ | 3 angle chính | Framework ưu tiên |
+|---|---|---|---|---|
+| Educate | 35% | X | [angle 1; angle 2; angle 3] | PAS / Star-Story |
+| Trust | 30% | X | [angle 1; angle 2; angle 3] | BAB / AIDA |
+| Engage | 20% | X | [angle 1; angle 2; angle 3] | Star-Story / AIDA |
+| Convert | 15% | X | [angle 1; angle 2; angle 3] | FAB / PAS |
+
+→ "Framework ưu tiên" = gợi ý cho content writer khi viết bài — không bắt buộc cứng, writer có thể adjust theo bài cụ thể.
 
 ### 4. Weekly grid chi tiết (đúng số tuần của kỳ — 1 tuần thì chỉ 1 bảng tuần)
 Bảng cho từng tuần (LUÔN có 1 dòng trống TRƯỚC bảng để render đúng):
