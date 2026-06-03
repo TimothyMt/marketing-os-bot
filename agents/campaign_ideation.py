@@ -43,6 +43,37 @@ _DISCOVERY_FALLBACK = (
     "_Sếp mô tả tự do bên dưới → em validate luôn. Hoặc bấm nút để em đề xuất trước._"
 )
 
+# Fallback cho câu hỏi nhu cầu (khi không rõ ngành / LLM lỗi).
+_NEEDS_FALLBACK = (
+    "🔍 *Trước khi đề xuất campaign, em hỏi nhanh sếp 3 ý nhé:*\n\n"
+    "1️⃣ *Mục tiêu lúc này là gì?*\n"
+    "_(Thu khách mới · Bán thêm cho khách cũ · Ra sản phẩm mới · Kéo khách cũ quay lại)_\n\n"
+    "2️⃣ *Có dịp / mùa vụ nào sắp tới không?*\n"
+    "_(Tết, 8/3, khai trường, cuối năm... — hoặc 'không có dịp cụ thể')_\n\n"
+    "3️⃣ *Ngân sách campaign dự kiến khoảng nào?*\n"
+    "_(Nhỏ <10 triệu · Vừa 10-50 triệu · Lớn >50 triệu — hoặc gõ con số)_\n\n"
+    "Sếp trả lời cả 3 trong 1 tin giúp em nhé 🙏"
+)
+
+NEEDS_QUESTION_SYSTEM = """Bạn là **Max** — CMO AI. Trước khi đề xuất 3 campaign options, hỏi sếp 3 câu NGẮN để hiểu nhu cầu. Câu hỏi PHẢI bám ngành của sếp.
+
+3 câu BẮT BUỘC (theo thứ tự):
+
+1️⃣ **Mục tiêu lúc này** — đưa 4 lựa chọn mục tiêu ĐẶC THÙ NGÀNH (dựa vào growth levers + market dynamics được cung cấp), KHÔNG generic.
+   - VD F&B: "Tăng giá trị đơn qua combo/upsell · Lấp giờ thấp điểm · Tăng tần suất quay lại · Thu khách mới khu vực"
+   - VD Spa/Clinic: "Đẩy khách trial → liệu trình · Tăng LTV qua gói combo · Win-back khách cũ · Thu khách mới"
+   - VD SaaS: "Tăng trial → paid · Giảm churn · Upsell gói cao · Acquisition logo mới"
+   - VD Ecom: "Tăng AOV/giỏ hàng · Tăng repeat & LTV · Thu khách mới · Xả hàng tồn"
+2️⃣ **Dịp / mùa vụ sắp tới** — gợi ý mốc seasonal đặc thù ngành (vd F&B: Tết, Trung Thu, mùa cưới; Ecom: 11.11/12.12; Education: mùa tuyển sinh). Cho phép "không có dịp cụ thể".
+3️⃣ **Ngân sách dự kiến** — Nhỏ <10 triệu · Vừa 10-50 triệu · Lớn >50 triệu (hoặc con số cụ thể).
+
+QUY TẮC OUTPUT (Telegram chat):
+- Mở đầu 1 dòng: "🔍 *Trước khi đề xuất campaign, em hỏi nhanh 3 ý nhé:*"
+- Mỗi câu 1 block, đánh số 1️⃣ 2️⃣ 3️⃣, *in đậm* tiêu đề + _( )_ chứa lựa chọn ngăn bằng " · ".
+- CHỈ dùng *in đậm*, _in nghiêng_. KHÔNG heading #, KHÔNG bảng |.
+- Kết thúc 1 dòng: "Sếp trả lời cả 3 trong 1 tin giúp em nhé 🙏"
+- KHÔNG bịa số liệu."""
+
 DISCOVERY_SYSTEM = """Bạn là **Max** — CMO AI. Strategy A→Z vừa chốt xong. Việc của bạn: hỏi 3 câu discovery NGẮN để hiểu campaign sếp cần, TRƯỚC khi đề xuất.
 
 3 câu BẮT BUỘC có (theo thứ tự), nhưng diễn đạt phải BÁM NGÀNH của sếp:
@@ -74,26 +105,7 @@ async def generate_discovery_questions(session: Session) -> str:
     if not industry:
         return _DISCOVERY_FALLBACK
 
-    # Gom context ngành: growth levers + market dynamics + synthesis excerpt.
-    ctx_parts = [f"# NGÀNH: {industry}"]
-    try:
-        from frameworks.kpi_library import get_kpi_framework
-        fw = get_kpi_framework(industry)
-        if fw and getattr(fw, "growth_levers", None):
-            ctx_parts.append("## Growth levers của ngành:\n" + "\n".join(f"- {x}" for x in fw.growth_levers))
-    except Exception:
-        pass
-    try:
-        from frameworks.industry_context import get_industry_context
-        ic = get_industry_context(industry)
-        if ic and getattr(ic, "market_dynamics", None):
-            ctx_parts.append("## Market dynamics:\n" + ic.market_dynamics)
-    except Exception:
-        pass
-
-    synthesis = session.get_latest_result("synthesis") or ""
-    if synthesis:
-        ctx_parts.append("## Trích Strategy (synthesis):\n" + synthesis[:1200])
+    ctx_parts = _build_industry_levers_context(session, industry)
 
     user_msg = (
         "\n\n".join(ctx_parts)
@@ -120,6 +132,61 @@ async def generate_discovery_questions(session: Session) -> str:
     except Exception as e:
         logger.warning("generate_discovery_questions failed (industry=%s): %s", industry, e)
         return _DISCOVERY_FALLBACK
+
+
+def _build_industry_levers_context(session: Session, industry: str) -> list[str]:
+    """Gom context ngành: growth levers + market dynamics + synthesis excerpt."""
+    ctx_parts = [f"# NGÀNH: {industry}"]
+    try:
+        from frameworks.kpi_library import get_kpi_framework
+        fw = get_kpi_framework(industry)
+        if fw and getattr(fw, "growth_levers", None):
+            ctx_parts.append("## Growth levers của ngành:\n" + "\n".join(f"- {x}" for x in fw.growth_levers))
+    except Exception:
+        pass
+    try:
+        from frameworks.industry_context import get_industry_context
+        ic = get_industry_context(industry)
+        if ic and getattr(ic, "market_dynamics", None):
+            ctx_parts.append("## Market dynamics:\n" + ic.market_dynamics)
+    except Exception:
+        pass
+    synthesis = session.get_latest_result("synthesis") or ""
+    if synthesis:
+        ctx_parts.append("## Trích Strategy (synthesis):\n" + synthesis[:1200])
+    return ctx_parts
+
+
+async def generate_campaign_needs_question(session: Session) -> str:
+    """Sinh câu hỏi nhu cầu campaign (mục tiêu + dịp + ngân sách) ĐỘNG theo ngành,
+    trước khi đề xuất 3 campaign options. Mục tiêu flex theo growth_levers ngành.
+    Fallback generic nếu thiếu ngành / LLM lỗi."""
+    from tools.llm_router import call as router_call, TaskType, AllProvidersFailedError
+
+    industry = (session.profile.industry or "").strip()
+    if not industry:
+        return _NEEDS_FALLBACK
+
+    ctx_parts = _build_industry_levers_context(session, industry)
+    user_msg = (
+        "\n\n".join(ctx_parts)
+        + "\n\n---\n\nHãy viết 3 câu hỏi nhu cầu campaign bám ngành trên (mục tiêu flex theo growth levers), theo đúng format Telegram."
+    )
+    try:
+        result = await router_call(
+            task_type=TaskType.CRITIC_REVIEW,
+            system=NEEDS_QUESTION_SYSTEM,
+            user=user_msg,
+            max_tokens=600,
+        )
+        text = (result.get("output") or "").strip()
+        return text if text else _NEEDS_FALLBACK
+    except AllProvidersFailedError as e:
+        logger.warning("generate_campaign_needs_question all providers failed (industry=%s): %s", industry, e)
+        return _NEEDS_FALLBACK
+    except Exception as e:
+        logger.warning("generate_campaign_needs_question failed (industry=%s): %s", industry, e)
+        return _NEEDS_FALLBACK
 
 
 PROPOSE_SYSTEM = """Bạn là Max — CMO AI giúp founder VN xác định campaign tiếp theo dựa trên Marketing Strategy đã có.
@@ -464,6 +531,13 @@ QUY TẮC PARAMETERS:
 - KHÔNG hỏi budget / team / ngày (đã có form chung)
 - example phải SPECIFIC theo lever đó
 
+🔑 GIỚI HẠN & TRIẾT LÝ FOUNDER (nếu context có section "## Giới hạn ưu đãi founder đặt"):
+- BẮT BUỘC tôn trọng 100%. Founder là người nắm quyền — bạn chỉ đề xuất TRONG khuôn khổ đó.
+- Nếu founder nói "mồi bằng tặng thêm giá trị, không giảm giá" → TUYỆT ĐỐI không đề lever discount %.
+- Nếu founder đặt trần "giảm tối đa 20%" → mọi lever liên quan giá phải ≤ 20%.
+- Nếu founder có ràng buộc "giữ giá gốc trên menu" / "không phá giá" → cơ chế phải tuân thủ.
+- Nếu founder nói "để em tự đề xuất" → bạn chủ động đề xuất theo best-practice ngành.
+
 QUY TẮC LEVERS:
 - 4 levers PHẢI khác nhau về cơ chế (không trùng 2 levers cùng kiểu discount)
 - Match đúng ngành (đừng đề Trial cho ngành F&B, đừng đề BOGO cho Beauty)
@@ -493,11 +567,21 @@ async def propose_offer_levers(session: Session, campaign: dict) -> Optional[lis
         f"- Cơ chế offer (định hướng AI gen trước): {campaign.get('key_offer', '?')}\n"
     )
 
+    # Triết lý + giới hạn ưu đãi do founder đặt (nếu có) → AI phải tôn trọng
+    offer_prefs = (session.pending_intake.get("_offer_prefs_raw") or "").strip()
+    prefs_block = ""
+    if offer_prefs and "tự đề xuất" not in offer_prefs.lower():
+        prefs_block = (
+            "\n\n## Giới hạn ưu đãi founder đặt (BẮT BUỘC tôn trọng):\n"
+            f"_{offer_prefs}_\n"
+        )
+
     user_msg = (
-        f"{context}\n\n---\n\n"
+        f"{context}{prefs_block}\n\n---\n\n"
         f"{campaign_summary}\n\n"
-        "Đề xuất 4 OFFER LEVERS specific cho campaign này, hợp với ngành + goal + target. "
-        "Mỗi lever có parameters cụ thể user phải điền (giá, %, điều kiện...)."
+        "Đề xuất 4 cách ưu đãi specific cho campaign này, hợp với ngành + goal + target, "
+        "VÀ nằm trong giới hạn founder đã đặt (nếu có). "
+        "Mỗi cách có parameters cụ thể user phải điền (giá, %, điều kiện...)."
     )
 
     try:

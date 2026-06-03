@@ -496,6 +496,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "_awaiting_feedback_for", "_awaiting_rating_for", "_pending_regen_skill",
         "_awaiting_campaign_setup",
         "_awaiting_campaign_needs",
+        "_awaiting_offer_prefs",
     )
     _stuck_now = [k for k in _STUCK_FLAGS if session.pending_intake.get(k)]
     _tone_stuck = session.tone_calibration.get("stage") in ("checking_tone", "waiting_feedback")
@@ -620,6 +621,11 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Post A→Z: Bot hỏi nhu cầu (mục tiêu/dịp/ngân sách) → parse → đề xuất campaign options
     if session.pending_intake.get("_awaiting_campaign_needs"):
         await _handle_campaign_needs_text(update, context, session, text)
+        return
+
+    # Post A→Z: Bot hỏi triết lý + giới hạn offer → parse → đề xuất cách ưu đãi
+    if session.pending_intake.get("_awaiting_offer_prefs"):
+        await _handle_offer_prefs_text(update, context, session, text)
         return
 
     # Post A→Z: User mô tả idea campaign → refine với customer + market
@@ -1230,25 +1236,19 @@ async def _handle_callback_inner(update, context, query, session, data, user_id)
         )
         return
 
-    # Branch B: User chưa biết → hỏi nhu cầu trước, rồi Max propose 3 options
+    # Branch B: User chưa biết → hỏi nhu cầu (flex theo ngành) trước, rồi propose
     if data == "az_propose_campaign" or data == "campaign_propose_again":
         await query.edit_message_reply_markup(reply_markup=None)
         session.pending_intake.pop("_awaiting_rating_for", None)
         session.pending_intake.pop("_awaiting_campaign_idea", None)
         session.pending_intake["_awaiting_campaign_needs"] = "1"
         await save_session(session)
-        addr = _addr(session)
-        await query.message.reply_text(
-            f"🔍 *Trước khi đề xuất campaign, em hỏi nhanh {addr} 3 ý nhé:*\n\n"
-            f"1️⃣ *Mục tiêu lúc này là gì?*\n"
-            f"_(Thu khách mới / Bán thêm cho khách cũ / Ra sản phẩm mới / Kéo khách cũ quay lại)_\n\n"
-            f"2️⃣ *Có dịp / mùa vụ nào sắp tới không?*\n"
-            f"_(Tết, 8/3, khai trường, cuối năm, v.v. — hoặc 'không có dịp cụ thể')_\n\n"
-            f"3️⃣ *Ngân sách campaign dự kiến khoảng nào?*\n"
-            f"_(Nhỏ <10 triệu / Vừa 10-50 triệu / Lớn >50 triệu — hoặc gõ con số cụ thể)_\n\n"
-            f"Sếp trả lời cả 3 trong 1 tin giúp em nhé 🙏",
-            parse_mode=ParseMode.MARKDOWN,
+        await context.bot.send_chat_action(
+            chat_id=update.effective_chat.id, action=ChatAction.TYPING,
         )
+        from agents.campaign_ideation import generate_campaign_needs_question
+        needs_q = await generate_campaign_needs_question(session)
+        await query.message.reply_text(needs_q, parse_mode=ParseMode.MARKDOWN)
         return
 
     # User picks 1/2/3 từ proposed options → show finalize form
@@ -1272,7 +1272,7 @@ async def _handle_callback_inner(update, context, query, session, data, user_id)
             return
 
         chosen = options[pick_idx]
-        await _show_offer_lever_selection(query.message, session, chosen)
+        await _ask_offer_preferences(query.message, session, chosen)
         return
 
     # User confirm refined idea → show finalize form
@@ -1290,7 +1290,7 @@ async def _handle_callback_inner(update, context, query, session, data, user_id)
             await query.message.reply_text("⚠️ Idea đã hết hạn. Sếp gõ lại idea nhé.")
             return
 
-        await _show_offer_lever_selection(query.message, session, chosen)
+        await _ask_offer_preferences(query.message, session, chosen)
         return
 
     # User muốn sửa lại idea
@@ -5275,9 +5275,51 @@ async def _handle_campaign_idea_text(update, context, session, text: str):
         )
 
 
+async def _ask_offer_preferences(message: Message, session, campaign: dict):
+    """Sau khi chốt campaign → HỎI triết lý + giới hạn offer (sếp nắm quyền) TRƯỚC
+    khi AI đề xuất 4 cách ưu đãi. Sếp trả lời → _handle_offer_prefs_text → propose."""
+    import json as _json
+    session.pending_intake["_chosen_campaign"] = _json.dumps(campaign, ensure_ascii=False)
+    session.pending_intake["_awaiting_offer_prefs"] = "1"
+    await save_session(session)
+    addr = _addr(session)
+    await message.reply_text(
+        f"✅ *Đã chốt campaign \"{campaign.get('name', '?')}\"!*\n\n"
+        f"Giờ phần ưu đãi do {addr} quyết — em chỉ đề xuất trong khuôn khổ sếp đặt ra. "
+        f"Cho em hỏi 3 ý ạ:\n\n"
+        f"1️⃣ *Sếp muốn \"mồi\" khách bằng cách nào?*\n"
+        f"_(Giảm giá thẳng · Tặng thêm giá trị (quà/topping/combo) · Cho dùng thử · Đặc quyền riêng — chọn 1-2 hướng)_\n\n"
+        f"2️⃣ *Sếp sẵn sàng \"cho đi\" tới đâu mà vẫn lời?*\n"
+        f"_(Vd: \"giảm tối đa 20%\", \"tặng được món < 15k\", \"miễn phí 1 buổi trải nghiệm\")_\n\n"
+        f"3️⃣ *Có gì BẮT BUỘC phải giữ không?*\n"
+        f"_(Vd: \"giá gốc vẫn hiển thị trên menu\", \"không phá giá thị trường\", \"không tặng tiền mặt\" — hoặc \"không có ràng buộc\")_\n\n"
+        f"Sếp trả lời cả 3 trong 1 tin, hoặc gõ \"để em tự đề xuất\" nếu muốn em chủ động 🙏",
+        parse_mode=ParseMode.MARKDOWN,
+    )
+
+
+async def _handle_offer_prefs_text(update, context, session, text: str):
+    """Parse triết lý + giới hạn offer của sếp → lưu → đề xuất 4 cách ưu đãi trong khuôn khổ đó."""
+    session.pending_intake.pop("_awaiting_offer_prefs", None)
+    session.pending_intake["_offer_prefs_raw"] = (text or "").strip()
+    await save_session(session)
+
+    import json as _json
+    raw_campaign = session.pending_intake.get("_chosen_campaign", "{}")
+    try:
+        campaign = _json.loads(raw_campaign)
+    except _json.JSONDecodeError:
+        campaign = {}
+    if not campaign:
+        await update.message.reply_text("⚠️ Campaign đã hết hạn. Sếp /start lại nhé.")
+        return
+
+    await _show_offer_lever_selection(update.message, session, campaign)
+
+
 async def _show_offer_lever_selection(message: Message, session, campaign: dict):
-    """Sau khi chốt campaign, AI propose 4 offer levers SPECIFIC cho campaign này.
-    Save campaign + levers vào pending_intake để lever_pick_X dùng lại.
+    """Sau khi chốt campaign + biết triết lý/giới hạn, AI propose 4 cách ưu đãi
+    SPECIFIC trong khuôn khổ sếp đặt. Save campaign + levers vào pending_intake.
     """
     from agents.campaign_ideation import propose_offer_levers, format_levers_card
     import json as _json
@@ -5441,7 +5483,7 @@ async def _handle_campaign_finalize_text(update, context, session, text: str):
 
     # Cleanup ideation states
     for k in ("_awaiting_campaign_finalize", "_chosen_campaign", "_chosen_lever",
-              "_offer_levers"):
+              "_offer_levers", "_offer_prefs_raw", "_campaign_needs_raw"):
         session.pending_intake.pop(k, None)
 
     # Merge campaign + lever + user inputs → 4 fields cho campaign_brief
