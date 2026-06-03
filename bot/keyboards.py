@@ -321,3 +321,11 @@ def post_action_keyboard(post_id: str) -> InlineKeyboardMarkup:
     ])
 
 
+# ─────────────────────────────────────────────────────────────────
+# USP Gate — hỏi USP sau McKinsey Gate
+# ─────────────────────────────────────────────────────────────────
+
+USP_ANALYZE_KEYBOARD = InlineKeyboardMarkup([
+    [InlineKeyboardButton("🔬 Phân tích thêm — tìm USP mạnh hơn", callback_data="usp_analyze_more")],
+    [InlineKeyboardButton("⚡ Dùng luôn USP này, khỏi phân tích",  callback_data="usp_use_as_is")],
+])

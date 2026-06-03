@@ -51,6 +51,7 @@ from bot.keyboards import (
     OFFER_LEVER_KEYBOARD,
     BRAND_VOICE_PROMPT_KEYBOARD,
     RESEARCH_GATE_KEYBOARD,
+    USP_ANALYZE_KEYBOARD,
 )
 
 
@@ -499,6 +500,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "_awaiting_offer_prefs",
         "_awaiting_research_paste",
         "_awaiting_direction_custom",
+        "_awaiting_usp_text",
     )
     _stuck_now = [k for k in _STUCK_FLAGS if session.pending_intake.get(k)]
     _tone_stuck = session.tone_calibration.get("stage") in ("checking_tone", "waiting_feedback")
@@ -658,6 +660,11 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             parse_mode=ParseMode.MARKDOWN,
             reply_markup=MAIN_MENU_KEYBOARD,
         )
+        return
+
+    # USP Gate: user trả lời câu hỏi USP sau McKinsey Gate
+    if session.pending_intake.get("_awaiting_usp_text"):
+        await _handle_usp_text(update, context, session, text)
         return
 
     # Direction Gate: user gõ hướng chiến lược riêng (thay vì chọn button)
@@ -1474,6 +1481,29 @@ async def _handle_callback_inner(update, context, query, session, data, user_id)
         session.pending_intake.pop("_direction_options", None)
         await save_session(session)
         await _run_strategy_plan(query.message, session, direction=direction_text)
+        return
+
+    if data == "usp_use_as_is":
+        await query.edit_message_reply_markup(reply_markup=None)
+        stated_usp = session.pending_intake.pop("_user_stated_usp", "")
+        pending_skill = session.pending_intake.pop("_usp_pending_skill", "")
+        if stated_usp:
+            session.add_result("usp_definition", stated_usp)
+        await save_session(session)
+        await query.message.reply_text(
+            f"✅ *Em đã lưu USP của sếp!*\n\n_{stated_usp}_",
+            parse_mode=ParseMode.MARKDOWN,
+        )
+        if pending_skill:
+            await _send_single_shot_form(query.message, session, pending_skill)
+        return
+
+    if data == "usp_analyze_more":
+        await query.edit_message_reply_markup(reply_markup=None)
+        pending_skill = session.pending_intake.pop("_usp_pending_skill", "")
+        # stated_usp stays in pending_intake as context for usp_definition agent
+        if pending_skill:
+            await _send_single_shot_form(query.message, session, pending_skill)
         return
 
     # ── Rating callback (Sprint 2) ───────────────────────────────
@@ -6568,6 +6598,7 @@ async def _send_basic_business_form(message: Message, session, pending_skill: st
     # Pre-fill placeholders nếu profile có sẵn vài field
     p = session.profile
     pre = {
+        "biz_name":         _escape_md(p.business_name)    if p.business_name    else "_(chưa có)_",
         "industry":         _escape_md(p.industry)         if p.industry         else "_(chưa có)_",
         "product":          _escape_md(p.product_service)  if p.product_service  else "_(chưa có)_",
         "target":           _escape_md(p.target_customer)  if p.target_customer  else "_(chưa có)_",
@@ -6576,28 +6607,31 @@ async def _send_basic_business_form(message: Message, session, pending_skill: st
     }
 
     msg = (
-        f"🎯 *Trước khi chạy {skill_label}, em cần nắm 5 ý cơ bản về business của sếp*\n\n"
+        f"🎯 *Trước khi chạy {skill_label}, em cần nắm 6 ý cơ bản về business của sếp*\n\n"
         f"_Output sẽ generic nếu em không biết ngành/khách/giai đoạn của sếp. "
         f"Em hỏi 1 lần — lưu vĩnh viễn, lần sau không cần khai lại._\n\n"
         f"━━━━━━━━━━━━━━━━━━━━━━━\n"
-        f"*Sếp trả lời 5 câu (gõ tự do, em parse được):*\n\n"
-        f"*1️⃣ Ngành kinh doanh:*\n"
+        f"*Sếp trả lời 6 câu (gõ tự do, em parse được):*\n\n"
+        f"*1️⃣ Tên business:*\n"
+        f"   _Vd: 'Spa Hoa Lan' / 'Công ty ABC' / 'Shop thời trang X'_\n"
+        f"   _Hiện tại: {pre['biz_name']}_\n\n"
+        f"*2️⃣ Ngành kinh doanh:*\n"
         f"   _Vd: F&B / SaaS / Spa-Beauty / Bán lẻ online / Đào tạo / BĐS / B2B service_\n"
         f"   _Hiện tại: {pre['industry']}_\n\n"
-        f"*2️⃣ Sản phẩm/Dịch vụ chính:*\n"
+        f"*3️⃣ Sản phẩm/Dịch vụ chính:*\n"
         f"   _Vd: 'Combo skincare 5 sản phẩm' / 'App quản lý đơn online' / 'Khoá học marketing'_\n"
         f"   _Hiện tại: {pre['product']}_\n\n"
-        f"*3️⃣ Khách hàng mục tiêu (ai mua):*\n"
+        f"*4️⃣ Khách hàng mục tiêu (ai mua):*\n"
         f"   _Vd: 'Phụ nữ 25-35t TP HCM' / 'SME 10-50 nhân viên' / 'Mẹ bỉm có con < 3t'_\n"
         f"   _Hiện tại: {pre['target']}_\n\n"
-        f"*4️⃣ Stage hiện tại:*\n"
+        f"*5️⃣ Stage hiện tại:*\n"
         f"   _Mới mở (<6 tháng) / Đang tăng trưởng / Ổn định scale / Maturity_\n"
         f"   _Hiện tại: {pre['stage']}_\n\n"
-        f"*5️⃣ Mục tiêu chính 3 tháng tới:*\n"
+        f"*6️⃣ Mục tiêu chính 3 tháng tới:*\n"
         f"   _Vd: 'Tăng doanh thu 30%' / 'Mở thêm kênh TikTok' / 'Giữ chân khách cũ' / 'Tăng AOV'_\n"
         f"   _Hiện tại: {pre['goal']}_\n\n"
         f"━━━━━━━━━━━━━━━━━━━━━━━\n"
-        f"💬 *Gửi 1 tin theo format trên — em parse và chạy {skill_label} ngay.*"
+        f"💬 *Gửi 1 tin theo format trên — em parse và hỏi thêm 1 câu nữa rồi chạy {skill_label} ngay.*"
     )
     await message.reply_text(msg, parse_mode=ParseMode.MARKDOWN)
 
@@ -6612,6 +6646,7 @@ async def _haiku_extract_basic_business(text: str, session) -> dict:
     system = """Extract business fields từ user message thành JSON.
 
 Fields cần extract (nếu user có nhắc):
+- business_name    : tên business/thương hiệu/công ty (giữ nguyên như user gõ)
 - industry         : ngành kinh doanh, NORMALIZE thành 1 trong: fnb, tech_saas, ecommerce, education, health_beauty, retail, b2b_service, real_estate. Nếu không match exact, chọn gần nhất.
 - product_service  : sản phẩm/dịch vụ chính (1 câu ngắn)
 - target_customer  : khách hàng mục tiêu — CHỈ demographic/psychographic, KHÔNG kèm địa danh (vd "Gen Z 18-25", "phụ nữ 25-35", "SME 10-50 NV")
@@ -6625,8 +6660,8 @@ QUY TẮC:
 - Output CHỈ JSON object, không markdown, không giải thích.
 
 Ví dụ:
-Input: "1: thời trang\\n2: cho thuê quần áo\\n3: Gen Z Hà Nội\\n4: mới mở\\nTăng doanh thu 50%"
-Output: {"industry":"retail","product_service":"cho thuê quần áo","target_customer":"Gen Z","location":"Hà Nội","stage":"mvp","primary_goal":"Tăng doanh thu 50%"}"""
+Input: "1: Spa Hoa Lan\\n2: thời trang\\n3: cho thuê quần áo\\n4: Gen Z Hà Nội\\n5: mới mở\\nTăng doanh thu 50%"
+Output: {"business_name":"Spa Hoa Lan","industry":"retail","product_service":"cho thuê quần áo","target_customer":"Gen Z","location":"Hà Nội","stage":"mvp","primary_goal":"Tăng doanh thu 50%"}"""
 
     client = anthropic.AsyncAnthropic(api_key=ANTHROPIC_API_KEY)
     try:
@@ -6646,8 +6681,8 @@ Output: {"industry":"retail","product_service":"cho thuê quần áo","target_cu
         raw = re.sub(r"^```json\s*|^```\s*|```$", "", raw, flags=re.MULTILINE).strip()
         data = _json.loads(raw)
 
-        valid = {"industry", "product_service", "target_customer", "location",
-                 "stage", "primary_goal"}
+        valid = {"business_name", "industry", "product_service", "target_customer",
+                 "location", "stage", "primary_goal"}
         extracted = {k: str(v).strip() for k, v in data.items() if k in valid and v}
 
         # Fallback regex: nếu Haiku miss location, detect VN cities trong target_customer
@@ -6675,6 +6710,55 @@ Output: {"industry":"retail","product_service":"cho thuê quần áo","target_cu
         return {}
 
 
+async def _send_usp_gate(message: Message, session, pending_skill: str):
+    """Ask user about USP after McKinsey Gate — single question, branching by response."""
+    session.pending_intake["_awaiting_usp_text"] = "1"
+    session.pending_intake["_usp_pending_skill"] = pending_skill
+    await save_session(session)
+    await message.reply_text(
+        "💎 *Một câu cuối — USP của sếp là gì?*\n\n"
+        "_Điểm khác biệt / lợi thế cạnh tranh chính so với đối thủ_\n\n"
+        "Vd: 'Giao hàng trong 2h' / 'Giá rẻ hơn 30% so với spa cùng chất lượng' / "
+        "'Công nghệ X duy nhất ở VN'\n\n"
+        "_Nếu chưa có → gõ *'chưa có'* để Max phân tích giúp_",
+        parse_mode=ParseMode.MARKDOWN,
+    )
+
+
+_NO_USP_SIGNALS = {"chưa có", "chua co", "không có", "khong co", "không", "chưa", "ko", "k có",
+                   "không biết", "chưa rõ", "chưa xác định", "skip", "bỏ qua"}
+
+
+async def _handle_usp_text(update, context, session, text: str):
+    """Process user's USP answer → branch based on whether they have one."""
+    session.pending_intake.pop("_awaiting_usp_text", None)
+    pending_skill = session.pending_intake.get("_usp_pending_skill", "")
+
+    if text.strip().lower() in _NO_USP_SIGNALS or len(text.strip()) < 5:
+        # No USP → proceed, usp_definition will run in pipeline normally
+        session.pending_intake.pop("_usp_pending_skill", None)
+        await save_session(session)
+        await update.message.reply_text(
+            "OK ạ — Max sẽ phân tích và đề xuất USP trong quá trình nghiên cứu.",
+            parse_mode=ParseMode.MARKDOWN,
+        )
+        if pending_skill:
+            await _send_single_shot_form(update.message, session, pending_skill)
+        return
+
+    # Has USP → save it, ask if want more analysis
+    session.pending_intake["_user_stated_usp"] = text.strip()
+    await save_session(session)
+    await update.message.reply_text(
+        f"✅ Ghi nhận: _{text.strip()}_\n\n"
+        f"Sếp có muốn Max phân tích thêm để tìm ra USP mạnh nhất không?\n\n"
+        f"• *Phân tích thêm* → Max đối chiếu với thị trường & đối thủ, đề xuất nhiều góc USP để lựa\n"
+        f"• *Dùng luôn* → Max dùng USP này làm nền luôn, không phân tích thêm",
+        parse_mode=ParseMode.MARKDOWN,
+        reply_markup=USP_ANALYZE_KEYBOARD,
+    )
+
+
 async def _handle_basic_business_text(update, context, session, text: str):
     """User submitted basic business form → extract, save, chain to pending skill."""
     pending_skill = session.pending_intake.get(BIZ_CONTEXT_PENDING_SKILL)
@@ -6694,6 +6778,7 @@ async def _handle_basic_business_text(update, context, session, text: str):
 
     # Save to profile
     p = session.profile
+    if extracted.get("business_name"):    p.business_name    = extracted["business_name"]
     if extracted.get("industry"):         p.industry         = extracted["industry"]
     if extracted.get("product_service"):  p.product_service  = extracted["product_service"]
     if extracted.get("target_customer"):  p.target_customer  = extracted["target_customer"]
@@ -6720,15 +6805,15 @@ async def _handle_basic_business_text(update, context, session, text: str):
         await save_session(session)
         return
 
-    # Confirm + chain
-    task = get_task(pending_skill)
-    skill_label = task.label if task else pending_skill
-
-    summary_lines = [
+    # Confirm
+    summary_lines = []
+    if p.business_name:
+        summary_lines.append(f"• *Business:* {_escape_md(p.business_name)}")
+    summary_lines.extend([
         f"• *Ngành:* {_escape_md(p.industry)}",
         f"• *Sản phẩm:* {_escape_md(p.product_service)}",
         f"• *Khách hàng:* {_escape_md(p.target_customer)}",
-    ]
+    ])
     if p.location:
         summary_lines.append(f"• *Địa bàn:* {_escape_md(p.location)}")
     summary_lines.extend([
@@ -6739,14 +6824,15 @@ async def _handle_basic_business_text(update, context, session, text: str):
     await update.message.reply_text(
         "✅ *Em đã ghi nhớ:*\n\n"
         + "\n".join(summary_lines)
-        + "\n\n_Lần sau dùng skill khác em không cần hỏi lại nữa._\n\n"
-        + "━━━━━━━━━━━━━━━\n"
-        + f"Giờ em chạy *{_escape_md(skill_label)}* ngay 👇",
+        + "\n\n_Lần sau dùng skill khác em không cần hỏi lại nữa._",
         parse_mode=ParseMode.MARKDOWN,
     )
 
-    # Chain to pending skill
-    await _send_single_shot_form(update.message, session, pending_skill)
+    # USP gate — ask once; skip if already have usp result
+    if not session.get_latest_result("usp_definition"):
+        await _send_usp_gate(update.message, session, pending_skill)
+    else:
+        await _send_single_shot_form(update.message, session, pending_skill)
 
 
 # ─────────────────────────────────────────────────────────────────
