@@ -589,12 +589,29 @@ class CampaignBriefDynamicSkill(OperationalSkill):
 
     def build_user_msg(self, session: Session) -> str:
         msg = super().build_user_msg(session)
-        channels = (session.pending_intake.get("channels") or "").strip()
+        pi = session.pending_intake
+        channels = (pi.get("channels") or "").strip()
+        media_mix = (pi.get("media_mix") or "").strip()
+        hero_channel = (pi.get("hero_channel") or "").strip()
         if channels:
             msg += (
                 "\n\n---\n\n**KÊNH TRIỂN KHAI DO SẾP CHỐT (chỉ viết brief cho CÁC KÊNH NÀY):**\n"
                 + channels
                 + "\n_(Section 5 Channel mix + Section 8 KPI PHẢI ghi rõ từng kênh này, KHÔNG thêm kênh khác.)_"
+            )
+        if media_mix:
+            msg += (
+                "\n\n**ORGANIC / ADS DO SẾP CHỐT (BẮT BUỘC theo đúng):**\n"
+                + media_mix
+                + "\n_(Section 5 Budget allocation phải phản ánh đúng kênh nào organic, kênh nào chạy ads + ngân sách ads. "
+                "Kênh organic → KPI theo reach/engagement tự nhiên; kênh ads → KPI theo CPM/CPC/CPMess + budget cụ thể.)_"
+            )
+        if hero_channel:
+            msg += (
+                "\n\n**KÊNH CHỦ LỰC vs HỖ TRỢ DO SẾP CHỐT:**\n"
+                + hero_channel
+                + "\n_(Dồn phần lớn budget + nội dung vào kênh chủ lực. Kênh hỗ trợ chỉ repurpose/amplify. "
+                "Section 5 + Section 9 timeline phải reflect ưu tiên này.)_"
             )
         return msg
 
