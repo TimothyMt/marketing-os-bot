@@ -1530,7 +1530,7 @@ async def _handle_callback_inner(update, context, query, session, data, user_id)
         label  = _STRATEGY_Q_LABELS.get(q_key, "hướng")
         await query.message.reply_text(
             f"✏️ *Sếp gõ {label} muốn chọn vào đây ạ:*\n\n"
-            f"_Nếu muốn kết hợp 2 hướng, gõ cả hai (vd: \"Hướng A + Hướng B\"). "
+            f"_Nếu muốn kết hợp nhiều hướng, gõ tất cả vào (vd: \"Hướng A + Hướng B + Hướng C\"). "
             f"Em vẫn khuyên tập trung 1 hướng, nhưng tôn trọng quyết định của sếp._",
             parse_mode=ParseMode.MARKDOWN,
         )
@@ -3791,7 +3791,7 @@ async def _start_strategic_consultation(message: Message, session) -> None:
         f"Để kế hoạch chiến lược thực sự fit với sếp, Max cần hỏi {addr} *7 câu* về hướng đi.\n\n"
         f"💡 _Mỗi câu nên chọn **1 hướng** thôi — chiến lược càng tập trung, "
         f"dồn lực 1 mũi thì ra kết quả nhanh và rõ hơn là dàn trải. "
-        f"Nếu sếp thật sự muốn kết hợp 2, bấm \"✏️ Tôi có ý khác\" và gõ cả hai ạ._\n\n"
+        f"Nếu sếp thật sự muốn kết hợp nhiều, bấm \"✏️ Tôi có ý khác\" và gõ tất cả vào ạ._\n\n"
         f"Xong ngay thôi 👇",
         parse_mode=ParseMode.MARKDOWN,
     )
@@ -3840,7 +3840,7 @@ async def _ask_next_strategy_question(message: Message, session) -> None:
         f"_{q['context']}_\n\n"
         f"{options_text}\n\n"
         f"{q['question']}\n\n"
-        f"_👉 Nên chọn 1 để tập trung. Muốn kết hợp 2 → bấm \"✏️ Tôi có ý khác\"._",
+        f"_👉 Nên chọn 1 để tập trung. Muốn kết hợp nhiều → bấm \"✏️ Tôi có ý khác\"._",
         parse_mode=ParseMode.MARKDOWN,
         reply_markup=kb,
     )
