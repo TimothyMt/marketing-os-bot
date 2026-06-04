@@ -1529,7 +1529,9 @@ async def _handle_callback_inner(update, context, query, session, data, user_id)
         q_key  = session.pending_intake.get("_current_q_key", "")
         label  = _STRATEGY_Q_LABELS.get(q_key, "hướng")
         await query.message.reply_text(
-            f"✏️ *Sếp gõ {label} muốn chọn vào đây ạ:*",
+            f"✏️ *Sếp gõ {label} muốn chọn vào đây ạ:*\n\n"
+            f"_Nếu muốn kết hợp 2 hướng, gõ cả hai (vd: \"Hướng A + Hướng B\"). "
+            f"Em vẫn khuyên tập trung 1 hướng, nhưng tôn trọng quyết định của sếp._",
             parse_mode=ParseMode.MARKDOWN,
         )
         return
@@ -3786,8 +3788,11 @@ async def _start_strategic_consultation(message: Message, session) -> None:
 
     await message.reply_text(
         f"✅ *Nghiên cứu hoàn tất!*\n\n"
-        f"Để kế hoạch chiến lược thực sự fit với sếp, Max cần hỏi {addr} *7 câu* về hướng đi.\n"
-        f"Mỗi câu 1 lựa chọn — xong ngay thôi ạ 👇",
+        f"Để kế hoạch chiến lược thực sự fit với sếp, Max cần hỏi {addr} *7 câu* về hướng đi.\n\n"
+        f"💡 _Mỗi câu nên chọn **1 hướng** thôi — chiến lược càng tập trung, "
+        f"dồn lực 1 mũi thì ra kết quả nhanh và rõ hơn là dàn trải. "
+        f"Nếu sếp thật sự muốn kết hợp 2, bấm \"✏️ Tôi có ý khác\" và gõ cả hai ạ._\n\n"
+        f"Xong ngay thôi 👇",
         parse_mode=ParseMode.MARKDOWN,
     )
     await _ask_next_strategy_question(message, session)
@@ -3834,7 +3839,8 @@ async def _ask_next_strategy_question(message: Message, session) -> None:
         f"*{current}/{total} — {label}*\n\n"
         f"_{q['context']}_\n\n"
         f"{options_text}\n\n"
-        f"{q['question']}",
+        f"{q['question']}\n\n"
+        f"_👉 Nên chọn 1 để tập trung. Muốn kết hợp 2 → bấm \"✏️ Tôi có ý khác\"._",
         parse_mode=ParseMode.MARKDOWN,
         reply_markup=kb,
     )
@@ -3918,6 +3924,17 @@ async def _show_extracted_campaigns(message: Message, session):
     from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 
     addr = _addr(session)
+
+    # Bridge yêu cầu output synthesis — nếu chưa có thì KHÔNG fallback, báo lỗi rõ.
+    synthesis = (session.get_latest_result("synthesis") or "").strip()
+    if not synthesis:
+        await message.reply_text(
+            f"⚠️ *Chưa có kế hoạch chiến lược (synthesis) để trích campaign.*\n\n"
+            f"Sếp thử chạy lại bước lập kế hoạch, hoặc báo cho support nhé.\n\n{SUPPORT_NOTE}",
+            parse_mode=ParseMode.MARKDOWN,
+        )
+        return
+
     await message.reply_text(
         f"✅ *Strategy đã chốt! Em đang trích campaign từ Roadmap...*",
         parse_mode=ParseMode.MARKDOWN,
@@ -3926,12 +3943,13 @@ async def _show_extracted_campaigns(message: Message, session):
     campaigns = await extract_campaigns_from_synthesis(session)
 
     if not campaigns:
-        session.pending_intake["_awaiting_campaign_idea"] = "1"
-        await save_session(session)
+        from telegram import InlineKeyboardButton as _Btn, InlineKeyboardMarkup as _Kb
+        retry_kb = _Kb([[_Btn("🔄 Thử lại", callback_data="extracted_campaign_more")]])
         await message.reply_text(
-            f"💡 *Sếp đã có ý tưởng campaign nào chưa, hay để em đề xuất?*",
+            f"⚠️ *Em chưa trích được campaign từ Roadmap.*\n\n"
+            f"Sếp bấm thử lại giúp em. Nếu vẫn lỗi, chụp màn hình gửi support nhé.\n\n{SUPPORT_NOTE}",
             parse_mode=ParseMode.MARKDOWN,
-            reply_markup=POST_AZ_CAMPAIGN_KEYBOARD,
+            reply_markup=retry_kb,
         )
         return
 
@@ -5810,16 +5828,18 @@ async def _ask_offer_preferences(message: Message, session, campaign: dict):
     """Sau khi chốt campaign → HỎI triết lý + giới hạn offer (sếp nắm quyền) TRƯỚC
     khi AI đề xuất 4 cách ưu đãi. Sếp trả lời → _handle_offer_prefs_text → propose."""
     import json as _json
+    from agents.campaign_ideation import generate_bait_hint
     session.pending_intake["_chosen_campaign"] = _json.dumps(campaign, ensure_ascii=False)
     session.pending_intake["_awaiting_offer_prefs"] = "1"
     await save_session(session)
     addr = _addr(session)
+    bait_hint = await generate_bait_hint(session)
     await message.reply_text(
         f"✅ *Đã chốt campaign \"{campaign.get('name', '?')}\"!*\n\n"
         f"Giờ phần ưu đãi do {addr} quyết — em chỉ đề xuất trong khuôn khổ sếp đặt ra. "
         f"Cho em hỏi 3 ý ạ:\n\n"
         f"1️⃣ *Sếp muốn \"mồi\" khách bằng cách nào?*\n"
-        f"_(Giảm giá thẳng · Tặng thêm giá trị (quà/topping/combo) · Cho dùng thử · Đặc quyền riêng — chọn 1-2 hướng)_\n\n"
+        f"_({bait_hint} — chọn 1-2 hướng)_\n\n"
         f"2️⃣ *Sếp sẵn sàng \"cho đi\" tới đâu mà vẫn lời?*\n"
         f"_(Vd: \"giảm tối đa 20%\", \"tặng được món < 15k\", \"miễn phí 1 buổi trải nghiệm\")_\n\n"
         f"3️⃣ *Có gì BẮT BUỘC phải giữ không?*\n"

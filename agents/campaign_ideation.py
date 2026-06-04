@@ -435,6 +435,61 @@ async def extract_campaigns_from_synthesis(session: Session) -> Optional[list[di
     return campaigns[:3]
 
 
+# ─────────────────────────────────────────────────────────────────
+# OFFER "MỒI" HINT — câu 1 của offer-preferences, flex theo ngành
+# ─────────────────────────────────────────────────────────────────
+
+# Fallback generic khi thiếu ngành / LLM lỗi.
+_BAIT_HINT_FALLBACK = "Giảm giá thẳng · Tặng thêm giá trị (quà/topping/combo) · Cho dùng thử · Đặc quyền riêng"
+
+_BAIT_HINT_SYSTEM = """Bạn là Max — CMO AI. Cần gợi ý cho founder 4 CÁCH "MỒI" KHÁCH (cơ chế kéo khách action) ĐẶC THÙ NGÀNH của họ.
+
+Đây là câu hỏi mở đầu để founder chọn hướng ưu đãi — chưa cần parameters.
+
+Ví dụ theo ngành:
+- F&B: "Combo tiết kiệm · BOGO (mua 1 tặng 1) · Happy hour giờ thấp điểm · Thẻ tích điểm"
+- Beauty/Spa: "Trial buổi đầu · Bundle liệu trình · Tặng kèm sản phẩm (GWP) · Đặc quyền VIP"
+- SaaS: "Free trial · Demo 1-1 · Ưu đãi gói năm · Freemium"
+- Ecom: "Freeship · Flash sale · Combo/bundle · Hoàn tiền (cashback)"
+- Education: "Early bird · Giảm theo nhóm · Học thử miễn phí · Trả góp 0%"
+
+QUY TẮC OUTPUT:
+- CHỈ trả về 1 dòng duy nhất: 4 cách "mồi" ngăn nhau bằng " · "
+- Mỗi cách 2-5 từ, tiếng Việt, đặc thù ngành
+- KHÔNG giải thích, KHÔNG markdown, KHÔNG đánh số"""
+
+
+async def generate_bait_hint(session: Session) -> str:
+    """Sinh 4 cách 'mồi' khách đặc thù ngành cho câu 1 của offer-preferences.
+    Fallback generic nếu thiếu ngành / LLM lỗi."""
+    from tools.llm_router import call as router_call, TaskType, AllProvidersFailedError
+
+    industry = (session.profile.industry or "").strip()
+    if not industry:
+        return _BAIT_HINT_FALLBACK
+
+    ctx_parts = _build_industry_levers_context(session, industry)
+    user_msg = (
+        "\n\n".join(ctx_parts)
+        + "\n\n---\n\nGợi ý 4 cách 'mồi' khách đặc thù ngành trên, 1 dòng ngăn bằng ' · '."
+    )
+    try:
+        result = await router_call(
+            task_type=TaskType.CRITIC_REVIEW,
+            system=_BAIT_HINT_SYSTEM,
+            user=user_msg,
+            max_tokens=150,
+        )
+        text = (result.get("output") or "").strip().replace("\n", " ")
+        return text if text else _BAIT_HINT_FALLBACK
+    except AllProvidersFailedError as e:
+        logger.warning("generate_bait_hint all providers failed (industry=%s): %s", industry, e)
+        return _BAIT_HINT_FALLBACK
+    except Exception as e:
+        logger.warning("generate_bait_hint failed (industry=%s): %s", industry, e)
+        return _BAIT_HINT_FALLBACK
+
+
 async def propose_campaigns(session: Session) -> Optional[list[dict]]:
     """Mode PROPOSE: Đề xuất 3 campaign options.
 
