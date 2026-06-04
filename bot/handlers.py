@@ -66,8 +66,8 @@ BRAND_VOICE_GATED_SKILLS = {
 logger = logging.getLogger(__name__)
 
 # Support contact — cập nhật khi có thông tin chính thức
-SUPPORT_CONTACT = "_(liên hệ support — sắp cập nhật)_"
-SUPPORT_NOTE = f"📸 Nếu thấy lỗi, chụp màn hình và gửi cho support: {SUPPORT_CONTACT}"
+SUPPORT_CONTACT = "Telegram: @Timothy0072 | Zalo: 0943188162"
+SUPPORT_NOTE = f"📸 Nếu thấy lỗi, chụp màn hình và gửi cho support:\n{SUPPORT_CONTACT}"
 
 STAGE_HEADERS = {
     "market_research": "📊 NGHIÊN CỨU THỊ TRƯỜNG (TAM/SAM/SOM)",
