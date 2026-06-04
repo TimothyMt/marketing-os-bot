@@ -618,19 +618,25 @@ Content strategy để educate trước khi sell
 ## 4. SMART Goals (2-3 goals quan trọng nhất)
 Goals với con số cụ thể, timeline rõ ràng, calibrated theo stage
 
-## 5. Đề Xuất Roadmap 90 Ngày _(gợi ý — sếp điều chỉnh theo thực tế)_
+## 5. Đề Xuất Roadmap _(gợi ý — sếp điều chỉnh theo thực tế)_
 
-> ⚠️ Đây là **khung gợi ý** dựa trên data và thông tin hiện có — không phải kim chỉ nam bắt buộc. Sếp có thể điều chỉnh thứ tự, timeline, và nguồn lực tuỳ theo tình hình thực tế.
+> ⚠️ Đây là **khung gợi ý** — không phải kim chỉ nam bắt buộc. Sếp điều chỉnh thứ tự, timeline, nguồn lực tuỳ thực tế.
 
-### Tháng 1 — Gợi ý: Foundation & Quick Wins
-- Tuần 1-2: [gợi ý actions cụ thể — ưu tiên những việc ít tốn resource, impact nhanh]
-- Tuần 3-4: [gợi ý tiếp theo khi nền đã có]
+**Trước khi viết, chọn horizon phù hợp với stage của business:**
+- Pre-launch hoặc MVP (<3 tháng hoạt động, dưới 50 khách) → **30 ngày** — chỉ quick wins, validate nhanh
+- Growth (đang có khách, muốn scale kênh/doanh thu) → **90 ngày** — sprint 3 tháng chuẩn
+- Established (đã có hệ thống, muốn build dài hơn) → **6 tháng / 2 quý** — build → optimize → expand
 
-### Tháng 2 — Gợi ý: Build & Test
-- [gợi ý actions — tập trung validate hypothesis từ tháng 1]
+Viết đúng header theo horizon đã chọn (vd: `## 5. Đề Xuất Roadmap 30 Ngày` hoặc `## 5. Đề Xuất Roadmap 6 Tháng`). Số giai đoạn và nhãn thời gian phải khớp với horizon (30 ngày → 2 giai đoạn; 90 ngày → 3 tháng; 6 tháng → 2 quý).
 
-### Tháng 3 — Gợi ý: Scale What Works
-- [gợi ý actions — chỉ scale những gì đã có tín hiệu tốt từ 2 tháng trước]
+### [Giai đoạn 1] — Gợi ý: Foundation & Quick Wins
+- [Cụ thể theo horizon: tuần 1-2 nếu 30 ngày / tháng 1 nếu 90 ngày / quý 1 nếu 6 tháng]
+
+### [Giai đoạn 2] — Gợi ý: Build & Test
+- [Validate hypothesis từ giai đoạn 1]
+
+### [Giai đoạn cuối] — Gợi ý: Scale What Works
+- [Chỉ scale những gì đã có tín hiệu tốt]
 
 ## 6. Channel Strategy & Budget Allocation
 - Top 3 kênh ưu tiên (theo ngành và stage)
@@ -639,7 +645,7 @@ Goals với con số cụ thể, timeline rõ ràng, calibrated theo stage
 
 ## 7. KPI Dashboard (ngành-specific)
 - Primary KPIs cần track hàng tuần
-- Targets cho 30/60/90 ngày
+- Targets cho mỗi giai đoạn roadmap (khớp với horizon đã chọn ở section 5)
 - Red flags cần cảnh báo ngay
 
 ## 8. Retention & Winback Integration (BẮT BUỘC có nếu có context từ 2 stage trước)
@@ -967,7 +973,7 @@ TASK_OPENING_QUESTIONS = {
         "• Em đang bán: ...\n"
         "• Khách hàng: ... (tuổi, đặc điểm)\n"
         "• Doanh thu hiện tại: ...\n"
-        "• Mục tiêu 90 ngày: ...\n"
+        "• Mục tiêu ngắn hạn (1-3 tháng): ...\n"
         "• Khó khăn lớn nhất: ..."
     ),
     "market": (
@@ -1047,7 +1053,7 @@ PROGRESS_MESSAGES = {
         "📡 *Đang thiết lập Social Listening System...*\nXây dựng keyword clusters và monitoring routine.",
     ],
     "synthesis": [
-        "⚡ *Đang tổng hợp Marketing Strategy...*\nKết hợp USP + SAVE + SMART + Retention + 90-day Roadmap.",
+        "⚡ *Đang tổng hợp Kế Hoạch Đề Xuất...*\nKết hợp USP + SAVE + SMART + Retention + Roadmap theo stage.",
         "🚀 Gần xong! Đang hoàn thiện chiến lược cuối cùng...",
     ],
 }
