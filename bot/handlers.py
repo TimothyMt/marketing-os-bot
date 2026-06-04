@@ -503,8 +503,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "_awaiting_campaign_needs",
         "_awaiting_offer_prefs",
         "_awaiting_research_paste",
-        "_awaiting_direction_custom",
         "_awaiting_usp_text",
+        "_awaiting_strategy_q_custom",
     )
     _stuck_now = [k for k in _STUCK_FLAGS if session.pending_intake.get(k)]
     _tone_stuck = session.tone_calibration.get("stage") in ("checking_tone", "waiting_feedback")
@@ -666,16 +666,22 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
+    # Strategic consultation: user gõ custom answer cho 1 câu hỏi chiến lược
+    if session.pending_intake.get("_awaiting_strategy_q_custom"):
+        import json as _json
+        session.pending_intake.pop("_awaiting_strategy_q_custom", None)
+        q_key   = session.pending_intake.pop("_current_q_key", "")
+        answers = _json.loads(session.pending_intake.get("_strategy_answers", "{}"))
+        if q_key:
+            answers[q_key] = text.strip()
+        session.pending_intake["_strategy_answers"] = _json.dumps(answers, ensure_ascii=False)
+        await save_session(session)
+        await _ask_next_strategy_question(update.message, session)
+        return
+
     # USP Gate: user trả lời câu hỏi USP sau McKinsey Gate
     if session.pending_intake.get("_awaiting_usp_text"):
         await _handle_usp_text(update, context, session, text)
-        return
-
-    # Direction Gate: user gõ hướng chiến lược riêng (thay vì chọn button)
-    if session.pending_intake.get("_awaiting_direction_custom"):
-        session.pending_intake.pop("_awaiting_direction_custom", None)
-        await save_session(session)
-        await _run_strategy_plan(update.message, session, direction=text)
         return
 
     # Sprint 2: Q&A follow-up (stage COMPLETE + awaiting_followup_for OR stage COMPLETE)
@@ -1460,33 +1466,6 @@ async def _handle_callback_inner(update, context, query, session, data, user_id)
         await _send_single_shot_form(query.message, session, "full")
         return
 
-    if data == "direction_custom":
-        await query.edit_message_reply_markup(reply_markup=None)
-        session.pending_intake["_awaiting_direction_custom"] = "1"
-        await save_session(session)
-        await query.message.reply_text(
-            "✏️ *Sếp mô tả hướng muốn đánh ạ.*\n\n"
-            "_Ví dụ: \"Tập trung vào TikTok + khách trẻ 18-24\" hoặc \"Đánh premium, bỏ phân khúc rẻ\"_",
-            parse_mode=ParseMode.MARKDOWN,
-        )
-        return
-
-    if data.startswith("direction_"):
-        import json as _json
-        await query.edit_message_reply_markup(reply_markup=None)
-        try:
-            idx = int(data.split("_", 1)[1])
-            raw = session.pending_intake.get("_direction_options", "[]")
-            directions = _json.loads(raw)
-            chosen = directions[idx]
-            direction_text = f"{chosen.get('emoji','')} {chosen.get('title','')} — {chosen.get('desc','')}"
-        except Exception:
-            direction_text = data.replace("direction_", "")
-        session.pending_intake.pop("_direction_options", None)
-        await save_session(session)
-        await _run_strategy_plan(query.message, session, direction=direction_text)
-        return
-
     if data == "usp_use_as_is":
         await query.edit_message_reply_markup(reply_markup=None)
         stated_usp = session.pending_intake.pop("_user_stated_usp", "")
@@ -1505,9 +1484,39 @@ async def _handle_callback_inner(update, context, query, session, data, user_id)
     if data == "usp_analyze_more":
         await query.edit_message_reply_markup(reply_markup=None)
         pending_skill = session.pending_intake.pop("_usp_pending_skill", "")
-        # stated_usp stays in pending_intake as context for usp_definition agent
         if pending_skill:
             await _send_single_shot_form(query.message, session, pending_skill)
+        return
+
+    if data == "strategy_q_custom":
+        await query.edit_message_reply_markup(reply_markup=None)
+        session.pending_intake["_awaiting_strategy_q_custom"] = "1"
+        await save_session(session)
+        q_key  = session.pending_intake.get("_current_q_key", "")
+        label  = _STRATEGY_Q_LABELS.get(q_key, "hướng")
+        await query.message.reply_text(
+            f"✏️ *Sếp gõ {label} muốn chọn vào đây ạ:*",
+            parse_mode=ParseMode.MARKDOWN,
+        )
+        return
+
+    if data.startswith("strategy_q_"):
+        import json as _json
+        await query.edit_message_reply_markup(reply_markup=None)
+        try:
+            idx     = int(data.split("_", 2)[2])
+            options = _json.loads(session.pending_intake.get("_current_q_options", "[]"))
+            answer  = options[idx]
+        except Exception:
+            answer = data
+        q_key   = session.pending_intake.pop("_current_q_key", "")
+        session.pending_intake.pop("_current_q_options", None)
+        answers = _json.loads(session.pending_intake.get("_strategy_answers", "{}"))
+        if q_key:
+            answers[q_key] = answer
+        session.pending_intake["_strategy_answers"] = _json.dumps(answers, ensure_ascii=False)
+        await save_session(session)
+        await _ask_next_strategy_question(query.message, session)
         return
 
     # ── Rating callback (Sprint 2) ───────────────────────────────
@@ -3626,11 +3635,32 @@ async def _handle_bizname_text(update, context, session, text: str):
     await _proceed_after_confirm(update.message, session)
 
 
-# ─── Synthesis split: summary → direction → strategy plan ────────
+# ─── Strategic Consultation — 7-question direction flow ──────────
 
-async def _run_synthesis_summary(session) -> list[dict]:
-    """Quick LLM call to identify 3-4 strategic directions from research results."""
-    import json as _json
+_STRATEGY_Q_KEYS = [
+    "market_gap",
+    "target_segment",
+    "competitor_gap",
+    "positioning",
+    "pricing_approach",
+    "usp_angle",
+    "channels",
+]
+
+_STRATEGY_Q_LABELS = {
+    "market_gap":       "Market Gap",
+    "target_segment":   "Target Segment",
+    "competitor_gap":   "Gap Đối Thủ",
+    "positioning":      "Định Vị",
+    "pricing_approach": "Pricing",
+    "usp_angle":        "USP Angle",
+    "channels":         "Kênh Triển Khai",
+}
+
+
+async def _generate_strategy_questions(session) -> list[dict]:
+    """LLM call — read 5 research results, generate 7 targeted questions with options."""
+    import json as _json, re as _re
     from tools.llm_router import call as router_call, TaskType
 
     g = session.get_latest_result
@@ -3644,23 +3674,30 @@ async def _run_synthesis_summary(session) -> list[dict]:
     ]:
         val = g(key)
         if val:
-            parts.append(f"## {label}\n{val[:1500]}")
+            parts.append(f"## {label}\n{val[:2000]}")
 
     if not parts:
-        return _default_strategy_directions()
+        return _default_strategy_questions_fallback()
 
-    system = (
-        "Bạn là marketing strategist. Đọc kết quả nghiên cứu và xác định 3-4 hướng "
-        "chiến lược nổi bật nhất DỰA VÀO DATA có trong nghiên cứu.\n\n"
-        "Trả về JSON array (không có text khác):\n"
-        "[\n"
-        "  {\"emoji\": \"📱\", \"title\": \"Tên hướng ngắn (5-8 chữ)\", "
-        "\"desc\": \"1 câu mô tả cơ hội cụ thể từ data\"},\n"
-        "  ...\n"
-        "]\n\n"
-        "Mỗi hướng PHẢI dựa vào bằng chứng cụ thể từ nghiên cứu "
-        "(số liệu, insight, gap đối thủ, nhu cầu khách...)."
-    )
+    system = """Bạn là marketing strategist senior. Dựa vào kết quả nghiên cứu, tạo 7 câu hỏi chiến lược để hỏi business owner — mỗi câu về 1 chiều quyết định.
+
+7 chiều BẮT BUỘC (đúng key, đúng thứ tự):
+1. market_gap — khoảng trống thị trường nào muốn khai thác
+2. target_segment — segment/ICP nào muốn focus
+3. competitor_gap — gap đối thủ nào muốn đánh (messaging/channel/segment/product)
+4. positioning — định vị trên positioning map — quadrant/góc nào
+5. pricing_approach — pricing model + vị trí (premium/mid/value)
+6. usp_angle — USP angle muốn lead (emotional/practical/social proof)
+7. channels — kênh triển khai chính
+
+Với mỗi chiều:
+- "question": câu hỏi ngắn (1 câu)
+- "context": 1-2 câu tóm tắt finding CỤ THỂ từ data (số liệu, tên đối thủ, tên segment nếu có)
+- "options": 2-4 lựa chọn CỤ THỂ từ data (không generic như "option A")
+
+Output JSON array (chỉ JSON, không markdown):
+[{"key":"market_gap","question":"...","context":"...","options":["...","...","..."]}, ...]"""
+
     user = "Nghiên cứu:\n\n" + "\n\n".join(parts)
 
     try:
@@ -3668,67 +3705,122 @@ async def _run_synthesis_summary(session) -> list[dict]:
             task_type=TaskType.INTAKE_JSON,
             system=system,
             user=user,
-            max_tokens=600,
+            max_tokens=1500,
         )
-        import re as _re
         raw = result["output"]
         match = _re.search(r'\[.*\]', raw, _re.DOTALL)
         if match:
-            directions = _json.loads(match.group())
-            if isinstance(directions, list) and directions:
-                return directions[:4]
+            questions = _json.loads(match.group())
+            if isinstance(questions, list) and len(questions) >= 5:
+                # Ensure all 7 keys present, fill missing with fallback
+                existing_keys = {q.get("key") for q in questions}
+                fallback = {q["key"]: q for q in _default_strategy_questions_fallback()}
+                result_map = {q["key"]: q for q in questions if q.get("key") in _STRATEGY_Q_KEYS}
+                return [result_map.get(k, fallback[k]) for k in _STRATEGY_Q_KEYS]
     except Exception:
-        logger.warning("_run_synthesis_summary LLM call failed, using defaults")
+        logger.warning("_generate_strategy_questions LLM failed, using fallback")
 
-    return _default_strategy_directions()
+    return _default_strategy_questions_fallback()
 
 
-def _default_strategy_directions() -> list[dict]:
+def _default_strategy_questions_fallback() -> list[dict]:
     return [
-        {"emoji": "📱", "title": "Đánh mạnh digital & content", "desc": "Tập trung kênh online, content marketing & paid ads"},
-        {"emoji": "🎯", "title": "Chiếm thị phần đối thủ",     "desc": "Tấn công trực tiếp điểm yếu của đối thủ chính"},
-        {"emoji": "💎", "title": "Positioning premium",         "desc": "Nâng giá trị thương hiệu, thoát cuộc chiến giá"},
+        {"key": "market_gap",       "question": "Market gap nào sếp muốn khai thác?",           "context": "Dựa vào nghiên cứu thị trường.",       "options": ["Khoảng trống phân khúc cao cấp", "Khoảng trống digital/online", "Khoảng trống địa lý", "Khoảng trống sản phẩm mới"]},
+        {"key": "target_segment",   "question": "Segment / ICP nào muốn tập trung?",             "context": "Dựa vào customer insight.",            "options": ["Khách hàng trẻ 18-30", "Khách hàng trung niên 30-45", "Doanh nghiệp nhỏ SME", "Phụ huynh / gia đình"]},
+        {"key": "competitor_gap",   "question": "Gap đối thủ nào muốn khai thác?",               "context": "Dựa vào phân tích đối thủ.",           "options": ["Messaging gap — góc chưa ai nói", "Channel gap — kênh đối thủ bỏ ngỏ", "Segment gap — nhóm khách bị bỏ qua", "Product gap — tính năng còn thiếu"]},
+        {"key": "positioning",      "question": "Muốn định vị ở góc nào trên thị trường?",       "context": "Dựa vào positioning map.",            "options": ["Premium — chất lượng cao, giá cao", "Value — chất lượng tốt, giá hợp lý", "Niche specialist — chuyên sâu 1 phân khúc", "Challenger — thách thức market leader"]},
+        {"key": "pricing_approach", "question": "Approach pricing như thế nào?",                  "context": "Dựa vào pricing strategy.",           "options": ["Premium pricing — cao hơn đối thủ", "Competitive pricing — ngang thị trường", "Value pricing — thấp hơn nhưng rõ giá trị", "Bundle / package pricing"]},
+        {"key": "usp_angle",        "question": "USP angle nào muốn lead trong marketing?",       "context": "Dựa vào USP definition.",             "options": ["Emotional angle — cảm xúc, câu chuyện", "Practical angle — lợi ích cụ thể, số liệu", "Social proof angle — review, kết quả khách", "Authority angle — expertise, chứng chỉ"]},
+        {"key": "channels",         "question": "Kênh nào muốn triển khai chính?",               "context": "Dựa vào channel gap và customer journey.", "options": ["TikTok + Facebook Ads", "Google SEO + Google Ads", "Zalo OA + Zalo Ads", "Sàn TMĐT (Shopee/Lazada)"]},
     ]
 
 
-async def _ask_strategy_direction(message: Message, session) -> None:
-    """After research pipeline: run synthesis summary → present directions → ask user to pick."""
+async def _start_strategic_consultation(message: Message, session) -> None:
+    """After research pipeline — ask 7 strategic questions one by one."""
     import json as _json
-    from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 
     addr = _addr(session)
     await message.reply_text(
-        "🔬 *Em đang tóm tắt nghiên cứu và xác định các hướng chiến lược...*",
+        "🔍 *Em đang phân tích kết quả nghiên cứu để hỏi sếp 7 câu chiến lược...*",
         parse_mode=ParseMode.MARKDOWN,
     )
 
-    directions = await _run_synthesis_summary(session)
-    session.pending_intake["_direction_options"] = _json.dumps(directions, ensure_ascii=False)
+    questions = await _generate_strategy_questions(session)
+    session.pending_intake["_strategy_questions"] = _json.dumps(questions, ensure_ascii=False)
+    session.pending_intake["_strategy_answers"]   = _json.dumps({}, ensure_ascii=False)
     await save_session(session)
 
-    summary_lines = "\n".join(
-        f"• *{d.get('emoji','')} {d.get('title','')}* — {d.get('desc','')}"
-        for d in directions
-    )
-    buttons = [
-        [InlineKeyboardButton(
-            f"{d.get('emoji','')} {d.get('title','')}",
-            callback_data=f"direction_{i}",
-        )]
-        for i, d in enumerate(directions)
-    ]
-    buttons.append([InlineKeyboardButton("✏️ Tôi có hướng riêng", callback_data="direction_custom")])
-    direction_kb = InlineKeyboardMarkup(buttons)
-
     await message.reply_text(
-        f"✅ *Nghiên cứu hoàn tất!* Em tổng hợp được {len(directions)} hướng nổi bật từ data:\n\n"
-        f"{summary_lines}\n\n"
-        f"─────────────────────\n"
-        f"🎯 *{addr.capitalize()} muốn Max xây kế hoạch theo hướng nào?*\n"
-        f"_(Chọn 1 hướng chính — hoặc gõ hướng riêng nếu có ý khác)_",
+        f"✅ *Nghiên cứu hoàn tất!*\n\n"
+        f"Để kế hoạch chiến lược thực sự fit với sếp, Max cần hỏi {addr} *7 câu* về hướng đi.\n"
+        f"Mỗi câu 1 lựa chọn — xong ngay thôi ạ 👇",
         parse_mode=ParseMode.MARKDOWN,
-        reply_markup=direction_kb,
     )
+    await _ask_next_strategy_question(message, session)
+
+
+async def _ask_next_strategy_question(message: Message, session) -> None:
+    """Pop and show next strategy question, or run synthesis if all answered."""
+    import json as _json
+    from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+
+    questions_raw = session.pending_intake.get("_strategy_questions", "[]")
+    answers_raw   = session.pending_intake.get("_strategy_answers",   "{}")
+    questions = _json.loads(questions_raw)
+    answers   = _json.loads(answers_raw)
+
+    if not questions:
+        # All answered → run synthesis
+        session.pending_intake.pop("_strategy_questions", None)
+        direction_block = _format_strategy_answers(answers)
+        await save_session(session)
+        await _run_strategy_plan(message, session, direction=direction_block)
+        return
+
+    q = questions[0]
+    remaining = questions[1:]
+    total     = len(_STRATEGY_Q_KEYS)
+    current   = total - len(remaining)  # 1-based index
+
+    session.pending_intake["_strategy_questions"]  = _json.dumps(remaining, ensure_ascii=False)
+    session.pending_intake["_current_q_key"]       = q["key"]
+    session.pending_intake["_current_q_options"]   = _json.dumps(q["options"], ensure_ascii=False)
+    await save_session(session)
+
+    options_text = "\n".join(f"• {opt}" for opt in q["options"])
+    buttons = [
+        [InlineKeyboardButton(opt[:60], callback_data=f"strategy_q_{i}")]
+        for i, opt in enumerate(q["options"])
+    ]
+    buttons.append([InlineKeyboardButton("✏️ Tôi có ý khác", callback_data="strategy_q_custom")])
+    kb = InlineKeyboardMarkup(buttons)
+
+    label = _STRATEGY_Q_LABELS.get(q["key"], q["key"])
+    await message.reply_text(
+        f"*{current}/{total} — {label}*\n\n"
+        f"_{q['context']}_\n\n"
+        f"{options_text}\n\n"
+        f"{q['question']}",
+        parse_mode=ParseMode.MARKDOWN,
+        reply_markup=kb,
+    )
+
+
+def _format_strategy_answers(answers: dict) -> str:
+    labels = {
+        "market_gap":       "Market gap muốn khai thác",
+        "target_segment":   "Target segment",
+        "competitor_gap":   "Gap đối thủ muốn đánh",
+        "positioning":      "Định vị",
+        "pricing_approach": "Pricing approach",
+        "usp_angle":        "USP angle",
+        "channels":         "Kênh triển khai chính",
+    }
+    lines = []
+    for key, label in labels.items():
+        if key in answers:
+            lines.append(f"**{label}:** {answers[key]}")
+    return "\n".join(lines)
 
 
 async def _run_strategy_plan(message: Message, session, direction: str) -> None:
@@ -3948,8 +4040,8 @@ async def _run_pipeline_sequentially(message: Message, session):
         await save_session(session)
 
         if total_stages > 1 and task == "full":
-            # Research done — run synthesis summary, ask user which direction to pursue
-            await _ask_strategy_direction(message, session)
+            # Research done — 7-question strategic consultation
+            await _start_strategic_consultation(message, session)
         elif total_stages > 1:
             addr = _addr(session)
             await message.reply_text(
