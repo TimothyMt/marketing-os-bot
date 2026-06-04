@@ -1517,7 +1517,20 @@ async def _handle_callback_inner(update, context, query, session, data, user_id)
 
     if data == "usp_analyze_more":
         await query.edit_message_reply_markup(reply_markup=None)
+        # Giữ USP sếp gõ làm bản nháp → agent chạy chế độ REFINE:
+        # đối chiếu/so sánh với thị trường & đối thủ, giữ ý gốc, đề xuất bản mạnh hơn.
+        stated_usp = session.pending_intake.pop("_user_stated_usp", "")
+        if stated_usp:
+            session.profile.usp = stated_usp
+            session.profile.usp_confidence = "draft"
         pending_skill = session.pending_intake.pop("_usp_pending_skill", "")
+        await save_session(session)
+        if stated_usp:
+            await query.message.reply_text(
+                f"🔬 *Em giữ USP của sếp làm gốc:*\n_{stated_usp}_\n\n"
+                f"Em sẽ đối chiếu với thị trường & đối thủ, so sánh và đề xuất bản mạnh hơn cho sếp lựa.",
+                parse_mode=ParseMode.MARKDOWN,
+            )
         if pending_skill:
             await _send_single_shot_form(query.message, session, pending_skill)
         return
