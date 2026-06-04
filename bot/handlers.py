@@ -1196,19 +1196,10 @@ async def _handle_callback_inner(update, context, query, session, data, user_id)
     if data == "strategy_confirm":
         await query.edit_message_reply_markup(reply_markup=None)
         session.pending_intake.pop("_awaiting_strategy_edit", None)
-        # Set flag để free-text ngay sau đây → campaign refine flow
-        session.pending_intake["_awaiting_campaign_idea"] = "1"
         session.pending_intake.pop("_awaiting_rating_for", None)
+        session.pending_intake.pop("_awaiting_campaign_idea", None)
         await save_session(session)
-        addr = _addr(session)
-
-        addr = _addr(session)
-        await query.message.reply_text(
-            f"✅ *Strategy đã chốt! Giờ plan campaign cụ thể nhé {addr}.*\n\n"
-            f"Sếp đã có ý tưởng campaign nào chưa, hay để em đề xuất?",
-            parse_mode=ParseMode.MARKDOWN,
-            reply_markup=POST_AZ_CAMPAIGN_KEYBOARD,
-        )
+        await _show_extracted_campaigns(query.message, session)
         return
 
     if data == "strategy_edit":
@@ -1272,6 +1263,49 @@ async def _handle_callback_inner(update, context, query, session, data, user_id)
             "Em đối chiếu với Customer Insight + Market Research → validate + refine cho sếp luôn.",
             parse_mode=ParseMode.MARKDOWN,
         )
+        return
+
+    # Bridge: user picks one of the roadmap-extracted campaigns
+    if data.startswith("extracted_campaign_pick_"):
+        await query.edit_message_reply_markup(reply_markup=None)
+        try:
+            pick_idx = int(data.split("_")[-1]) - 1
+        except ValueError:
+            await query.message.reply_text("⚠️ Pick không hợp lệ.")
+            return
+
+        import json as _json
+        raw = session.pending_intake.get("_extracted_campaigns", "[]")
+        try:
+            ex_campaigns = _json.loads(raw)
+        except _json.JSONDecodeError:
+            ex_campaigns = []
+
+        if pick_idx < 0 or pick_idx >= len(ex_campaigns):
+            await query.message.reply_text("⚠️ Option đã hết hạn. Sếp thử lại nhé.")
+            return
+
+        chosen = ex_campaigns[pick_idx]
+        await _ask_offer_preferences(query.message, session, chosen)
+        return
+
+    if data == "extracted_campaign_own_idea":
+        await query.edit_message_reply_markup(reply_markup=None)
+        session.pending_intake["_awaiting_campaign_idea"] = "1"
+        session.pending_intake.pop("_awaiting_rating_for", None)
+        await save_session(session)
+        await query.message.reply_text(
+            "💡 *OK!* Sếp mô tả ý tưởng + mục tiêu campaign ạ.\n\n"
+            "_Vd: \"Tết này muốn tặng combo cho khách cũ để tăng repeat\", "
+            "\"Launch SP mới cho gen Z, muốn viral trước\"..._\n\n"
+            "Em đối chiếu với Customer Insight + Market Research → validate + refine cho sếp luôn.",
+            parse_mode=ParseMode.MARKDOWN,
+        )
+        return
+
+    if data == "extracted_campaign_more":
+        await query.edit_message_reply_markup(reply_markup=None)
+        await _show_extracted_campaigns(query.message, session)
         return
 
     # Branch B: User chưa biết → hỏi nhu cầu (flex theo ngành) trước, rồi propose
@@ -3874,6 +3908,61 @@ async def _run_strategy_plan(message: Message, session, direction: str) -> None:
         parse_mode=ParseMode.MARKDOWN,
         reply_markup=CONFIRM_STRATEGY_KEYBOARD,
     )
+
+
+async def _show_extracted_campaigns(message: Message, session):
+    """After strategy_confirm: extract 2-3 campaigns from synthesis roadmap + 7 strategy answers.
+    Present as direct-pick buttons — no redundant needs re-questioning."""
+    from agents.campaign_ideation import extract_campaigns_from_synthesis
+    import json as _json
+    from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+
+    addr = _addr(session)
+    await message.reply_text(
+        f"✅ *Strategy đã chốt! Em đang trích campaign từ Roadmap...*",
+        parse_mode=ParseMode.MARKDOWN,
+    )
+
+    campaigns = await extract_campaigns_from_synthesis(session)
+
+    if not campaigns:
+        session.pending_intake["_awaiting_campaign_idea"] = "1"
+        await save_session(session)
+        await message.reply_text(
+            f"💡 *Sếp đã có ý tưởng campaign nào chưa, hay để em đề xuất?*",
+            parse_mode=ParseMode.MARKDOWN,
+            reply_markup=POST_AZ_CAMPAIGN_KEYBOARD,
+        )
+        return
+
+    session.pending_intake["_extracted_campaigns"] = _json.dumps(campaigns, ensure_ascii=False)
+    await save_session(session)
+
+    num_emojis = ["1️⃣", "2️⃣", "3️⃣"]
+    lines = [f"🗺️ *Em trích từ Roadmap {len(campaigns)} campaign cho {addr} chọn ngay:*\n"]
+    for i, c in enumerate(campaigns):
+        num = num_emojis[i] if i < 3 else f"{i+1}."
+        lines.append("━━━━━━━━━━━━━━━━━━━━")
+        lines.append(f"*{num} {c.get('name', '?')}*\n")
+        lines.append(f"🎯 *Mục tiêu:* {c.get('goal', '?')}")
+        lines.append(f"👥 *Target:* {c.get('target_segment', '?')}")
+        lines.append(f"📱 *Kênh:* {c.get('channels', '?')}")
+        lines.append(f"📅 *Độ dài gợi ý:* {c.get('duration_suggestion', '?')}")
+        lines.append(f"💭 *Vì sao hợp:* {c.get('why_fit', '?')}\n")
+    lines.append("━━━━━━━━━━━━━━━━━━━━")
+    lines.append("\n_💰 Budget / 👥 Team / 📆 Ngày bắt đầu / 🎟 % giảm — sếp quyết ở bước sau._\n")
+    lines.append("👇 *Sếp chọn campaign nào để em làm Brief Campaign?*")
+
+    rows = []
+    for i, c in enumerate(campaigns):
+        num = num_emojis[i] if i < 3 else f"{i+1}."
+        label = f"{num} {c.get('name', '?')[:45]}"
+        rows.append([InlineKeyboardButton(label, callback_data=f"extracted_campaign_pick_{i+1}")])
+    rows.append([InlineKeyboardButton("💡 Tôi có ý tưởng khác", callback_data="extracted_campaign_own_idea")])
+    rows.append([InlineKeyboardButton("🔄 Đề xuất thêm options", callback_data="extracted_campaign_more")])
+    keyboard = InlineKeyboardMarkup(rows)
+
+    await send_long_message(message, "\n".join(lines), parse_mode=ParseMode.MARKDOWN, reply_markup=keyboard)
 
 
 async def context_bot_typing(message: Message) -> None:

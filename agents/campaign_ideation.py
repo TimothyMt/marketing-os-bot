@@ -335,6 +335,106 @@ def _extract_json(text: str) -> Optional[dict]:
         return None
 
 
+EXTRACT_CAMPAIGNS_SYSTEM = """Bạn là Max — CMO AI. Kế hoạch chiến lược 90 ngày vừa được xác nhận.
+
+NHIỆM VỤ: Đọc Kế hoạch chiến lược (synthesis) + 7 hướng chiến lược sếp đã chọn → TRÍCH XUẤT 2-3 campaign cụ thể đã được roadmap đề cập hoặc hàm ý, align hoàn toàn với hướng sếp đã chọn.
+
+NGUYÊN TẮC:
+- KHÔNG tạo campaign mới từ không khí — phải dựa trên roadmap/synthesis
+- Mỗi campaign phải reflect đúng segment, USP angle, channel sếp đã chọn trong 7 câu
+- Tên campaign tiếng Việt, hook-y, ngắn (4-7 từ)
+- KHÔNG đề xuất budget / % giảm cụ thể (sếp quyết ở bước sau)
+
+OUTPUT BẮT BUỘC dạng JSON (KHÔNG có text khác bên ngoài JSON):
+
+```json
+{
+  "campaigns": [
+    {
+      "name": "Tên campaign tiếng Việt (4-7 từ)",
+      "goal": "Mục tiêu cụ thể, định tính",
+      "target_segment": "Tệp target align với strategic direction",
+      "key_offer": "Cơ chế offer sơ bộ — KHÔNG % giảm cụ thể",
+      "duration_suggestion": "Gợi ý độ dài (vd: '4-6 tuần')",
+      "channels": "Kênh triển khai theo channel sếp đã chọn",
+      "why_fit": "1-2 câu: tại sao campaign này đúng hướng + đúng timing"
+    }
+  ]
+}
+```
+
+QUY TẮC:
+- 2-3 campaigns, đa dạng về mục tiêu nếu roadmap đề cập nhiều mục tiêu
+- Output CHỈ JSON trong ```json``` block
+- KHÔNG bịa số liệu"""
+
+
+async def extract_campaigns_from_synthesis(session: Session) -> Optional[list[dict]]:
+    """Extract 2-3 campaigns directly from synthesis roadmap + strategy_answers.
+
+    Bridge step: after strategy_confirm, reads 90-day roadmap + 7 strategic choices,
+    returns campaigns already aligned with those choices — no re-asking needed.
+    Returns list[dict] or None on failure.
+    """
+    from tools.llm_router import call as router_call, TaskType, AllProvidersFailedError
+
+    synthesis = (session.get_latest_result("synthesis") or "").strip()
+    if not synthesis:
+        return None
+
+    answers = session.pending_intake.get("_strategy_answers") or {}
+    label_map = {
+        "market_gap":       "Market Gap",
+        "target_segment":   "Target Segment",
+        "competitor_gap":   "Gap Đối Thủ",
+        "positioning":      "Định Vị",
+        "pricing_approach": "Pricing",
+        "usp_angle":        "USP Angle",
+        "channels":         "Kênh Triển Khai",
+    }
+    answer_lines = [
+        f"- {label}: {answers[key]}"
+        for key, label in label_map.items()
+        if answers.get(key)
+    ]
+    strategy_block = (
+        "## 7 Hướng chiến lược sếp đã chọn:\n" + "\n".join(answer_lines) + "\n\n"
+        if answer_lines else ""
+    )
+
+    user_msg = (
+        f"## Kế hoạch chiến lược (Synthesis):\n{synthesis[:3000]}\n\n"
+        f"{strategy_block}"
+        "---\n\nTrích 2-3 campaign cụ thể từ roadmap trên, align với hướng sếp đã chọn."
+    )
+
+    try:
+        result = await router_call(
+            task_type=TaskType.INTAKE_JSON,
+            system=EXTRACT_CAMPAIGNS_SYSTEM,
+            user=user_msg,
+            max_tokens=1500,
+        )
+        text = (result.get("output") or "").strip()
+    except AllProvidersFailedError as e:
+        logger.warning("extract_campaigns_from_synthesis all providers failed: %s", e)
+        return None
+    except Exception as e:
+        logger.warning("extract_campaigns_from_synthesis failed: %s", e)
+        return None
+
+    data = _extract_json(text)
+    if not data or "campaigns" not in data:
+        logger.error("extract_campaigns returned invalid JSON: %s", text[:200])
+        return None
+
+    campaigns = data.get("campaigns", [])
+    if not isinstance(campaigns, list) or len(campaigns) < 1:
+        return None
+
+    return campaigns[:3]
+
+
 async def propose_campaigns(session: Session) -> Optional[list[dict]]:
     """Mode PROPOSE: Đề xuất 3 campaign options.
 
