@@ -3163,6 +3163,25 @@ async def _send_single_shot_form(message: Message, session, task_name: str):
     for k, v in prefilled.items():
         session.pending_intake[k] = v
 
+    # ── Campaign Brief pre-fill: nếu đã có brief thì dùng làm base ──
+    if task_name == "content_generator":
+        brief_result = session.get_latest_result("campaign_brief")
+        if brief_result:
+            intake = session.pending_intake
+            _brief_map = {
+                # field key         ← pending_intake source
+                "ads_usp":          intake.get("key_offer") or intake.get("campaign_goal"),
+                "weeks":            intake.get("duration"),
+                "highlight_angles": intake.get("campaign_goal") or intake.get("campaign_name"),
+            }
+            for key, val in _brief_map.items():
+                if val and key not in prefilled:
+                    prefilled[key] = str(val).strip()
+                    session.pending_intake[key] = str(val).strip()
+            # Thông báo source cho user
+            _brief_name = intake.get("campaign_name") or intake.get("current_campaign") or "Campaign Brief"
+            prefilled["_brief_source"] = _brief_name  # dùng để hiển thị, không phải field thật
+
     # Fields còn lại cần hỏi user
     remaining_fields = [f for f in task.intake_fields if f["key"] not in prefilled]
 
@@ -3175,8 +3194,13 @@ async def _send_single_shot_form(message: Message, session, task_name: str):
     ]
 
     if prefilled:
-        lines.append("*Em đã có sẵn từ business profile của sếp:*")
-        for k, v in prefilled.items():
+        _brief_source = prefilled.pop("_brief_source", None)
+        _display_prefilled = {k: v for k, v in prefilled.items()}
+        if _brief_source:
+            lines.append(f"*Em dùng Campaign Brief _{_escape_md(_brief_source)}_ làm base:*")
+        else:
+            lines.append("*Em đã có sẵn từ business profile của sếp:*")
+        for k, v in _display_prefilled.items():
             label = next((f["label"] for f in task.intake_fields if f["key"] == k), k)
             lines.append(f"• *{label}:* {_escape_md(v[:120])}")
         lines.append("")
