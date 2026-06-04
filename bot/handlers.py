@@ -1528,7 +1528,8 @@ async def _handle_callback_inner(update, context, query, session, data, user_id)
         if stated_usp:
             await query.message.reply_text(
                 f"🔬 *Em giữ USP của sếp làm gốc:*\n_{stated_usp}_\n\n"
-                f"Em sẽ đối chiếu với thị trường & đối thủ, so sánh và đề xuất bản mạnh hơn cho sếp lựa.",
+                f"Em sẽ đối chiếu với thị trường & đối thủ, so sánh USP của sếp với góc em phân tích ra — "
+                f"chỗ nào mài sắc được thì em mài, còn lại để sếp tự chọn dùng USP nào ạ.",
                 parse_mode=ParseMode.MARKDOWN,
             )
         if pending_skill:
