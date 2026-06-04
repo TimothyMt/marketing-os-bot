@@ -3740,6 +3740,8 @@ async def _generate_strategy_questions(session) -> list[dict]:
 6. usp_angle — USP angle muốn lead (emotional/practical/social proof)
 7. channels — kênh triển khai chính
 
+🔴 RIÊNG câu 7 (channels): options PHẢI là các KÊNH MẠNG XÃ HỘI / KÊNH NỘI DUNG mà Max có thể trực tiếp sản xuất content (Facebook, TikTok, Instagram, YouTube/Shorts, Zalo OA, Threads, LinkedIn, Google/SEO content...). TUYỆT ĐỐI KHÔNG đưa lựa chọn dạng "hợp tác đối tác", "referral program", "co-marketing", "B2B partnership" — vì đó không phải kênh Max viết nội dung được. Mỗi option nên là 1 platform hoặc combo 2 platform (vd: "TikTok + Facebook", "Zalo OA + Facebook group", "YouTube Shorts + TikTok").
+
 Với mỗi chiều:
 - "question": câu hỏi ngắn (1 câu)
 - "context": 1-2 câu tóm tắt finding CỤ THỂ từ data (số liệu, tên đối thủ, tên segment nếu có)
@@ -3781,7 +3783,7 @@ def _default_strategy_questions_fallback() -> list[dict]:
         {"key": "positioning",      "question": "Muốn định vị ở góc nào trên thị trường?",       "context": "Dựa vào positioning map.",            "options": ["Premium — chất lượng cao, giá cao", "Value — chất lượng tốt, giá hợp lý", "Niche specialist — chuyên sâu 1 phân khúc", "Challenger — thách thức market leader"]},
         {"key": "pricing_approach", "question": "Approach pricing như thế nào?",                  "context": "Dựa vào pricing strategy.",           "options": ["Premium pricing — cao hơn đối thủ", "Competitive pricing — ngang thị trường", "Value pricing — thấp hơn nhưng rõ giá trị", "Bundle / package pricing"]},
         {"key": "usp_angle",        "question": "USP angle nào muốn lead trong marketing?",       "context": "Dựa vào USP definition.",             "options": ["Emotional angle — cảm xúc, câu chuyện", "Practical angle — lợi ích cụ thể, số liệu", "Social proof angle — review, kết quả khách", "Authority angle — expertise, chứng chỉ"]},
-        {"key": "channels",         "question": "Kênh nào muốn triển khai chính?",               "context": "Dựa vào channel gap và customer journey.", "options": ["TikTok + Facebook Ads", "Google SEO + Google Ads", "Zalo OA + Zalo Ads", "Sàn TMĐT (Shopee/Lazada)"]},
+        {"key": "channels",         "question": "Kênh mạng xã hội nào muốn triển khai content chính?",               "context": "Kênh Max có thể trực tiếp sản xuất nội dung.", "options": ["TikTok + Facebook", "Instagram + Facebook", "YouTube Shorts + TikTok", "Zalo OA + Facebook group"]},
     ]
 
 
@@ -3840,9 +3842,12 @@ async def _ask_next_strategy_question(message: Message, session) -> None:
     session.pending_intake["_current_q_options"]   = _json.dumps(q["options"], ensure_ascii=False)
     await save_session(session)
 
-    options_text = "\n".join(f"• {opt}" for opt in q["options"])
+    _letters = ["A", "B", "C", "D", "E"]
+    options_text = "\n".join(
+        f"*{_letters[i]}.* *{opt}*" for i, opt in enumerate(q["options"])
+    )
     buttons = [
-        [InlineKeyboardButton(opt[:60], callback_data=f"strategy_q_{i}")]
+        [InlineKeyboardButton(f"{_letters[i]}. {opt[:55]}", callback_data=f"strategy_q_{i}")]
         for i, opt in enumerate(q["options"])
     ]
     buttons.append([InlineKeyboardButton("✏️ Tôi có ý khác", callback_data="strategy_q_custom")])
