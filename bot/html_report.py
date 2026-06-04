@@ -433,35 +433,56 @@ def _md_to_html(text: str) -> str:
 def parse_agent_output(text: str) -> dict:
     """Extract structured sections from agent output.
     Returns {insight, summary, benchmarks, detail} — all strings (markdown).
-    Matches by emoji OR keyword (lenient — LLM có thể dùng emoji khác)."""
+
+    Named sections (insight/summary/benchmarks) get special card boxes.
+    Everything else — including numbered strategy sections like
+    '## 1. Executive Summary', '## 2. USP', etc. — accumulates as detail.
+    """
     result = {"insight": "", "summary": "", "benchmarks": "", "detail": ""}
 
-    # Lenient patterns: match emoji OR keyword
-    patterns = {
-        "insight":    r"##\s*(?:💡|🔑|⭐|✨)?\s*Insight[^\n]*\n+(.*?)(?=\n##\s|\Z)",
-        "summary":    r"##\s*(?:🎯|📌|📝)?\s*(?:Tóm tắt|Tom tat|Summary)[^\n]*\n+(.*?)(?=\n##\s|\Z)",
-        "benchmarks": r"##\s*(?:📊|📈|📉)?\s*(?:Benchmarks?|KPIs?|Số liệu)[^\n]*\n+(.*?)(?=\n##\s|\Z)",
-        "detail":     r"##\s*(?:📄|📋|📑|🔍|🧠)?\s*(?:Phân tích chi tiết|Phan tich|Detail|Chi tiết|Full analysis)[^\n]*\n+(.*?)(?=\n##\s|\Z)",
-    }
-    for key, pat in patterns.items():
-        m = re.search(pat, text, flags=re.DOTALL | re.IGNORECASE)
-        if m:
-            result[key] = m.group(1).strip()
+    # Split into ## sections; prepend \n so the first header is also caught
+    chunks = re.split(r'(?=\n##[ \t])', "\n" + text)
+    detail_parts = []
 
-    # Heuristic: nếu chỉ có 3 sections nhưng output dài hơn nhiều → còn nội dung không có header
-    if not result["detail"] and (result["insight"] or result["summary"] or result["benchmarks"]):
-        # Lấy phần text NGOÀI 3 sections đã extract — coi như detail
-        used_text = " ".join([result["insight"], result["summary"], result["benchmarks"]])
-        # Tìm tất cả ## headers, lấy content sau header cuối cùng
-        all_headers = list(re.finditer(r"##\s+[^\n]+", text))
-        if all_headers:
-            # Lấy phần sau header cuối — nếu phần đó dài >300 chars và chưa match section khác
-            last = all_headers[-1]
-            tail = text[last.end():].strip()
-            if len(tail) > 300 and tail[:200] not in used_text:
-                result["detail"] = tail
+    for chunk in chunks:
+        chunk = chunk.strip()
+        if not chunk:
+            continue
 
-    # Fallback: nếu vẫn không có gì parsed → toàn bộ text là detail
+        m = re.match(r'^##[ \t]+([^\n]+)\n+(.*)', chunk, re.DOTALL)
+        if not m:
+            # Pre-header preamble — treat as detail if substantial
+            if len(chunk) > 50:
+                detail_parts.append(chunk)
+            continue
+
+        header = m.group(1).strip()
+        content = m.group(2).strip()
+
+        # Classify by emoji first (reliable), then by keyword
+        if re.search(r'[💡🔑⭐✨]', header) or re.match(r'Insight\b', header, re.IGNORECASE):
+            result["insight"] = content
+        elif (re.search(r'[🎯📌📝]', header)
+              or re.match(r'(?:Tóm tắt|Tom\s*tat)\b', header, re.IGNORECASE)
+              or re.match(r'Summary\s*$', header, re.IGNORECASE)):
+            # re.match anchors at start → "Executive Summary" won't match "Summary$"
+            result["summary"] = content
+        elif (re.search(r'[📊📈📉]', header)
+              or re.match(r'(?:Benchmarks?|KPIs?|Số liệu)\b', header, re.IGNORECASE)):
+            result["benchmarks"] = content
+        elif re.match(r'(?:Phân tích chi tiết|Phan\s*tich|Chi tiết|Full\s*analysis|Detail)\b',
+                      header, re.IGNORECASE):
+            result["detail"] = content
+        else:
+            # Numbered sections (## 1. Executive Summary, ## 2. USP …) and any
+            # other unclassified headers → accumulate as rich detail content
+            detail_parts.append(f"## {header}\n\n{content}")
+
+    # Merge unclassified sections into detail when no explicit detail section exists
+    if not result["detail"] and detail_parts:
+        result["detail"] = "\n\n".join(detail_parts)
+
+    # Final fallback: nothing parsed at all → entire text is detail
     if not any(result.values()):
         result["detail"] = text.strip()
 
