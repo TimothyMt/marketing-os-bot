@@ -144,11 +144,11 @@ ACTION_AFTER_STRATEGIC = ACTION_AFTER_SKILL
 ACTION_AFTER_OPS       = ACTION_AFTER_SKILL
 ACTION_AFTER_ANALYSIS  = ACTION_AFTER_SKILL
 
-# Post-strategy next steps: lead into execution rather than dead-end
+# Post-strategy next steps (after rating): lead into execution rather than dead-end
 ACTION_AFTER_STRATEGY = InlineKeyboardMarkup([
-    [InlineKeyboardButton("📋 Triển khai Campaign →",  callback_data="strategy_confirm")],
-    [InlineKeyboardButton("📅 Lập Lịch Nội Dung →",   callback_data="task_content_calendar")],
-    [InlineKeyboardButton("🏠 Về menu chính",          callback_data="menu_main")],
+    [InlineKeyboardButton("✅ Ổn rồi — chạy Lịch Nội Dung",  callback_data="strategy_ok_run_calendar")],
+    [InlineKeyboardButton("📋 Hoặc sang Campaign Brief →",     callback_data="strategy_confirm")],
+    [InlineKeyboardButton("🏠 Về menu chính",                  callback_data="menu_main")],
 ])
 
 # Q&A follow-up — sau khi user hỏi thêm 1 lần, có thể hỏi tiếp hoặc thoát
@@ -219,11 +219,11 @@ BRAND_VOICE_PROMPT_KEYBOARD = InlineKeyboardMarkup([
     [InlineKeyboardButton("🔙 Quay lại menu",                   callback_data="menu_main")],
 ])
 
-# Sau khi A→Z xong — XÁC NHẬN strategy trước khi sang campaign
+# Sau khi strategy xong — hỏi ổn chưa hay cần điều chỉnh
 CONFIRM_STRATEGY_KEYBOARD = InlineKeyboardMarkup([
-    [InlineKeyboardButton("📋 Triển khai Campaign →",          callback_data="strategy_confirm")],
-    [InlineKeyboardButton("📅 Lập Lịch Nội Dung →",           callback_data="task_content_calendar")],
-    [InlineKeyboardButton("✏️ Sửa/bổ sung kế hoạch",          callback_data="strategy_edit")],
+    [InlineKeyboardButton("✅ Ổn rồi — chạy Lịch Nội Dung",  callback_data="strategy_ok_run_calendar")],
+    [InlineKeyboardButton("📋 Hoặc sang Campaign Brief →",     callback_data="strategy_confirm")],
+    [InlineKeyboardButton("✏️ Cần điều chỉnh kế hoạch",       callback_data="strategy_edit")],
     [InlineKeyboardButton("🏠 Về menu chính",                  callback_data="menu_main")],
 ])
 

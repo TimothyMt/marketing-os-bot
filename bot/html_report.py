@@ -22,12 +22,12 @@ STAGE_META = {
     "usp_definition":     {"title": "USP Definition",                "icon": "🎯", "color": "strategy"},
     "retention_strategy": {"title": "Retention Strategy",            "icon": "🔄", "color": "customer"},
     "winback_campaign":   {"title": "Winback Vision",                "icon": "🔁", "color": "customer"},
-    "synthesis":          {"title": "Marketing Strategy",          "icon": "🚀", "color": "strategy"},
+    "synthesis":          {"title": "Kế Hoạch Đề Xuất",            "icon": "🚀", "color": "strategy"},
     # Strategic single-shot task aliases (Phase 3 — task names used in handler dispatch)
     "market":             {"title": "Nghiên cứu Thị trường",       "icon": "📊", "color": "market"},
     "customer":           {"title": "Customer Insight & ICP",      "icon": "👥", "color": "customer"},
     "pricing":            {"title": "Marketing Psychology & Pricing", "icon": "💡", "color": "pricing"},
-    "strategy":           {"title": "Marketing Strategy",          "icon": "🎯", "color": "strategy"},
+    "strategy":           {"title": "Kế Hoạch Đề Xuất",            "icon": "🎯", "color": "strategy"},
     # Operational skills
     "campaign_brief":      {"title": "Viết Brief Campaign",         "icon": "📋", "color": "strategy"},
     "content_calendar":    {"title": "Lịch Nội Dung",               "icon": "📅", "color": "market"},
@@ -655,7 +655,7 @@ def build_report(
         single_meta = STAGE_META.get(parsed_stages[0][0], {"title": parsed_stages[0][0], "icon": "📄"})
         report_title = f"{single_meta['icon']} {single_meta['title']}"
     elif n >= 5:  # full A→Z pipeline (5+ stages)
-        report_title = "📊 Marketing Strategy Report"
+        report_title = "📊 Kế Hoạch Marketing Đề Xuất"
     else:
         # 2-4 skills → liệt kê
         titles = []

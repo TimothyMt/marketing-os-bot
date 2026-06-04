@@ -85,7 +85,7 @@ TASK_LABELS = {
     "customer":   "Customer Insight & ICP",
     "pricing":    "Pricing Strategy",
     "social":     "Social Listening",
-    "strategy":   "Marketing Strategy",
+    "strategy":   "Kế Hoạch Đề Xuất",
 }
 
 TASK_PIPELINE_STEPS = {
@@ -1202,6 +1202,49 @@ async def _handle_callback_inner(update, context, query, session, data, user_id)
         await _show_extracted_campaigns(query.message, session)
         return
 
+    if data == "strategy_ok_run_calendar":
+        # Kế hoạch ổn → chạy Lịch Nội Dung ngay với default từ profile
+        await query.edit_message_reply_markup(reply_markup=None)
+        session.pending_intake.pop("_awaiting_strategy_edit", None)
+        session.pending_intake.pop("_awaiting_rating_for", None)
+        profile = session.profile
+        session.pending_intake.setdefault(
+            "channels", profile.current_channels or "Facebook + TikTok + Zalo OA"
+        )
+        session.pending_intake.setdefault("duration", "Tháng tới (30 ngày)")
+        session.pending_intake["_strategy_aware"] = "1"
+        session.selected_task = "content_calendar"
+        session.stage = PipelineStage.TASK_SELECT
+        await save_session(session)
+        addr = _addr(session)
+        await query.message.reply_text(
+            f"📅 *Vậy em lên Lịch Nội Dung cho {addr} luôn nhé!*\n"
+            f"_Dựa trên Kế Hoạch Đề Xuất + ICP có sẵn · khoảng 30-60 giây ạ._",
+            parse_mode=ParseMode.MARKDOWN,
+        )
+        from config import AGENT_TIMEOUT
+        try:
+            result = await asyncio.wait_for(
+                run_operational_skill("content_calendar", session),
+                timeout=AGENT_TIMEOUT,
+            )
+        except asyncio.TimeoutError:
+            await query.message.reply_text(
+                "⚠️ Lịch Nội Dung timeout. Sếp thử lại từ menu Sản Xuất nhé.",
+            )
+            return
+        except Exception as e:
+            logger.exception("content_calendar from strategy_ok failed: %s", e)
+            await query.message.reply_text(
+                "⚠️ Em gặp lỗi khi dựng lịch. Sếp thử lại từ menu nhé.",
+            )
+            return
+        session.stage = PipelineStage.TASK_SELECT
+        await save_session(session)
+        await _send_ops_result(query.message, session, "content_calendar", result)
+        await _start_tone_calibration(query.message, session, result)
+        return
+
     if data == "strategy_edit":
         await query.edit_message_reply_markup(reply_markup=None)
         session.pending_intake["_awaiting_strategy_edit"] = "1"
@@ -1209,11 +1252,12 @@ async def _handle_callback_inner(update, context, query, session, data, user_id)
         await save_session(session)
         addr = _addr(session)
         await query.message.reply_text(
-            f"✏️ OK {addr}! Sếp nói rõ giúp em cần *sửa/bổ sung phần nào* và *đổi thành hướng nào* ạ.\n\n"
-            f"_Vd: \"USP nên nhấn Đông y thay vì công nghệ Hàn\", "
+            f"✏️ OK {addr}! Sếp nói rõ giúp em cần *điều chỉnh hướng nào* ạ.\n\n"
+            f"_Vd: \"Nặng về awareness thay vì conversion\", "
+            f"\"Tập trung retention và upsell khách cũ\", "
             f"\"Roadmap tháng 1 thêm bước chạy thử ads ngân sách nhỏ\", "
             f"\"Budget allocation cho TikTok nên cao hơn\"..._\n\n"
-            f"Em chỉ chỉnh đúng phần đó, giữ nguyên các phần còn lại.",
+            f"Em chỉnh lại kế hoạch theo hướng đó và build lại cho sếp.",
             parse_mode=ParseMode.MARKDOWN,
         )
         return
@@ -4091,12 +4135,12 @@ async def _run_strategy_plan(message: Message, session, direction: str) -> None:
     await save_session(session)
 
     await message.reply_text(
-        f"✅ *Kế hoạch chiến lược hoàn tất!*\n\n"
+        f"✅ *Kế hoạch đề xuất đã xong!*\n\n"
         f"─────────────────────\n"
-        f"🔎 *{addr.capitalize()} xem qua giúp em:* kế hoạch trên đã chính xác chưa ạ? "
-        f"Có chỗ nào cần sửa hoặc bổ sung không?\n\n"
-        f"• *Chuẩn rồi* → em chuyển sang lên kế hoạch campaign cụ thể.\n"
-        f"• *Cần sửa* → {addr} chỉ rõ phần nào, em chỉnh đúng chỗ đó.",
+        f"📋 *{addr.capitalize()} xem qua giúp em:* kế hoạch trên ổn chưa, "
+        f"hay cần điều chỉnh gì không ạ?\n\n"
+        f"• *Ổn rồi* → em lên Lịch Nội Dung theo kế hoạch luôn\n"
+        f"• *Cần điều chỉnh* → {addr} nói rõ đổi hướng nào, em chỉnh và chạy lại",
         parse_mode=ParseMode.MARKDOWN,
         reply_markup=CONFIRM_STRATEGY_KEYBOARD,
     )
@@ -4347,15 +4391,16 @@ async def _run_pipeline_sequentially(message: Message, session):
                 reply_markup=CONFIRM_STRATEGY_KEYBOARD,
             )
         elif task == "strategy":
-            # Strategy done → guide to next step (campaign), not dead-end rating
+            # Strategy done → ask if plan is OK or needs adjustment
             addr = _addr(session)
             await message.reply_text(
-                f"✅ *Hoàn thành {task_label}!* Mở file HTML để xem báo cáo đầy đủ.\n\n"
+                f"✅ *Kế hoạch đề xuất đã xong!* Mở file HTML để xem đầy đủ.\n\n"
                 f"─────────────────────\n"
-                f"🎯 *Kế hoạch đã sẵn sàng!* {addr.capitalize()} muốn làm gì tiếp?\n\n"
-                f"• *Triển khai Campaign* → em trích 2-3 campaign từ Roadmap, sếp chọn 1 để làm Brief ngay\n"
-                f"• *Lập Lịch Nội Dung* → tạo calendar nội dung theo kế hoạch\n"
-                f"• *Về menu* → khám phá thêm các skill khác",
+                f"📋 *{addr.capitalize()} xem qua giúp em:* kế hoạch trên ổn chưa, "
+                f"hay cần điều chỉnh gì không ạ?\n\n"
+                f"• *Ổn rồi* → em lên Lịch Nội Dung theo kế hoạch luôn\n"
+                f"• *Cần điều chỉnh* → {addr} nói rõ đổi hướng nào (vd: \"nặng về awareness\", "
+                f"\"tập trung retention\"), em chỉnh và chạy lại",
                 parse_mode=ParseMode.MARKDOWN,
                 reply_markup=CONFIRM_STRATEGY_KEYBOARD,
             )
@@ -4688,7 +4733,7 @@ QUY TẮC:
 
 Skills có sẵn (gợi ý nếu phù hợp):
 🎯 Chiến lược: Tìm Hiểu Thị Trường, Phân Tích Đối Thủ, Insight Khách Hàng,
-   Chiến Lược Giá, Lập Kế Hoạch Tổng, Phân Tích Tổng Hợp A→Z
+   Chiến Lược Giá, Kế Hoạch Đề Xuất, Phân Tích Tổng Hợp A→Z
 ⚙️ Sản xuất: Lịch Nội Dung, Sản Xuất Nội Dung, Chăm Sóc Khách Hàng
 📊 Theo dõi: Theo Dõi Đối Thủ, Báo Cáo Ads
 

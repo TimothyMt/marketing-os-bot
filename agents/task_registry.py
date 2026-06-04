@@ -149,7 +149,7 @@ STRATEGIC_TASKS: dict[str, TaskConfig] = {
     ),
     "strategy": TaskConfig(
         name="strategy",
-        label="Lập Kế Hoạch Tổng",
+        label="Kế Hoạch Đề Xuất",
         button_emoji="🎯",
         category="strategic",
         description="SAVE Framework + SMART Goals + 90-day Roadmap",
