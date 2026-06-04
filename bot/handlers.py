@@ -1500,6 +1500,38 @@ async def _handle_callback_inner(update, context, query, session, data, user_id)
         await _send_single_shot_form(query.message, session, "full")
         return
 
+    if data == "resume_strategy_synthesis":
+        # User had all 7 answers but synthesis was interrupted → re-run synthesis
+        await query.edit_message_reply_markup(reply_markup=None)
+        import json as _jresume2
+        try:
+            _answers = _jresume2.loads(session.pending_intake.get("_strategy_answers", "{}"))
+        except Exception:
+            _answers = {}
+        _direction_block = _format_strategy_answers(_answers)
+        if not _direction_block.strip():
+            await query.message.reply_text(
+                "⚠️ Không tìm thấy câu trả lời chiến lược đã lưu. Sếp cần chạy lại 7 câu hỏi nhé.",
+                parse_mode=ParseMode.MARKDOWN,
+                reply_markup=InlineKeyboardMarkup([
+                    [InlineKeyboardButton("🔄 Chạy lại từ đầu", callback_data="research_analyze")],
+                ]),
+            )
+            return
+        await _run_strategy_plan(query.message, session, direction=_direction_block)
+        return
+
+    if data == "resume_strategy_questions":
+        # User has research results; resume 7-question flow
+        await query.edit_message_reply_markup(reply_markup=None)
+        if session.pending_intake.get("_strategy_questions"):
+            # Remaining question queue still intact → pick up from there
+            await _ask_next_strategy_question(query.message, session)
+        else:
+            # Queue gone (e.g. after restart) → start fresh questions
+            await _start_strategic_consultation(query.message, session)
+        return
+
     if data == "usp_use_as_is":
         await query.edit_message_reply_markup(reply_markup=None)
         stated_usp = session.pending_intake.pop("_user_stated_usp", "")
@@ -2330,6 +2362,82 @@ async def _handle_callback_inner(update, context, query, session, data, user_id)
             await _send_single_shot_form(query.message, session, task_type)
             return
 
+        # ── Full pipeline: dedicated handler with resume detection ────
+        if task_type == "full":
+            await query.edit_message_reply_markup(reply_markup=None)
+            import json as _jresume
+
+            _has_synthesis = bool((session.get_latest_result("synthesis") or "").strip())
+            _has_research  = any(session.has_result(k) for k in ("market_research", "competitor", "customer_insight"))
+            try:
+                _n_answers = len(_jresume.loads(session.pending_intake.get("_strategy_answers", "{}")))
+            except Exception:
+                _n_answers = 0
+
+            if _has_synthesis:
+                # Synthesis exists — interrupted before campaign selection
+                await query.message.reply_text(
+                    "📊 *Em thấy sếp đã có kế hoạch chiến lược từ lần trước!*\n\n"
+                    "Hình như bị gián đoạn trước khi chọn campaign. "
+                    "Sếp muốn tiếp tục hay chạy lại phân tích từ đầu?",
+                    parse_mode=ParseMode.MARKDOWN,
+                    reply_markup=InlineKeyboardMarkup([
+                        [InlineKeyboardButton("🚀 Tiếp tục — chọn campaign", callback_data="strategy_confirm")],
+                        [InlineKeyboardButton("🔄 Chạy lại từ đầu", callback_data="research_analyze")],
+                    ]),
+                )
+                return
+
+            if _has_research and _n_answers >= 7:
+                # All 7 answers saved but synthesis not done → synthesis was interrupted
+                await query.message.reply_text(
+                    "📋 *Em thấy sếp đã trả lời đủ 7/7 câu chiến lược!*\n\n"
+                    "Kế hoạch bị gián đoạn trước khi hoàn thành. Sếp bấm để em lập lại nhé.",
+                    parse_mode=ParseMode.MARKDOWN,
+                    reply_markup=InlineKeyboardMarkup([
+                        [InlineKeyboardButton("🚀 Lập kế hoạch chiến lược", callback_data="resume_strategy_synthesis")],
+                        [InlineKeyboardButton("🔄 Chạy lại toàn bộ từ đầu", callback_data="research_analyze")],
+                    ]),
+                )
+                return
+
+            if _has_research:
+                # Research exists but questions not all answered
+                _total_q = len(_STRATEGY_Q_KEYS)
+                if _n_answers > 0:
+                    _resume_text = (
+                        f"📊 *Em thấy sếp đã có kết quả nghiên cứu "
+                        f"+ trả lời {_n_answers}/{_total_q} câu chiến lược.*\n\n"
+                        "Sếp muốn tiếp tục từ câu hỏi tiếp theo hay bắt đầu lại?"
+                    )
+                else:
+                    _resume_text = (
+                        "📊 *Em thấy sếp đã có kết quả nghiên cứu thị trường từ trước!*\n\n"
+                        "Sếp muốn tiếp tục chọn hướng chiến lược hay chạy lại phân tích?"
+                    )
+                await query.message.reply_text(
+                    _resume_text,
+                    parse_mode=ParseMode.MARKDOWN,
+                    reply_markup=InlineKeyboardMarkup([
+                        [InlineKeyboardButton("▶️ Tiếp tục — chọn hướng chiến lược", callback_data="resume_strategy_questions")],
+                        [InlineKeyboardButton("🔄 Chạy lại toàn bộ từ đầu", callback_data="research_analyze")],
+                    ]),
+                )
+                return
+
+            # No research results → normal Research Gate flow
+            await query.message.reply_text(
+                "🔬 *Nghiên Cứu & Phân Tích Thị Trường*\n\n"
+                "Sếp đã có bản nghiên cứu thị trường chưa?\n\n"
+                "📋 *Có rồi* → Paste vào đây, em dùng làm nền cho toàn bộ workflow "
+                "_(brief campaign, lịch content, landing page...)_\n\n"
+                "🔬 *Chưa có* → Em và sếp cùng phân tích từ đầu "
+                "_(~5-7 phút, 8 bước: Market → Đối thủ → Customer → Pricing → USP → Retention → Strategy)_",
+                parse_mode=ParseMode.MARKDOWN,
+                reply_markup=RESEARCH_GATE_KEYBOARD,
+            )
+            return
+
         # ── Strategic skills ─────────────────────────────────────
         # Phase 1.3: Profile reuse — nếu profile đã có required fields, skip intake
         if not needs_intake(session, task_type):
@@ -2340,22 +2448,8 @@ async def _handle_callback_inner(update, context, query, session, data, user_id)
         # Strategic tasks dùng single-shot form với smart pre-fill:
         # - McKinsey Gate đã thu thập industry/product/target/goal → chỉ hỏi fields còn thiếu
         # - "full" được thêm vào đây để tránh hỏi lại fields đã có từ gate
-        SINGLE_SHOT_STRATEGIC = {"market", "competitor", "customer", "pricing", "full", "strategy"}
+        SINGLE_SHOT_STRATEGIC = {"market", "competitor", "customer", "pricing", "strategy"}
         if task_type in SINGLE_SHOT_STRATEGIC:
-            # "full" pipeline: hỏi research gate trước (có bản nghiên cứu chưa?)
-            if task_type == "full":
-                await query.edit_message_reply_markup(reply_markup=None)
-                await query.message.reply_text(
-                    "🔬 *Nghiên Cứu & Phân Tích Thị Trường*\n\n"
-                    "Sếp đã có bản nghiên cứu thị trường chưa?\n\n"
-                    "📋 *Có rồi* → Paste vào đây, em dùng làm nền cho toàn bộ workflow "
-                    "_(brief campaign, lịch content, landing page...)_\n\n"
-                    "🔬 *Chưa có* → Em và sếp cùng phân tích từ đầu "
-                    "_(~5-7 phút, 8 bước: Market → Đối thủ → Customer → Pricing → USP → Retention → Strategy)_",
-                    parse_mode=ParseMode.MARKDOWN,
-                    reply_markup=RESEARCH_GATE_KEYBOARD,
-                )
-                return
             task = get_task(task_type)
             if task and task.intake_fields:
                 await query.edit_message_reply_markup(reply_markup=None)
