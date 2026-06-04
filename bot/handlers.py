@@ -1485,6 +1485,17 @@ async def _handle_callback_inner(update, context, query, session, data, user_id)
         await save_session(session)
 
         if pending_skill:
+            # Special: resume tone calibration
+            if pending_skill == "tone_calibration":
+                pending_cal = session.tone_calibration.pop("pending_calendar", "")
+                await save_session(session)
+                await query.message.reply_text(
+                    "OK ạ! Em chạy tone check luôn nhé.",
+                    parse_mode=ParseMode.MARKDOWN,
+                )
+                await _start_tone_calibration(query.message, session, pending_cal)
+                return
+
             # Resume skill gốc user định chạy
             from bot.keyboards import ADS_COPY_TIER_KEYBOARD as _ADS_KB, VIDEO_CREATOR_KEYBOARD as _VID_KB
             session.selected_task = (
@@ -6383,6 +6394,18 @@ async def _continue_after_brand_voice(message: Message, session) -> None:
 
     # Lazy trigger — chain sang skill gốc với BV vừa setup
     await save_session(session)
+
+    # Special: resume tone calibration (không dispatch qua task form)
+    if pending_skill == "tone_calibration":
+        pending_cal = session.tone_calibration.pop("pending_calendar", "")
+        await save_session(session)
+        await message.reply_text(
+            "✅ *Brand Voice đã lưu!* Em kiểm tra tone cho Lịch Nội Dung luôn nhé...",
+            parse_mode=ParseMode.MARKDOWN,
+        )
+        await _start_tone_calibration(message, session, pending_cal)
+        return
+
     pending_label = (
         get_task(pending_skill).label if get_task(pending_skill) else pending_skill
     )
@@ -6684,10 +6707,34 @@ async def cmd_history(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
 async def _start_tone_calibration(message, session, calendar_result: str) -> None:
     """
     Khởi động Tone Calibration Loop sau khi content_calendar gen xong.
-    Gen 1 sample post từ row đầu tiên → show bài viết thật để user check tone.
+    Hỏi Brand Voice trước nếu chưa setup, rồi gen sample post để check tone.
     """
     from agents.tone_calibration import parse_first_post, generate_sample_post
     from bot.keyboards import TONE_CHECK_KEYBOARD
+
+    # Brand Voice gate: hỏi BV trước khi check tone
+    skipped_bv = session.pending_intake.get("_bv_skipped_session")
+    if not skipped_bv:
+        try:
+            from storage import has_brand_voice
+            has_bv = await has_brand_voice(session.user_id)
+        except Exception:
+            has_bv = True  # fail-safe: không block nếu storage lỗi
+        if not has_bv:
+            # Lưu calendar để resume sau khi BV xong/skip
+            session.tone_calibration = {"pending_calendar": calendar_result}
+            session.pending_intake["_bv_pending_skill"] = "tone_calibration"
+            await save_session(session)
+            await message.reply_text(
+                "🎙 *Trước khi check tone — sếp có muốn setup Brand Voice không?*\n\n"
+                "Brand Voice giúp em viết đúng *tone & từ ngữ* của brand — "
+                "bài viết sẽ nhất quán hơn nhiều khi sản xuất content sau này.\n\n"
+                "_Chỉ cần setup 1 lần, áp dụng cho mọi nội dung. "
+                "Sếp có thể bỏ qua giờ và setup sau._",
+                parse_mode=ParseMode.MARKDOWN,
+                reply_markup=BRAND_VOICE_PROMPT_KEYBOARD,
+            )
+            return
 
     first = parse_first_post(calendar_result)
     if not first:
@@ -6712,12 +6759,13 @@ async def _start_tone_calibration(message, session, calendar_result: str) -> Non
     await save_session(session)
 
     meta_line = first["preview"]  # "📅 21/06 | Facebook\n🎯 Hook: ...\n📝 Topic: ..."
-    preview = sample_post[:600]
-    await message.reply_text(
+    await send_long_message(
+        message,
         "🎨 *Kiểm tra Tone — Bài mẫu đầu tiên*\n\n"
         f"_{meta_line}_\n\n"
         "Em đã viết thử 1 bài từ Calendar để sếp check tone:\n\n"
-        f"```\n{preview}\n```\n\n"
+        f"{sample_post}\n\n"
+        "─────────────────────\n"
         "Tone ổn chưa sếp? Nếu muốn chỉnh, gõ feedback sau khi bấm *Chỉnh tone*.",
         parse_mode=ParseMode.MARKDOWN,
         reply_markup=TONE_CHECK_KEYBOARD,
@@ -6764,9 +6812,12 @@ async def _handle_tone_feedback(update, context, session, text: str) -> None:
         await _tone_lock_and_apply(update.message, session)
         return
 
-    await update.message.reply_text(
+    await send_long_message(
+        update.message,
         f"{signals_card}\n\n"
-        f"*Bài viết lại:*\n```\n{new_post[:500]}\n```\n"
+        f"*Bài viết lại:*\n\n"
+        f"{new_post}\n\n"
+        f"─────────────────────\n"
         f"_(Còn {remaining} lần chỉnh){suffix}_",
         parse_mode=ParseMode.MARKDOWN,
         reply_markup=kb,
