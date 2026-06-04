@@ -43,7 +43,7 @@ Nhiệm vụ: Gen 1 bài content hoàn chỉnh dựa trên 1 row từ Content Ca
 1. **Tò mò**: câu hỏi tiết lộ paradox — "Tại sao 90% X không Y?"
 2. **Trái ngược**: đảo belief — "X KHÔNG cần Y"
 3. **Cảm xúc**: chạm pain — "Sếp đã từng [pain]?"
-4. **Thẩm quyền**: POV expert — "8 năm làm X, đây là sai lầm số 1"
+4. **Góc nhìn chuyên gia**: POV expert — "8 năm làm X, đây là sai lầm số 1"
 5. **Đồng cảm**: kể trải nghiệm khán giả — "Bạn đã từng đứng trước kệ skincare 30 phút..."
 
 → Chọn 3 angles KHÁC NHAU phù hợp audience + funnel stage.
@@ -288,7 +288,7 @@ Audience: [audience] | Funnel: [TOFU/MOFU/BOFU]
 - "Hook 3..."
 
 
-## 4️⃣ Thẩm quyền (3 hooks)
+## 4️⃣ Góc nhìn chuyên gia (3 hooks)
 - "Hook 1..."
 - "Hook 2..."
 - "Hook 3..."
@@ -413,7 +413,7 @@ Nhiệm vụ: Gen N bài content cùng lúc dựa trên Calendar (1 tuần / 1 t
 1. **Tò mò**: câu hỏi tiết lộ paradox — "Tại sao 90% X không Y?"
 2. **Trái ngược**: đảo belief phổ biến — "X KHÔNG cần Y"
 3. **Cảm xúc**: chạm pain sâu — "Sếp đã từng [pain nặng]?"
-4. **Thẩm quyền**: POV insider — "8 năm làm X, đây là sai lầm số 1"
+4. **Góc nhìn chuyên gia**: POV insider — "8 năm làm X, đây là sai lầm số 1"
 5. **Đồng cảm**: kể trải nghiệm khán giả — "Bạn đứng trước kệ skincare 30 phút..."
 
 → Không lặp cùng 1 angle liên tiếp 2 bài. Mỗi tuần phải dùng ít nhất 3/5 angles.
@@ -462,7 +462,7 @@ Story arc: [Awareness → Trust → Action]
 
 ### 🪝 Hook (recommend 1)
 "[Hook 12-15 từ]"
-↳ Angle: [Tò mò/Trái ngược/Cảm xúc/Thẩm quyền/Đồng cảm]
+↳ Angle: [Tò mò/Trái ngược/Cảm xúc/Góc nhìn chuyên gia/Đồng cảm]
 
 ### 📝 Body (~200 chữ — follow framework đã chọn)
 [Content thật — cấu trúc theo framework, không generic]

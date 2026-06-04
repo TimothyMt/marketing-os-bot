@@ -146,7 +146,7 @@ Mỗi tuần phải có ÍT NHẤT 3/5 nhóm hook để tránh lặp pattern:
 - **Tò mò**: câu hỏi tiết lộ điều ngược lý thường
 - **Trái ngược**: đảo ngược belief phổ biến
 - **Cảm xúc**: chạm pain sâu
-- **Thẩm quyền**: POV chuyên gia/insider
+- **Góc nhìn chuyên gia**: POV chuyên gia/insider
 - **Đồng cảm**: kể trải nghiệm khán giả
 
 **Output cần có (trong phần Deliverable hoàn chỉnh):**
@@ -938,7 +938,7 @@ Mỗi idea phải dựa TRỰC TIẾP trên insight từ Phần 1. Cung cấp:
 - 7 ideas PHẢI khác nhau về angle (không lặp pattern)
 - Mỗi idea có insight nguồn rõ ràng — không tự bịa
 - Format cân bằng: 2-3 video, 2-3 post, 1-2 carousel
-- Hook follow 5 nhóm psychological (Tò mò / Trái ngược / Cảm xúc / Thẩm quyền / Đồng cảm)
+- Hook follow 5 nhóm psychological (Tò mò / Trái ngược / Cảm xúc / Góc nhìn chuyên gia / Đồng cảm)
 
 **Output format**: Operational Deliverable."""
 
@@ -1016,7 +1016,7 @@ CONTENT_REPURPOSE_SYSTEM = """Bạn là Content Repurposing Strategist — biế
 
 ### Phiên bản 2: TRUST BUILDER (xây niềm tin với tệp đang cân nhắc)
 - **Góc tiếp cận**: Khán giả đã biết, đang nghi ngờ → cung cấp social proof / process / chứng nhận
-- **Hook mới**: Dùng nhóm "Thẩm quyền" (POV chuyên gia/insider)
+- **Hook mới**: Dùng nhóm "Góc nhìn chuyên gia" (POV chuyên gia/insider)
 - **Cấu trúc**: Hook → 3 lý do khách cũ tin tưởng (testimonial/quy trình/cam kết) → Demo nhỏ → CTA "Đặt buổi trải nghiệm"
 - **CTA**: Mid-funnel — book trải nghiệm, không hard sell
 - **Lý do tệp khác**: Tệp warm cần PROOF, không cần thêm awareness
@@ -1372,7 +1372,7 @@ Nhiệm vụ: GEN CONTENT THẬT cho từng bài trong lịch nội dung (Conten
   + **Tò mò**: câu hỏi tiết lộ điều ngược lý thường — "Tại sao 90% skincare đắt tiền không hề tốt?"
   + **Trái ngược**: đảo ngược belief phổ biến — "Da nhạy cảm KHÔNG cần serum đắt tiền"
   + **Căng thẳng cảm xúc**: chạm pain sâu — "Mua skincare hoài mà mỗi sáng vẫn không dám soi gương"
-  + **Thẩm quyền**: POV chuyên gia/insider — "8 năm làm bác sĩ da liễu, đây là sai lầm số 1 tôi thấy"
+  + **Góc nhìn chuyên gia**: POV chuyên gia/insider — "8 năm làm bác sĩ da liễu, đây là sai lầm số 1 tôi thấy"
   + **Đồng cảm**: kể trải nghiệm khán giả từng có — "Bạn đã đứng trước kệ skincare 30 phút mà không biết chọn gì chưa?"
 - Hook PHẢI khiến người dùng DỪNG LƯỚT — KHÔNG generic kiểu "Bạn có biết...?" / "Hôm nay mình chia sẻ..."
 
@@ -1498,7 +1498,7 @@ Nhiệm vụ: Viết bài đăng hoàn chỉnh cho từng slot trong Lịch Nộ
    - Tò mò: câu hỏi tiết lộ điều ngược lý — "Tại sao 90% skincare đắt tiền không hiệu quả?"
    - Trái ngược: đảo ngược belief — "Da nhạy cảm KHÔNG cần serum đắt tiền"
    - Cảm xúc: chạm pain sâu — "Mua hoài mà mỗi sáng vẫn không dám soi gương"
-   - Thẩm quyền: POV insider — "8 năm làm da liễu, đây là sai lầm #1 tôi thấy"
+   - Góc nhìn chuyên gia: POV insider — "8 năm làm da liễu, đây là sai lầm #1 tôi thấy"
    - Đồng cảm: kể trải nghiệm khán giả — "Bạn đã đứng trước kệ 30 phút không biết chọn gì chưa?"
 3. **Body/Caption** (150-300 chữ): Value thật, actionable — KHÔNG generic
 4. **CTA** cụ thể: keyword Inbox/Comment/Link — KHÔNG "Tìm hiểu thêm"
