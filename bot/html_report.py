@@ -196,6 +196,13 @@ body {
   border-bottom: 1px solid #bfdbfe; padding-bottom: 1px;
 }
 .content a:hover { border-bottom-color: var(--primary); }
+.content pre {
+  background: #f8fafc; border: 1px solid var(--border); border-radius: 8px;
+  padding: 16px; margin: 18px 0; overflow-x: auto;
+  font-size: 12.5px; line-height: 1.5; color: #334155;
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+}
+.content pre code { background: none; padding: 0; font-size: inherit; }
 
 .footer {
   text-align: center; color: var(--muted); font-size: 12px;
