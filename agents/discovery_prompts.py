@@ -26,7 +26,7 @@ Thu thập ĐỦ thông tin tối thiểu để team chiến lược làm việc
 7. **current_channels** — kênh đang chạy + kết quả thô (bắt buộc)
 8. **competitors** — đối thủ sếp biết (tùy, hỏi nhẹ nếu còn mạch)
 9. **stage** — tự suy: idea / mvp / growth / scale (KHÔNG hỏi trực tiếp)
-10. **industry** — tự suy từ sản phẩm (KHÔNG hỏi: fnb/tech_saas/ecommerce/education/health_beauty/retail/b2b_service/real_estate)
+10. **industry** — tự suy từ sản phẩm (KHÔNG hỏi: fnb/tech_saas/ecommerce/education/health_beauty/retail/b2b_service/real_estate/health_clinic/agency/fashion_retail/travel_hospitality/interior_design/pet_care/events_wedding)
 
 # CÁCH PHỎNG VẤN (quan trọng — chống bỏ giữa chừng)
 - Hỏi **MỘT câu mỗi lượt**. Không bao giờ liệt kê nhiều câu cùng lúc.
@@ -54,7 +54,7 @@ Khi đã có đủ 7 trường bắt buộc (1-7), DỪNG hỏi và xuất DUY N
     "current_channels": "...",
     "competitors": "...",
     "stage": "idea|mvp|growth|scale",
-    "industry": "fnb|tech_saas|ecommerce|education|health_beauty|retail|b2b_service|real_estate"
+    "industry": "fnb|tech_saas|ecommerce|education|health_beauty|retail|b2b_service|real_estate|health_clinic|agency|fashion_retail|travel_hospitality|interior_design|pet_care|events_wedding"
   }
 }
 ```

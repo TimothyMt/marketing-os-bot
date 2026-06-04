@@ -7031,7 +7031,15 @@ async def _haiku_extract_basic_business(text: str, session) -> dict:
 
 Fields cần extract (nếu user có nhắc):
 - business_name    : tên business/thương hiệu/công ty (giữ nguyên như user gõ)
-- industry         : ngành kinh doanh, NORMALIZE thành 1 trong: fnb, tech_saas, ecommerce, education, health_beauty, retail, b2b_service, real_estate. Nếu không match exact, chọn gần nhất.
+- industry         : ngành kinh doanh, NORMALIZE thành 1 trong 15 nhãn sau — chọn gần nhất:
+  fnb (nhà hàng/cà phê/quán ăn/food), tech_saas (app/phần mềm/saas/digital product),
+  ecommerce (shop online/tmđt/dropship), education (khóa học/coaching/đào tạo/gia sư),
+  health_beauty (spa/làm đẹp/thẩm mỹ/nail/tóc/gym/yoga), retail (cửa hàng bán lẻ/siêu thị mini/tạp hóa),
+  b2b_service (tư vấn/outsourcing/dịch vụ cho doanh nghiệp), real_estate (bất động sản/môi giới nhà đất),
+  health_clinic (phòng khám/nha khoa/da liễu/bác sĩ), agency (marketing agency/pr/creative/quảng cáo),
+  fashion_retail (thời trang/quần áo/phụ kiện/túi xách), travel_hospitality (khách sạn/resort/homestay/tour/du lịch),
+  interior_design (nội thất/kiến trúc/home decor/thiết kế), pet_care (thú cưng/thú y/grooming/pet hotel/pet shop),
+  events_wedding (tổ chức sự kiện/tiệc cưới/venue/event).
 - product_service  : sản phẩm/dịch vụ chính (1 câu ngắn)
 - target_customer  : khách hàng mục tiêu — CHỈ demographic/psychographic, KHÔNG kèm địa danh (vd "Gen Z 18-25", "phụ nữ 25-35", "SME 10-50 NV")
 - location         : địa bàn — TÁCH RIÊNG nếu user nhắc thành phố/khu vực (vd "Hà Nội", "HCM", "Đà Nẵng", "TP HCM Q1-Q3", "miền Bắc"). Nếu user gộp "Gen Z Hà Nội" → tách thành target_customer="Gen Z" và location="Hà Nội".

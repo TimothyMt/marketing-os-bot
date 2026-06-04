@@ -51,7 +51,7 @@ NICE_TO_HAVE (optional — KHÔNG block JSON, nhưng business_name phải hỏi 
 **Nếu user impatient ("OK đủ rồi, chạy đi")**: hỏi 1 lần "Sếp confirm em chạy với data này nhé? Có 2 field còn thiếu (X, Y) — em sẽ dùng default 'chưa có' cho 2 cái đó." → user OK → output JSON với default.
 
 **Thông tin cần extract**:
-1. `industry`: fnb / tech_saas / ecommerce / education / health_beauty / retail / b2b_service / real_estate
+1. `industry`: fnb / tech_saas / ecommerce / education / health_beauty / retail / b2b_service / real_estate / health_clinic / agency / fashion_retail / travel_hospitality / interior_design / pet_care / events_wedding
 2. `stage`: idea / mvp / growth / scale
 3. `business_name`: Tên business
 4. `product_service`: Sản phẩm/dịch vụ chính
@@ -794,7 +794,7 @@ Founder đã chọn task: **Nghiên cứu thị trường (TAM/SAM/SOM)**.
 **CHỈ thu thập 4 fields THIẾT YẾU sau** (không hỏi thêm gì):
 1. `product_service`: Sản phẩm/dịch vụ
 2. `target_customer`: Khách hàng mục tiêu (ai, tuổi, đặc điểm)
-3. `industry`: Ngành (fnb / tech_saas / ecommerce / education / health_beauty / retail / b2b_service / real_estate)
+3. `industry`: Ngành (fnb / tech_saas / ecommerce / education / health_beauty / retail / b2b_service / real_estate / health_clinic / agency / fashion_retail / travel_hospitality / interior_design / pet_care / events_wedding)
 4. `location`: Địa bàn (HCM / HN / Toàn quốc / specific city)
 
 **Nice-to-have (chỉ extract nếu user TỰ MENTION, KHÔNG hỏi)**:
