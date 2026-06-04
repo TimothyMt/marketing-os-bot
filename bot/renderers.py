@@ -484,6 +484,16 @@ def render_excel_file(
         logger.warning("openpyxl not installed — falling back to no Excel export")
         return None
 
+    _PILLAR_FILLS = {
+        "educate":  PatternFill(start_color="E8F5E9", end_color="E8F5E9", fill_type="solid"),
+        "trust":    PatternFill(start_color="E3F2FD", end_color="E3F2FD", fill_type="solid"),
+        "engage":   PatternFill(start_color="FFFDE7", end_color="FFFDE7", fill_type="solid"),
+        "convert":  PatternFill(start_color="FFEBEE", end_color="FFEBEE", fill_type="solid"),
+    }
+
+    def _pillar_fill(value: str):
+        return _PILLAR_FILLS.get(value.strip().lower()) if value else None
+
     if output_format == OutputFormat.OPERATIONAL_DELIVERABLE:
         # Include raw để cover case LLM output table ngoài section "Deliverable"
         full_text = "\n\n".join(filter(None, [
@@ -591,15 +601,29 @@ def render_excel_file(
             cell.fill = header_fill
             cell.alignment = header_align
 
+        # Detect pillar column index (0-based) for row coloring
+        pillar_col_idx = next(
+            (i for i, h in enumerate(clean_headers)
+             if h.strip().lower() in ("pillar", "content pillar")),
+            None,
+        )
+
         # Data rows — strip markdown
         for row in rows:
             cleaned_row = [_clean_cell(c) for c in row]
             ws.append(cleaned_row)
             r_idx = ws.max_row
+            row_fill = (
+                _pillar_fill(cleaned_row[pillar_col_idx])
+                if pillar_col_idx is not None and pillar_col_idx < len(cleaned_row)
+                else None
+            )
             for c_idx in range(1, len(cleaned_row) + 1):
                 cell = ws.cell(row=r_idx, column=c_idx)
                 cell.font = body_font
                 cell.alignment = body_align
+                if row_fill:
+                    cell.fill = row_fill
 
         # Auto column width (capped 60)
         for col_idx in range(1, len(clean_headers) + 1):
