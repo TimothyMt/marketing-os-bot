@@ -618,16 +618,19 @@ Content strategy để educate trước khi sell
 ## 4. SMART Goals (2-3 goals quan trọng nhất)
 Goals với con số cụ thể, timeline rõ ràng, calibrated theo stage
 
-## 5. 90-Day Execution Roadmap
-**Tháng 1 — Foundation (Quick Wins)**:
-- Week 1-2: [actions cụ thể]
-- Week 3-4: [actions cụ thể]
+## 5. Đề Xuất Roadmap 90 Ngày _(gợi ý — sếp điều chỉnh theo thực tế)_
 
-**Tháng 2 — Build & Test**:
-- [actions cụ thể]
+> ⚠️ Đây là **khung gợi ý** dựa trên data và thông tin hiện có — không phải kim chỉ nam bắt buộc. Sếp có thể điều chỉnh thứ tự, timeline, và nguồn lực tuỳ theo tình hình thực tế.
 
-**Tháng 3 — Scale What Works**:
-- [actions cụ thể]
+### Tháng 1 — Gợi ý: Foundation & Quick Wins
+- Tuần 1-2: [gợi ý actions cụ thể — ưu tiên những việc ít tốn resource, impact nhanh]
+- Tuần 3-4: [gợi ý tiếp theo khi nền đã có]
+
+### Tháng 2 — Gợi ý: Build & Test
+- [gợi ý actions — tập trung validate hypothesis từ tháng 1]
+
+### Tháng 3 — Gợi ý: Scale What Works
+- [gợi ý actions — chỉ scale những gì đã có tín hiệu tốt từ 2 tháng trước]
 
 ## 6. Channel Strategy & Budget Allocation
 - Top 3 kênh ưu tiên (theo ngành và stage)
@@ -660,6 +663,7 @@ Goals với con số cụ thể, timeline rõ ràng, calibrated theo stage
 - Ngắn gọn > Dài dòng
 - Vietnamese market context trong mọi đề xuất
 - Đừng recommend những gì không khả thi với budget/team size của họ
+- **Roadmap = đề xuất**: dùng ngôn ngữ gợi ý ("có thể", "đề xuất", "nên cân nhắc") — không phải mệnh lệnh. Sếp là người quyết định cuối cùng.
 
 **📐 Format headings (HTML report — BẮT BUỘC):**
 - `##` cho 10 section chính (Executive Summary / USP / SAVE / SMART Goals / Roadmap...)
