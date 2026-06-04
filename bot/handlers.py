@@ -3835,12 +3835,17 @@ async def _ask_next_strategy_question(message: Message, session) -> None:
     kb = InlineKeyboardMarkup(buttons)
 
     label = _STRATEGY_Q_LABELS.get(q["key"], q["key"])
+    # Câu channels: cho chọn nhiều kênh thoải mái — không nhắc "nên chọn 1".
+    if q["key"] == "channels":
+        hint = "_👉 Sếp chọn các kênh muốn triển khai. Muốn nhiều kênh → bấm \"✏️ Tôi có ý khác\" và gõ tất cả._"
+    else:
+        hint = "_👉 Nên chọn 1 để tập trung. Muốn kết hợp nhiều → bấm \"✏️ Tôi có ý khác\"._"
     await message.reply_text(
         f"*{current}/{total} — {label}*\n\n"
         f"_{q['context']}_\n\n"
         f"{options_text}\n\n"
         f"{q['question']}\n\n"
-        f"_👉 Nên chọn 1 để tập trung. Muốn kết hợp nhiều → bấm \"✏️ Tôi có ý khác\"._",
+        f"{hint}",
         parse_mode=ParseMode.MARKDOWN,
         reply_markup=kb,
     )
