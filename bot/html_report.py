@@ -191,6 +191,11 @@ body {
   background: #fffbeb; color: #78350f; font-style: italic; border-radius: 4px;
   font-size: 15px;
 }
+.content a {
+  color: var(--primary); text-decoration: none;
+  border-bottom: 1px solid #bfdbfe; padding-bottom: 1px;
+}
+.content a:hover { border-bottom-color: var(--primary); }
 
 .footer {
   text-align: center; color: var(--muted); font-size: 12px;

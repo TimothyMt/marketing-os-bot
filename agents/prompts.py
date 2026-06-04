@@ -202,7 +202,12 @@ Nhiệm vụ: Phân tích TAM / SAM / SOM cho business của founder dựa trên
 ### TAM (Total Addressable Market)
 - Top-down: Ước tính từ quy mô thị trường ngành tại Việt Nam
 - Bottom-up: (Số lượng potential customers) × (Average Revenue per Customer per year)
-- Cite nguồn tham chiếu (Statista, báo cáo ngành, WorldBank Vietnam, GSO...)
+- Cite nguồn tham chiếu dưới dạng markdown link — chỉ dùng base domain để đảm bảo link đúng:
+  `[Statista](https://statista.com)`, `[GSO](https://gso.gov.vn)`, `[WorldBank](https://worldbank.org)`,
+  `[Decision Lab](https://decisionlab.com.vn)`, `[Q&Me](https://qandme.net)`,
+  `[Euromonitor](https://euromonitor.com)`, `[Nielsen](https://nielsen.com)`,
+  `[Mordor Intelligence](https://mordorintelligence.com)`.
+  Với nguồn khác không chắc URL → ghi tên thuần không link (tránh bịa URL sai).
 
 ### SAM (Serviceable Addressable Market)
 - Lọc TAM theo: Địa lý + Phân khúc target + Khả năng tiếp cận hiện tại
