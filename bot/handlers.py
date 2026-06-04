@@ -1501,15 +1501,24 @@ async def _handle_callback_inner(update, context, query, session, data, user_id)
         return
 
     if data == "run_strategy_standalone":
-        # Redo strategy synthesis from scratch (user has synthesis already, wants new one)
+        # Redo strategy synthesis — reuse saved strategic direction if available
         await query.edit_message_reply_markup(reply_markup=None)
-        await query.message.reply_text(
-            "🎯 *Em đang lập lại kế hoạch chiến lược...*",
-            parse_mode=ParseMode.MARKDOWN,
-        )
-        session.selected_task = "strategy"
-        await save_session(session)
-        await _proceed_after_confirm(query.message, session)
+        import json as _jstrat3
+        try:
+            _strat_answers3 = _jstrat3.loads(session.pending_intake.get("_strategy_answers", "{}"))
+        except Exception:
+            _strat_answers3 = {}
+        _strat_dir3 = _format_strategy_answers(_strat_answers3)
+        if _strat_dir3.strip():
+            await _run_strategy_plan(query.message, session, direction=_strat_dir3)
+        else:
+            await query.message.reply_text(
+                "🎯 *Em đang lập lại kế hoạch chiến lược...*",
+                parse_mode=ParseMode.MARKDOWN,
+            )
+            session.selected_task = "strategy"
+            await save_session(session)
+            await _proceed_after_confirm(query.message, session)
         return
 
     if data == "resume_strategy_synthesis":
@@ -2472,14 +2481,26 @@ async def _handle_callback_inner(update, context, query, session, data, user_id)
                 return
 
             if _has_research_s or session.profile.is_basic_business_context_ready():
-                # Has context → run strategy synthesis directly, no intake
-                await query.message.reply_text(
-                    "🎯 *Em đang lập kế hoạch chiến lược dựa trên dữ liệu đã có...*",
-                    parse_mode=ParseMode.MARKDOWN,
-                )
-                session.selected_task = "strategy"
-                await save_session(session)
-                await _proceed_after_confirm(query.message, session)
+                # Has context → run strategy synthesis with direction from saved answers
+                import json as _jstrat
+                try:
+                    _strat_answers = _jstrat.loads(session.pending_intake.get("_strategy_answers", "{}"))
+                except Exception:
+                    _strat_answers = {}
+                _strat_direction = _format_strategy_answers(_strat_answers)
+
+                if _strat_direction.strip():
+                    # Have saved strategic direction → use it (full-quality synthesis)
+                    await _run_strategy_plan(query.message, session, direction=_strat_direction)
+                else:
+                    # No answers saved → run synthesis with whatever context exists
+                    await query.message.reply_text(
+                        "🎯 *Em đang lập kế hoạch chiến lược dựa trên dữ liệu đã có...*",
+                        parse_mode=ParseMode.MARKDOWN,
+                    )
+                    session.selected_task = "strategy"
+                    await save_session(session)
+                    await _proceed_after_confirm(query.message, session)
                 return
 
             # No context at all → McKinsey Gate first
