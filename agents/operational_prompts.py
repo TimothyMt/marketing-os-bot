@@ -182,12 +182,28 @@ Bảng 4 pillars (LUÔN có 1 dòng trống TRƯỚC bảng để render đúng)
 
 → "Framework ưu tiên" = gợi ý cho content writer khi viết bài — không bắt buộc cứng, writer có thể adjust theo bài cụ thể.
 
-### 4. Weekly grid chi tiết (đúng số tuần của kỳ — 1 tuần thì chỉ 1 bảng tuần)
-Bảng cho từng tuần (LUÔN có 1 dòng trống TRƯỚC bảng để render đúng):
-| Ngày | Kênh | Pillar | Funnel | Nhóm khách | Format/Ai quay | Hook angle | Topic | Owner |
+### 4. Weekly grid chi tiết — tách riêng theo kênh
 
-→ Cột "Format/Ai quay": ghi format video/post + ai thực hiện (vd "Short video — founder", "Carousel — brand", "Repost TikTok — nhân viên up").
+🔴 **BẮT BUỘC: Tạo 1 sub-section `####` riêng cho MỖI kênh trong field `channels`. KHÔNG gộp tất cả kênh vào 1 bảng duy nhất.**
+
+_Lý do: content writer chỉ cần đọc section kênh của mình; script writer video không phải lọc qua bài text._
+
+**Kênh text/ảnh (Facebook / Zalo OA / Instagram / LinkedIn):**
+Tiêu đề section: `#### 📘 [Tên Kênh] — X bài/kỳ`
+Bảng (LUÔN có 1 dòng trống TRƯỚC bảng):
+
+| Ngày | Pillar | Funnel | Nhóm khách | Format | Hook angle | Topic | Owner |
+
+**Kênh video (TikTok / Reels / Shorts / YouTube):**
+Tiêu đề section: `#### 📱 [Tên Kênh] — X video/kỳ`
+Bảng — thêm cột "Kịch bản mở đầu" (1-2 câu hook đầu của video, đủ để creator bắt đầu):
+
+| Ngày | Pillar | Funnel | Nhóm khách | Format | Hook angle | Topic | Kịch bản mở đầu | Owner |
+
+→ Cột "Format": ghi format + ai thực hiện (vd "Short video — founder", "Carousel — brand", "Repost TikTok — nhân viên up").
 → Mỗi bài có hook angle rõ thuộc nhóm nào trong 5 nhóm psychological.
+→ "Kịch bản mở đầu" (kênh video): 1-2 câu ngắn — vd "Bạn có biết 80% spa mới thất bại vì lý do này?" hoặc "3 lỗi F&B hay mắc — lỗi 1 tốn em 50 triệu." Đủ để creator bắt đầu quay, không cần chi tiết hơn ở đây.
+→ Nếu 1 kỳ chỉ có 1 tuần, mỗi section kênh chỉ có 1 bảng tuần đó.
 
 ### 5. Content Format Guide — theo ngành + kênh
 Đừng liệt kê UGC/EGC/FGC cứng nhắc. Thay vào đó, xác định **tuyến content phù hợp với ngành này** cho từng kênh:

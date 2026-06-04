@@ -1192,6 +1192,56 @@ async def _handle_callback_inner(update, context, query, session, data, user_id)
         )
         return
 
+    # ── Calendar → Tách loại nội dung: Social / Video / UGC / Ads ──
+    if data == "run_social_posts_after_cal":
+        await query.edit_message_reply_markup(reply_markup=None)
+        duration = session.pending_intake.get("duration") or "Theo Lịch Nội Dung"
+        session.pending_intake.setdefault("scope", duration)
+        session.selected_task = "social_posts"
+        await save_session(session)
+        await query.message.reply_text(
+            "📝 *Viết Bài Đăng từ Lịch Nội Dung...*",
+            parse_mode=ParseMode.MARKDOWN,
+        )
+        await _send_single_shot_form(query.message, session, "social_posts")
+        return
+
+    if data == "run_video_scripts_after_cal":
+        await query.edit_message_reply_markup(reply_markup=None)
+        duration = session.pending_intake.get("duration") or "Theo Lịch Nội Dung"
+        session.pending_intake.setdefault("scope", duration)
+        session.pending_intake["_after_cal_vid"] = "1"
+        session.selected_task = "video_script_gen"
+        await save_session(session)
+        await query.message.reply_text(
+            "🎬 *Viết Kịch Bản Video từ Lịch Nội Dung* — Brief cho loại creator nào ạ?",
+            parse_mode=ParseMode.MARKDOWN,
+            reply_markup=VIDEO_CREATOR_KEYBOARD,
+        )
+        return
+
+    if data == "run_ugc_brief_after_cal":
+        await query.edit_message_reply_markup(reply_markup=None)
+        session.selected_task = "ugc_brief"
+        await save_session(session)
+        await query.message.reply_text(
+            "🤝 *Brief Creator UGC từ Lịch Nội Dung...*",
+            parse_mode=ParseMode.MARKDOWN,
+        )
+        await _send_single_shot_form(query.message, session, "ugc_brief")
+        return
+
+    if data == "run_ads_after_cal":
+        await query.edit_message_reply_markup(reply_markup=None)
+        session.selected_task = "ads_generator"
+        await save_session(session)
+        await query.message.reply_text(
+            "📢 *Sản Xuất Ads Copy* — chọn tier muốn gen ạ?",
+            parse_mode=ParseMode.MARKDOWN,
+            reply_markup=ADS_COPY_TIER_KEYBOARD,
+        )
+        return
+
     # ── Layer 2: Xác nhận / Surgical edit strategy ──────────────
     if data == "strategy_confirm":
         await query.edit_message_reply_markup(reply_markup=None)
@@ -2286,9 +2336,11 @@ async def _handle_callback_inner(update, context, query, session, data, user_id)
     if data.startswith("video_creator_"):
         creator = data.replace("video_creator_", "")  # ugc / egc / fgc / kol
         session.pending_intake["creator_type"] = creator
+        # post-calendar flow uses video_script_gen (calendar-aware); standalone uses video_scripts
+        vid_task = "video_script_gen" if session.pending_intake.pop("_after_cal_vid", None) else "video_scripts"
         await save_session(session)
         await query.edit_message_reply_markup(reply_markup=None)
-        await _send_single_shot_form(query.message, session, "video_scripts")
+        await _send_single_shot_form(query.message, session, vid_task)
         return
 
     # ── Coming Soon placeholder ───────────────────────────────────
@@ -6904,8 +6956,8 @@ async def _tone_lock_and_apply(message, session) -> None:
     # Show content-gen upsell AFTER tone is locked
     await message.reply_text(
         "✅ *Lịch Nội Dung xong rồi sếp!*\n\n"
-        "Sếp muốn em *sản xuất nội dung chi tiết* từ lịch này luôn không ạ?\n"
-        "_(Mỗi bài: Hook + Body 200-300 chữ + CTA + Hashtags + Visual hint)_",
+        "Sếp muốn sản xuất loại nội dung nào tiếp theo?\n"
+        "_(Mỗi loại được viết riêng theo đúng kênh trong lịch)_",
         parse_mode=ParseMode.MARKDOWN,
         reply_markup=CALENDAR_TO_CONTENT_GEN_KEYBOARD,
     )
@@ -6948,8 +7000,8 @@ async def _handle_tone_callback(query, session) -> None:
         )
         await query.message.reply_text(
             "✅ *Lịch Nội Dung xong rồi sếp!*\n\n"
-            "Sếp muốn em *sản xuất nội dung chi tiết* từ lịch này luôn không ạ?\n"
-            "_(Mỗi bài: Hook + Body 200-300 chữ + CTA + Hashtags + Visual hint)_",
+            "Sếp muốn sản xuất loại nội dung nào tiếp theo?\n"
+            "_(Mỗi loại được viết riêng theo đúng kênh trong lịch)_",
             parse_mode=ParseMode.MARKDOWN,
             reply_markup=CALENDAR_TO_CONTENT_GEN_KEYBOARD,
         )
