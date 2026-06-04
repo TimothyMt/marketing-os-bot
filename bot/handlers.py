@@ -1500,6 +1500,18 @@ async def _handle_callback_inner(update, context, query, session, data, user_id)
         await _send_single_shot_form(query.message, session, "full")
         return
 
+    if data == "run_strategy_standalone":
+        # Redo strategy synthesis from scratch (user has synthesis already, wants new one)
+        await query.edit_message_reply_markup(reply_markup=None)
+        await query.message.reply_text(
+            "🎯 *Em đang lập lại kế hoạch chiến lược...*",
+            parse_mode=ParseMode.MARKDOWN,
+        )
+        session.selected_task = "strategy"
+        await save_session(session)
+        await _proceed_after_confirm(query.message, session)
+        return
+
     if data == "resume_strategy_synthesis":
         # User had all 7 answers but synthesis was interrupted → re-run synthesis
         await query.edit_message_reply_markup(reply_markup=None)
@@ -2438,6 +2450,42 @@ async def _handle_callback_inner(update, context, query, session, data, user_id)
             )
             return
 
+        # ── Strategy-standalone: check existing synthesis / context ─
+        if task_type == "strategy":
+            await query.edit_message_reply_markup(reply_markup=None)
+            _has_synthesis_s = bool((session.get_latest_result("synthesis") or "").strip())
+            _has_research_s  = any(session.has_result(k) for k in (
+                "market_research", "competitor", "customer_insight", "psychology_pricing"
+            ))
+
+            if _has_synthesis_s:
+                # Already has a plan — ask if redo or menu
+                await query.message.reply_text(
+                    "🎯 *Em thấy sếp đã có kế hoạch chiến lược từ trước.*\n\n"
+                    "Sếp muốn tạo lại kế hoạch hay quay về menu?",
+                    parse_mode=ParseMode.MARKDOWN,
+                    reply_markup=InlineKeyboardMarkup([
+                        [InlineKeyboardButton("🔄 Tạo lại kế hoạch", callback_data="run_strategy_standalone")],
+                        [InlineKeyboardButton("⬅️ Về menu chính",    callback_data="menu_main")],
+                    ]),
+                )
+                return
+
+            if _has_research_s or session.profile.is_basic_business_context_ready():
+                # Has context → run strategy synthesis directly, no intake
+                await query.message.reply_text(
+                    "🎯 *Em đang lập kế hoạch chiến lược dựa trên dữ liệu đã có...*",
+                    parse_mode=ParseMode.MARKDOWN,
+                )
+                session.selected_task = "strategy"
+                await save_session(session)
+                await _proceed_after_confirm(query.message, session)
+                return
+
+            # No context at all → McKinsey Gate first
+            await _send_basic_business_form(query.message, session, "strategy")
+            return
+
         # ── Strategic skills ─────────────────────────────────────
         # Phase 1.3: Profile reuse — nếu profile đã có required fields, skip intake
         if not needs_intake(session, task_type):
@@ -2447,8 +2495,7 @@ async def _handle_callback_inner(update, context, query, session, data, user_id)
 
         # Strategic tasks dùng single-shot form với smart pre-fill:
         # - McKinsey Gate đã thu thập industry/product/target/goal → chỉ hỏi fields còn thiếu
-        # - "full" được thêm vào đây để tránh hỏi lại fields đã có từ gate
-        SINGLE_SHOT_STRATEGIC = {"market", "competitor", "customer", "pricing", "strategy"}
+        SINGLE_SHOT_STRATEGIC = {"market", "competitor", "customer", "pricing"}
         if task_type in SINGLE_SHOT_STRATEGIC:
             task = get_task(task_type)
             if task and task.intake_fields:
