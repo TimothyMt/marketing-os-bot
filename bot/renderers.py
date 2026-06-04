@@ -524,7 +524,7 @@ def render_excel_file(
     wb.remove(wb.active)
 
     header_font = Font(bold=True, color="FFFFFF", name="Arial")
-    header_fill = PatternFill(start_color="2563EB", end_color="2563EB", fill_type="solid")
+    header_fill = PatternFill(start_color="2C3E50", end_color="2C3E50", fill_type="solid")
     header_align = Alignment(horizontal="center", vertical="center", wrap_text=True)
     body_font = Font(name="Arial")
     body_align = Alignment(vertical="top", wrap_text=True)
