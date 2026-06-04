@@ -144,6 +144,13 @@ ACTION_AFTER_STRATEGIC = ACTION_AFTER_SKILL
 ACTION_AFTER_OPS       = ACTION_AFTER_SKILL
 ACTION_AFTER_ANALYSIS  = ACTION_AFTER_SKILL
 
+# Post-strategy next steps: lead into execution rather than dead-end
+ACTION_AFTER_STRATEGY = InlineKeyboardMarkup([
+    [InlineKeyboardButton("📋 Triển khai Campaign →",  callback_data="strategy_confirm")],
+    [InlineKeyboardButton("📅 Lập Lịch Nội Dung →",   callback_data="task_content_calendar")],
+    [InlineKeyboardButton("🏠 Về menu chính",          callback_data="menu_main")],
+])
+
 # Q&A follow-up — sau khi user hỏi thêm 1 lần, có thể hỏi tiếp hoặc thoát
 ASK_FOLLOWUP_KEYBOARD = InlineKeyboardMarkup([
     [InlineKeyboardButton("💬 Hỏi tiếp",              callback_data="ask_followup")],
@@ -152,7 +159,9 @@ ASK_FOLLOWUP_KEYBOARD = InlineKeyboardMarkup([
 
 
 def get_action_keyboard(task_name: str) -> InlineKeyboardMarkup:
-    """Return post-skill action keyboard."""
+    """Return post-skill action keyboard, context-aware by task."""
+    if task_name in ("strategy", "synthesis", "full"):
+        return ACTION_AFTER_STRATEGY
     return ACTION_AFTER_SKILL
 
 
@@ -212,8 +221,10 @@ BRAND_VOICE_PROMPT_KEYBOARD = InlineKeyboardMarkup([
 
 # Sau khi A→Z xong — XÁC NHẬN strategy trước khi sang campaign
 CONFIRM_STRATEGY_KEYBOARD = InlineKeyboardMarkup([
-    [InlineKeyboardButton("✅ Chuẩn rồi — sang lên kế hoạch", callback_data="strategy_confirm")],
-    [InlineKeyboardButton("✏️ Cần sửa/bổ sung phần nào đó",   callback_data="strategy_edit")],
+    [InlineKeyboardButton("📋 Triển khai Campaign →",          callback_data="strategy_confirm")],
+    [InlineKeyboardButton("📅 Lập Lịch Nội Dung →",           callback_data="task_content_calendar")],
+    [InlineKeyboardButton("✏️ Sửa/bổ sung kế hoạch",          callback_data="strategy_edit")],
+    [InlineKeyboardButton("🏠 Về menu chính",                  callback_data="menu_main")],
 ])
 
 # Sau khi Campaign Brief xong — XÁC NHẬN brief trước khi gen calendar

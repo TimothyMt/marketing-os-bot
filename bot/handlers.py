@@ -4346,6 +4346,19 @@ async def _run_pipeline_sequentially(message: Message, session):
                 parse_mode=ParseMode.MARKDOWN,
                 reply_markup=CONFIRM_STRATEGY_KEYBOARD,
             )
+        elif task == "strategy":
+            # Strategy done → guide to next step (campaign), not dead-end rating
+            addr = _addr(session)
+            await message.reply_text(
+                f"✅ *Hoàn thành {task_label}!* Mở file HTML để xem báo cáo đầy đủ.\n\n"
+                f"─────────────────────\n"
+                f"🎯 *Kế hoạch đã sẵn sàng!* {addr.capitalize()} muốn làm gì tiếp?\n\n"
+                f"• *Triển khai Campaign* → em trích 2-3 campaign từ Roadmap, sếp chọn 1 để làm Brief ngay\n"
+                f"• *Lập Lịch Nội Dung* → tạo calendar nội dung theo kế hoạch\n"
+                f"• *Về menu* → khám phá thêm các skill khác",
+                parse_mode=ParseMode.MARKDOWN,
+                reply_markup=CONFIRM_STRATEGY_KEYBOARD,
+            )
         else:
             await message.reply_text(
                 f"✅ *Hoàn thành {task_label}!*\n\nSếp đánh giá output em vừa làm thế nào ạ?",
