@@ -673,6 +673,10 @@ class ContentCalendarDynamicSkill(OperationalSkill):
             + str(session.profile.primary_goal or "unknown")
             + ")_"
         )
+        # Inject calendar edit feedback nếu có
+        feedback = session.pending_intake.get("_calendar_feedback", "")
+        if feedback:
+            msg += f"\n\n---\n\n**🔄 YÊU CẦU SỬA LỊCH từ sếp (BẮT BUỘC áp dụng):**\n{feedback}"
         return msg
 
 

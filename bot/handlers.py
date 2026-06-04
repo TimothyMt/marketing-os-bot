@@ -245,7 +245,7 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "_pending_regen_skill", "_pending_feedback",
         "_monitor_pending_page_id", "_monitor_pending_page_name",
         "_last_image_b64", "_last_image_size", "_img_prompt", "_img_n",
-        "_advisor_mode",
+        "_advisor_mode", "_awaiting_calendar_edit",
     ]
     for k in transient_keys:
         session.pending_intake.pop(k, None)
@@ -609,6 +609,10 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if session.pending_intake.get("_awaiting_strategy_edit"):
         await _handle_strategy_edit_text(update, context, session, text)
+        return
+
+    if session.pending_intake.get("_awaiting_calendar_edit"):
+        await _handle_calendar_edit_text(update, context, session, text)
         return
 
     # Layer 2b: User mô tả phần cần sửa trong campaign brief → surgical edit
@@ -1239,6 +1243,17 @@ async def _handle_callback_inner(update, context, query, session, data, user_id)
             "📢 *Sản Xuất Ads Copy* — chọn tier muốn gen ạ?",
             parse_mode=ParseMode.MARKDOWN,
             reply_markup=ADS_COPY_TIER_KEYBOARD,
+        )
+        return
+
+    if data == "calendar_edit_request":
+        await query.edit_message_reply_markup(reply_markup=None)
+        session.pending_intake["_awaiting_calendar_edit"] = "1"
+        await save_session(session)
+        await query.message.reply_text(
+            "✏️ *Sếp muốn sửa gì trong lịch?* Gõ tự do nhé:\n\n"
+            "_Vd: 'tăng thêm 2 video TikTok/tuần' / 'đổi focus sang awareness' / 'bớt bài Convert'_",
+            parse_mode=ParseMode.MARKDOWN,
         )
         return
 
@@ -5431,6 +5446,49 @@ async def _execute_optimizer_actions(session) -> str:
     return "\n".join(results)
 
 
+async def _handle_calendar_edit_text(update, context, session, text: str):
+    """User muốn sửa calendar — re-run content_calendar với feedback injected."""
+    comment = (text or "").strip()
+    if len(comment) < 4:
+        await update.message.reply_text(
+            "⚠️ Sếp nói rõ hơn chút giúp em: cần sửa phần nào ạ?",
+        )
+        return
+
+    session.pending_intake.pop("_awaiting_calendar_edit", None)
+    # Inject feedback vào intake để calendar prompt nhận
+    old_feedback = session.pending_intake.get("_calendar_feedback", "")
+    session.pending_intake["_calendar_feedback"] = (
+        (old_feedback + "\n" + comment).strip() if old_feedback else comment
+    )
+    session.selected_task = "content_calendar"
+    session.stage = PipelineStage.TASK_SELECT
+    await save_session(session)
+
+    from config import AGENT_TIMEOUT
+    await update.message.reply_text(
+        f"🔄 _Đang chỉnh lịch theo feedback: \"{comment[:80]}\"..._",
+        parse_mode=ParseMode.MARKDOWN,
+    )
+    try:
+        result = await asyncio.wait_for(
+            run_operational_skill("content_calendar", session),
+            timeout=AGENT_TIMEOUT,
+        )
+    except asyncio.TimeoutError:
+        await update.message.reply_text("⏱ Timeout khi gen lịch. Sếp thử lại nhé.")
+        return
+    except Exception as e:
+        logger.exception("calendar re-edit failed: %s", e)
+        await update.message.reply_text("⚠️ Lỗi khi sửa lịch. Sếp thử lại nhé.")
+        return
+
+    session.stage = PipelineStage.TASK_SELECT
+    await save_session(session)
+    await _send_ops_result(update.message, session, "content_calendar", result)
+    await _start_tone_calibration(update.message, session, result)
+
+
 async def _handle_strategy_edit_text(update, context, session, text: str):
     """Surgical edit: sửa đúng section/sub-point trong synthesis theo comment user.
 
@@ -6956,8 +7014,8 @@ async def _tone_lock_and_apply(message, session) -> None:
     # Show content-gen upsell AFTER tone is locked
     await message.reply_text(
         "✅ *Lịch Nội Dung xong rồi sếp!*\n\n"
-        "Sếp muốn sản xuất loại nội dung nào tiếp theo?\n"
-        "_(Mỗi loại được viết riêng theo đúng kênh trong lịch)_",
+        "Lịch ổn chưa ạ? Em có thể chạy hết nội dung theo lịch này luôn.\n"
+        "_(Bài đăng + Kịch bản video + Brief UGC + Ads copy)_",
         parse_mode=ParseMode.MARKDOWN,
         reply_markup=CALENDAR_TO_CONTENT_GEN_KEYBOARD,
     )

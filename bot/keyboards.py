@@ -57,13 +57,11 @@ COMPARE_PROMPT_KEYBOARD = InlineKeyboardMarkup([
     [InlineKeyboardButton("⏭️ Để sau",                                callback_data="skip_compare")],
 ])
 
-# Sau khi Lịch Nội Dung xong — chọn loại nội dung muốn sản xuất
+# Sau khi Lịch Nội Dung xong — hỏi chạy hết hay cần sửa
 CALENDAR_TO_CONTENT_GEN_KEYBOARD = InlineKeyboardMarkup([
-    [InlineKeyboardButton("📝 Viết Bài Đăng (Social)",   callback_data="run_social_posts_after_cal")],
-    [InlineKeyboardButton("🎬 Viết Kịch Bản Video",      callback_data="run_video_scripts_after_cal")],
-    [InlineKeyboardButton("🤝 Brief Creator UGC",         callback_data="run_ugc_brief_after_cal")],
-    [InlineKeyboardButton("📢 Sản Xuất Ads Copy",         callback_data="run_ads_after_cal")],
-    [InlineKeyboardButton("⏭️ Để sau",                   callback_data="skip_content_gen_after_cal")],
+    [InlineKeyboardButton("✅ Chạy hết nội dung theo lịch",  callback_data="run_content_gen_after_cal")],
+    [InlineKeyboardButton("✏️ Cần sửa lịch",                 callback_data="calendar_edit_request")],
+    [InlineKeyboardButton("⏭️ Để sau",                       callback_data="skip_content_gen_after_cal")],
 ])
 
 # Sau khi gửi Funnel Map + Execution Plan (HTML) → chờ user duyệt mới dựng calendar
