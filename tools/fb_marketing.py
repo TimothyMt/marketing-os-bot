@@ -34,9 +34,14 @@ DEFAULT_INSIGHT_FIELDS = [
     "cpm",
     "cpp",
     "frequency",
-    "actions",          # conversions, link_clicks, etc.
+    "actions",                          # conversions, link_clicks, etc.
     "cost_per_action_type",
-    "video_play_actions",
+    # Video metrics — Andromeda Tầng 1 + 2
+    "video_play_actions",               # tổng lượt play
+    "video_3_sec_watched_actions",      # Tầng 1: Hook Rate = VTR3s / impressions
+    "video_thruplay_watched_actions",   # Tầng 2: Hold Rate = ThruPlay / VTR3s (15s+)
+    "video_p25_watched_actions",        # 25% watched — signal body strength
+    "video_p75_watched_actions",        # 75% watched — signal story compelling
     "date_start",
     "date_stop",
 ]
@@ -142,8 +147,31 @@ async def get_active_campaigns(
 # Format helpers
 # ─────────────────────────────────────────────────────────────────
 
+def _extract_action_value(actions: list[dict], action_type: str) -> int:
+    """Extract value của 1 action_type từ actions array."""
+    if not actions:
+        return 0
+    for a in actions:
+        if a.get("action_type") == action_type:
+            return int(float(a.get("value", 0)))
+    return 0
+
+
+def _hook_hold_rates(r: dict, impressions: int) -> tuple[float | None, float | None]:
+    """Tính Hook Rate (VTR 3s/imp) và Hold Rate (ThruPlay/VTR3s). None = không có data."""
+    vtr3 = _extract_action_value(r.get("video_3_sec_watched_actions") or [], "video_view")
+    thruplay = _extract_action_value(r.get("video_thruplay_watched_actions") or [], "video_view")
+
+    hook = (vtr3 / impressions * 100) if impressions and vtr3 else None
+    hold = (thruplay / vtr3 * 100) if vtr3 and thruplay else None
+    return hook, hold
+
+
 def format_insights_for_analysis(insights: list[dict], period: str) -> str:
-    """Convert raw Marketing API response → structured text cho Claude phân tích."""
+    """Convert raw Marketing API response → structured text cho Claude phân tích.
+
+    Bao gồm Andromeda Tầng 1+2: Hook Rate (VTR 3s / Imp) + Hold Rate (ThruPlay / VTR 3s).
+    """
     if not insights:
         return f"**Không có data ads trong period: {period}**\n(Ad Account chưa có campaign nào chạy hoặc không có spend)"
 
@@ -151,8 +179,18 @@ def format_insights_for_analysis(insights: list[dict], period: str) -> str:
     total_spend = sum(float(r.get("spend", 0)) for r in insights)
     total_impressions = sum(int(r.get("impressions", 0)) for r in insights)
     total_clicks = sum(int(r.get("clicks", 0)) for r in insights)
+    total_vtr3 = sum(
+        _extract_action_value(r.get("video_3_sec_watched_actions") or [], "video_view")
+        for r in insights
+    )
+    total_thruplay = sum(
+        _extract_action_value(r.get("video_thruplay_watched_actions") or [], "video_view")
+        for r in insights
+    )
     avg_ctr = (total_clicks / total_impressions * 100) if total_impressions else 0
     avg_cpm = (total_spend / total_impressions * 1000) if total_impressions else 0
+    avg_hook = (total_vtr3 / total_impressions * 100) if total_impressions and total_vtr3 else None
+    avg_hold = (total_thruplay / total_vtr3 * 100) if total_vtr3 and total_thruplay else None
 
     lines = [
         f"## Facebook Ads Data — {period}",
@@ -163,9 +201,15 @@ def format_insights_for_analysis(insights: list[dict], period: str) -> str:
         f"- **Tổng clicks:** {total_clicks:,}",
         f"- **CTR trung bình:** {avg_ctr:.2f}%",
         f"- **CPM trung bình:** {avg_cpm:,.0f} VND",
-        "",
-        f"### BREAKDOWN THEO CAMPAIGN ({len(insights)} campaigns)",
     ]
+    if avg_hook is not None:
+        lines.append(f"- **Hook Rate (VTR 3s) trung bình:** {avg_hook:.1f}%")
+    if avg_hold is not None:
+        lines.append(f"- **Hold Rate (ThruPlay) trung bình:** {avg_hold:.1f}%")
+    if avg_hook is None and avg_hold is None:
+        lines.append("- **Video metrics:** Không có (campaign không phải video hoặc chưa đủ data)")
+
+    lines += ["", f"### BREAKDOWN THEO CAMPAIGN ({len(insights)} campaigns)"]
 
     for r in insights[:20]:  # Cap ở 20
         name = r.get("campaign_name") or r.get("adset_name") or r.get("ad_name", "Unknown")
@@ -176,17 +220,29 @@ def format_insights_for_analysis(insights: list[dict], period: str) -> str:
         cpm = float(r.get("cpm", 0))
         cpc = float(r.get("cpc", 0))
         frequency = float(r.get("frequency", 0))
+        hook, hold = _hook_hold_rates(r, impressions)
 
         # Extract conversions from actions
         actions = r.get("actions") or []
         conversions = next(
-            (int(a.get("value", 0)) for a in actions if a.get("action_type") in ("purchase", "lead", "complete_registration")),
-            0
+            (int(float(a.get("value", 0))) for a in actions
+             if a.get("action_type") in ("purchase", "lead", "complete_registration")),
+            0,
         )
 
         lines.append(f"\n**{name}**")
         lines.append(f"  Spend: {spend:,.0f} VND | Imp: {impressions:,} | Clicks: {clicks:,}")
         lines.append(f"  CTR: {ctr:.2f}% | CPM: {cpm:,.0f} | CPC: {cpc:,.0f} | Frequency: {frequency:.1f}")
+
+        # Andromeda Tầng 1+2 — chỉ hiện nếu là video campaign
+        if hook is not None or hold is not None:
+            video_line = "  Andromeda:"
+            if hook is not None:
+                video_line += f" Hook Rate(T1): {hook:.1f}%"
+            if hold is not None:
+                video_line += f" | Hold Rate(T2): {hold:.1f}%"
+            lines.append(video_line)
+
         if conversions:
             cost_per_conv = spend / conversions if conversions else 0
             lines.append(f"  Conversions: {conversions} | Cost/Conv: {cost_per_conv:,.0f} VND")
