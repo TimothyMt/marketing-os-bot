@@ -410,7 +410,7 @@ def make_brand_voice_skill() -> OperationalSkill:
         BRAND_VOICE_SYSTEM,
         max_tokens=8000,
         context_strategy=ContextStrategy.PROFILE_ONLY,
-        primary_deliverable=PrimaryDeliverable.MARKDOWN,
+        primary_deliverable=PrimaryDeliverable.HTML,
     ))
 
 

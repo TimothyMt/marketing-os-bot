@@ -574,10 +574,10 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("✏️ _Linh đang cập nhật Brand Voice..._", parse_mode=ParseMode.MARKDOWN)
         updated = await _apply_bv_edit(session, text)
         if updated:
-            await update.message.reply_text(
-                f"✅ *Đã cập nhật Brand Voice!* Dùng chung cho toàn business từ giờ.\n\n{updated[:3000]}",
-                parse_mode=ParseMode.MARKDOWN,
-                reply_markup=LINH_BV_EXISTS_KEYBOARD,
+            await _send_bv_html(
+                update.message, session, updated,
+                "✅ *Đã cập nhật Brand Voice!* Dùng chung cho toàn business từ giờ.",
+                keyboard=LINH_BV_EXISTS_KEYBOARD,
             )
         else:
             await update.message.reply_text(
@@ -2221,10 +2221,10 @@ async def _handle_callback_inner(update, context, query, session, data, user_id)
             bv = None
         if bv and not bv.is_empty():
             body = (bv.rules_markdown or "").strip() or bv.to_prompt_block(max_chars=3000)
-            await query.message.reply_text(
-                f"📋 *Brand Voice hiện tại (v{getattr(bv, 'version', 1)}):*\n\n{body[:3500]}",
-                parse_mode=ParseMode.MARKDOWN,
-                reply_markup=LINH_BV_EXISTS_KEYBOARD,
+            await _send_bv_html(
+                query.message, session, body,
+                f"📋 *Brand Voice hiện tại (v{getattr(bv, 'version', 1)}):*",
+                keyboard=LINH_BV_EXISTS_KEYBOARD,
             )
         else:
             await query.message.reply_text(
@@ -7065,6 +7065,47 @@ async def _apply_bv_edit(session, instruction: str) -> "str | None":
     except Exception as e:
         logger.exception("[BV] chat-edit failed user=%d: %s", session.user_id, e)
         return None
+
+
+async def _send_bv_html(message: Message, session, bv_markdown: str, intro: str, keyboard=None):
+    """Send Brand Voice: short inline preview card + full HTML file attachment."""
+    import io as _io
+
+    # Preview: first ~400 chars from leading non-empty lines
+    preview_lines = [line.strip() for line in bv_markdown.split('\n') if line.strip()][:8]
+    preview = '\n'.join(preview_lines)
+    if len(preview) > 400:
+        preview = preview[:400].rsplit('\n', 1)[0]
+    ellipsis = '...' if len(bv_markdown) > len(preview) else ''
+
+    card = f"{intro}\n\n{preview}{ellipsis}\n\n📎 _Xem đầy đủ trong file HTML bên dưới_"
+    await _safe_reply(message, card, parse_mode=ParseMode.MARKDOWN, reply_markup=keyboard)
+
+    _biz = (session.profile.business_name or "Business").strip()
+    _slug = re.sub(r'[^a-zA-Z0-9_-]', '_', _biz)[:20].strip('_') or 'bv'
+    try:
+        from bot.html_report import build_single_skill_report
+        from agents.skills import OutputFormat
+        from bot.renderers import parse_operational_deliverable
+        parsed = parse_operational_deliverable(bv_markdown)
+        if not parsed.get("summary") and not parsed.get("deliverable"):
+            parsed["deliverable"] = bv_markdown
+        html_str = build_single_skill_report(
+            "brand_voice", parsed, OutputFormat.OPERATIONAL_DELIVERABLE,
+            business_name=_biz,
+            industry=session.profile.industry or "",
+            stage=session.profile.stage or "",
+        )
+        buf = _io.BytesIO(html_str.encode("utf-8"))
+        fname = f"brand_voice_{_slug}.html"
+        buf.name = fname
+        await message.reply_document(
+            document=buf, filename=fname,
+            caption="📄 *Brand Voice* — bản đầy đủ (HTML)",
+            parse_mode=ParseMode.MARKDOWN,
+        )
+    except Exception as e:
+        logger.warning("[BV] HTML send failed: %s", e)
 
 
 # ─── Admin Commands ───────────────────────────────────────────────
