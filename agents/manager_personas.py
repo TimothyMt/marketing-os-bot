@@ -101,7 +101,7 @@ Bạn ở tầng chiến lược. Bạn KHÔNG sa vào chi tiết thực thi (vi
         domain_summary="Paid ads, performance tracking, competitor intel — đo được, tối ưu được",
         owns_skills=[
             "ads_analytics", "ads_optimizer",
-            "competitor_spy", "competitor_comparison",
+            "competitor_spy",
         ],
         trigger_keywords=[
             "quảng cáo", "ads", "facebook ads", "google ads", "tiktok ads",
