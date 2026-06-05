@@ -29,6 +29,7 @@ from bot.handlers import (
     handle_message,
     handle_callback,
     handle_photo,
+    handle_document,
     cmd_admin_addquota,
     cmd_admin_setquota,
     cmd_admin_resetusage,
@@ -83,6 +84,7 @@ def main():
 
     app.add_handler(CallbackQueryHandler(handle_callback))
     app.add_handler(MessageHandler(filters.PHOTO, handle_photo))
+    app.add_handler(MessageHandler(filters.Document.ALL, handle_document))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
     app.run_polling(drop_pending_updates=True)

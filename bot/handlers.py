@@ -52,6 +52,7 @@ from bot.keyboards import (
     OFFER_LEVER_KEYBOARD,
     BRAND_VOICE_PROMPT_KEYBOARD,
     BV_DRAFT_APPROVE_KEYBOARD,
+    XLSX_EDIT_KEYBOARD,
     RESEARCH_GATE_KEYBOARD,
     USP_ANALYZE_KEYBOARD,
     LINH_BV_EXISTS_KEYBOARD,
@@ -828,6 +829,116 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"⚠️ Em không phân tích được ảnh: {str(e)[:200]}\n\nSếp thử ảnh khác hoặc skip ạ.",
             reply_markup=IMAGE_GEN_PROMPT_KEYBOARD,
         )
+
+
+_XLSX_MIME = {
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    "application/vnd.ms-excel",
+}
+
+
+async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Excel read-back: user uploads an edited .xlsx → detect skill từ tên file →
+    parse nội dung → hỏi sếp muốn Max làm gì (lưu / xem lại / viết lại)."""
+    doc = update.message.document
+    if doc is None:
+        return
+    fname = doc.file_name or ""
+    is_xlsx = (doc.mime_type in _XLSX_MIME) or fname.lower().endswith((".xlsx", ".xlsm"))
+    if not is_xlsx:
+        await update.message.reply_text(
+            "📎 Em mới nhận file nhưng chỉ đọc được *file Excel (.xlsx)* thôi ạ.\n"
+            "Sếp sửa trên file Excel em gửi rồi tải lên lại giúp em nhé.",
+            parse_mode=ParseMode.MARKDOWN,
+        )
+        return
+
+    user_id = update.effective_user.id
+    session = await get_session(user_id)
+
+    from bot.excel_reader import detect_skill_from_filename, read_xlsx_to_markdown
+
+    skill_name = detect_skill_from_filename(fname)
+    if not skill_name:
+        await update.message.reply_text(
+            "🤔 Em chưa nhận ra file này thuộc nội dung nào ạ.\n\n"
+            "👉 *Quan trọng:* khi sửa file Excel em gửi, sếp *giữ nguyên tên file* "
+            "(vd: `content_calendar_ShopABC.xlsx`) rồi tải lên lại — em mới biết đây là "
+            "output của skill nào để cập nhật đúng chỗ.",
+            parse_mode=ParseMode.MARKDOWN,
+        )
+        return
+
+    await context.bot.send_chat_action(chat_id=update.effective_chat.id, action=ChatAction.TYPING)
+    try:
+        import io as _io
+        file = await context.bot.get_file(doc.file_id)
+        buf = _io.BytesIO()
+        await file.download_to_memory(out=buf)
+        parsed_md = read_xlsx_to_markdown(buf.getvalue())
+    except Exception as e:
+        logger.exception("[xlsx] read failed: %s", e)
+        await update.message.reply_text(
+            f"⚠️ Em đọc file không được: `{str(e)[:200]}`\n"
+            "Sếp thử lưu lại dạng .xlsx chuẩn rồi gửi lại nhé.",
+            parse_mode=ParseMode.MARKDOWN,
+        )
+        return
+
+    if not parsed_md.strip():
+        await update.message.reply_text(
+            "📄 File Excel này em đọc ra rỗng (không có dữ liệu). Sếp kiểm tra lại nhé."
+        )
+        return
+
+    task = get_task(skill_name)
+    label = task.label if task else skill_name
+
+    # Lưu tạm vào session — chờ user chọn hành động
+    session.pending_intake["_xlsx_skill"] = skill_name
+    session.pending_intake["_xlsx_content"] = parsed_md[:20000]
+    await save_session(session)
+
+    has_old = session.has_result(skill_name)
+    note = "" if has_old else "\n_(Phiên này chưa có bản gốc — em sẽ lưu đây làm bản đầu.)_"
+    await update.message.reply_text(
+        f"📥 *Em nhận được file đã sửa của: {label}*{note}\n\n"
+        f"Sếp muốn em làm gì với bản này ạ?\n"
+        f"• 💾 *Lưu lại* — ghi đè, mọi skill sau sẽ bám theo bản sếp sửa\n"
+        f"• 📋 *Xem em đọc đúng chưa* — em tóm tắt lại nội dung đọc được\n"
+        f"• 🔄 *Max viết lại* — em hoàn thiện/mở rộng dựa trên chỉnh sửa của sếp",
+        parse_mode=ParseMode.MARKDOWN,
+        reply_markup=XLSX_EDIT_KEYBOARD,
+    )
+
+
+async def _refine_edited_excel(session, skill_name: str, edited_md: str) -> "str | None":
+    """Option 'viết lại': Max hoàn thiện/mở rộng nội dung Excel user đã sửa.
+    GIỮ NGUYÊN chỉnh sửa của user, chỉ bồi đắp thêm. Returns markdown hoặc None."""
+    try:
+        from agents.pipeline import client as _client
+        from config import CLAUDE_SONNET_MODEL
+
+        task = get_task(skill_name)
+        label = task.label if task else skill_name
+        sys = (
+            f"Bạn là chuyên gia marketing. User vừa chỉnh sửa thủ công file '{label}' "
+            f"(dạng bảng markdown). Nhiệm vụ: GIỮ NGUYÊN mọi chỉnh sửa của user, "
+            f"hoàn thiện các ô còn trống, mở rộng/đánh bóng nội dung cho nhất quán & "
+            f"dùng được ngay. KHÔNG đổi những gì user đã viết. KHÔNG giải thích — "
+            f"chỉ xuất lại nội dung dạng bảng markdown hoàn chỉnh."
+        )
+        resp = await _client.messages.create(
+            model=CLAUDE_SONNET_MODEL,
+            max_tokens=8000,
+            system=sys,
+            messages=[{"role": "user", "content": f"Nội dung user đã sửa:\n\n{edited_md[:15000]}"}],
+        )
+        out = resp.content[0].text.strip()
+        return out or None
+    except Exception as e:
+        logger.exception("[xlsx] refine failed skill=%s: %s", skill_name, e)
+        return None
 
 
 async def _handle_image_edit_text(update, context, session, text):
@@ -1688,6 +1799,74 @@ async def _handle_callback_inner(update, context, query, session, data, user_id)
         await save_session(session)
         await _send_single_shot_form(query.message, session, "brand_voice")
         return
+
+    # ── Excel read-back callbacks (user uploaded edited .xlsx) ──────
+    if data in ("xlsx_save", "xlsx_review", "xlsx_refine", "xlsx_cancel"):
+        await query.edit_message_reply_markup(reply_markup=None)
+        skill_name = session.pending_intake.get("_xlsx_skill")
+        content = session.pending_intake.get("_xlsx_content")
+
+        if data == "xlsx_cancel":
+            session.pending_intake.pop("_xlsx_skill", None)
+            session.pending_intake.pop("_xlsx_content", None)
+            await save_session(session)
+            await query.message.reply_text("👌 Đã bỏ qua file vừa gửi ạ.")
+            return
+
+        if not skill_name or not content:
+            await query.message.reply_text(
+                "⚠️ Em không còn giữ nội dung file (phiên đã hết). Sếp gửi lại file nhé."
+            )
+            return
+
+        task = get_task(skill_name)
+        label = task.label if task else skill_name
+
+        if data == "xlsx_review":
+            preview = content[:3000]
+            ell = "\n\n_..._" if len(content) > 3000 else ""
+            await query.message.reply_text(
+                f"📋 *Em đọc được từ file ({label}):*\n\n{preview}{ell}\n\n"
+                f"Đúng thì bấm *Lưu lại* nhé sếp 👇",
+                parse_mode=ParseMode.MARKDOWN,
+                reply_markup=XLSX_EDIT_KEYBOARD,
+            )
+            return
+
+        if data == "xlsx_save":
+            session.add_result(skill_name, content)
+            session.pending_intake.pop("_xlsx_skill", None)
+            session.pending_intake.pop("_xlsx_content", None)
+            await save_session(session)
+            await query.message.reply_text(
+                f"✅ *Đã lưu bản sếp sửa cho: {label}!*\n\n"
+                f"Từ giờ các skill liên quan (vd: viết content/video) sẽ bám theo bản này ạ.",
+                parse_mode=ParseMode.MARKDOWN,
+            )
+            return
+
+        if data == "xlsx_refine":
+            await query.message.reply_text(
+                "🔄 _Max đang hoàn thiện theo bản sếp sửa..._", parse_mode=ParseMode.MARKDOWN
+            )
+            refined = await _refine_edited_excel(session, skill_name, content)
+            final = refined or content
+            session.add_result(skill_name, final)
+            session.pending_intake.pop("_xlsx_skill", None)
+            session.pending_intake.pop("_xlsx_content", None)
+            await save_session(session)
+            if refined:
+                await _send_ops_result(query.message, session, skill_name, final)
+                await query.message.reply_text(
+                    f"✅ *Đã viết lại & lưu cho: {label}!* (giữ nguyên chỉnh sửa của sếp)",
+                    parse_mode=ParseMode.MARKDOWN,
+                )
+            else:
+                await query.message.reply_text(
+                    f"⚠️ Em chưa viết lại được (lỗi tạm thời) — nhưng đã *lưu nguyên bản sếp sửa* cho {label}.",
+                    parse_mode=ParseMode.MARKDOWN,
+                )
+            return
 
     if data == "az_skip_campaign":
         await query.edit_message_reply_markup(reply_markup=None)
@@ -4151,7 +4330,10 @@ async def _send_ops_result(message: Message, session, task_name: str, result: st
                     await message.reply_document(
                         document=buf2,
                         filename=buf2.name,
-                        caption=f"📊 *{task.label}* — bản Excel (overview/track status)",
+                        caption=(
+                            f"📊 *{task.label}* — bản Excel (overview/track status)\n"
+                            f"✏️ _Sửa xong gửi lại file này (giữ nguyên tên) — em cập nhật theo._"
+                        ),
                         parse_mode=ParseMode.MARKDOWN,
                     )
                 else:
@@ -4180,7 +4362,10 @@ async def _send_ops_result(message: Message, session, task_name: str, result: st
                 await message.reply_document(
                     document=buf,
                     filename=buf.name,
-                    caption=f"📊 *{task.label}* — bản Excel (paste vào Google Sheet)",
+                    caption=(
+                        f"📊 *{task.label}* — bản Excel (paste vào Google Sheet)\n"
+                        f"✏️ _Sửa xong gửi lại file này (giữ nguyên tên) — em sẽ cập nhật theo._"
+                    ),
                     parse_mode=ParseMode.MARKDOWN,
                 )
                 logger.info("Excel sent successfully for %s (%d bytes)", task_name, len(xlsx_bytes))

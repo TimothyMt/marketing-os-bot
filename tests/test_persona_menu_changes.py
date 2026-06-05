@@ -142,3 +142,57 @@ def test_linh_keyboards():
     assert "bv_view" in exists
     new = _all_callbacks(kb.LINH_BV_NEW_KEYBOARD)
     assert "bv_create" in new
+
+
+# ── Excel read-back ───────────────────────────────────────────────
+def test_xlsx_filename_detection():
+    from bot.excel_reader import detect_skill_from_filename
+    assert detect_skill_from_filename("content_calendar_ShopABC.xlsx") == "content_calendar"
+    # Longest-prefix match: không nhầm video_script_gen với 'video'
+    assert detect_skill_from_filename("video_script_gen_X.xlsx") == "video_script_gen"
+    # Tên file không khớp skill nào → None
+    assert detect_skill_from_filename("my_random_export.xlsx") is None
+    assert detect_skill_from_filename("") is None
+
+
+def test_xlsx_reader_roundtrip():
+    from openpyxl import Workbook
+    import io
+    from bot.excel_reader import read_xlsx_to_markdown
+
+    wb = Workbook()
+    ws = wb.active
+    ws.append(["Tuần", "Topic", "Kênh"])
+    ws.append([1, "Trị mụn", "FB"])
+    buf = io.BytesIO()
+    wb.save(buf)
+    md = read_xlsx_to_markdown(buf.getvalue())
+    assert "Topic" in md
+    assert "Trị mụn" in md
+    assert md.count("|") >= 6  # có pipe table
+
+
+def test_xlsx_edit_keyboard():
+    cbs = _all_callbacks(kb.XLSX_EDIT_KEYBOARD)
+    assert "xlsx_save" in cbs
+    assert "xlsx_review" in cbs
+    assert "xlsx_refine" in cbs
+    assert "xlsx_cancel" in cbs
+
+
+# ── Brand Voice markdown sync (chat-edit) ─────────────────────────
+def test_bv_do_dont_parsers():
+    from bot.handlers import _extract_do_rules_from_md, _extract_dont_rules_from_md
+    md = (
+        "### 1. 10 quy tắc giọng văn\n"
+        "1. Luôn xưng \"em\" với khách\n"
+        "2. Câu max 18 từ\n\n"
+        "### 2. 10 từ NÊN TRÁNH\n"
+        "| # | Từ/cụm tránh | Lý do | Vd |\n"
+        "|---|---|---|---|\n"
+        "| 1 | Sản phẩm chúng tôi | Generic | Bộ Glow |\n"
+    )
+    do = _extract_do_rules_from_md(md)
+    dont = _extract_dont_rules_from_md(md)
+    assert len(do) == 2 and "xưng" in do[0]
+    assert len(dont) == 1 and "Sản phẩm chúng tôi" in dont[0]

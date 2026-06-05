@@ -267,6 +267,14 @@ BV_DRAFT_APPROVE_KEYBOARD = InlineKeyboardMarkup([
     [InlineKeyboardButton("🔄 Viết lại từ đầu",          callback_data="bv_draft_regen")],
 ])
 
+# Excel read-back — user uploaded an edited .xlsx; choose what Max does with it
+XLSX_EDIT_KEYBOARD = InlineKeyboardMarkup([
+    [InlineKeyboardButton("💾 Lưu lại (ghi đè bản cũ)",        callback_data="xlsx_save")],
+    [InlineKeyboardButton("📋 Xem em đọc đúng chưa",           callback_data="xlsx_review")],
+    [InlineKeyboardButton("🔄 Để Max viết lại theo bản sửa",  callback_data="xlsx_refine")],
+    [InlineKeyboardButton("❌ Bỏ qua",                         callback_data="xlsx_cancel")],
+])
+
 # Sau khi strategy xong — hỏi ổn chưa hay cần điều chỉnh
 CONFIRM_STRATEGY_KEYBOARD = InlineKeyboardMarkup([
     [InlineKeyboardButton("✅ Ổn rồi — chạy Lịch Nội Dung",  callback_data="strategy_ok_run_calendar")],
