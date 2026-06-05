@@ -221,6 +221,12 @@ BRAND_VOICE_PROMPT_KEYBOARD = InlineKeyboardMarkup([
     [InlineKeyboardButton("🔙 Quay lại menu",                   callback_data="menu_main")],
 ])
 
+# Brand Voice draft approval — show draft before saving
+BV_DRAFT_APPROVE_KEYBOARD = InlineKeyboardMarkup([
+    [InlineKeyboardButton("✅ Duyệt & Lưu Brand Voice",  callback_data="bv_draft_approve")],
+    [InlineKeyboardButton("🔄 Viết lại từ đầu",          callback_data="bv_draft_regen")],
+])
+
 # Sau khi strategy xong — hỏi ổn chưa hay cần điều chỉnh
 CONFIRM_STRATEGY_KEYBOARD = InlineKeyboardMarkup([
     [InlineKeyboardButton("✅ Ổn rồi — chạy Lịch Nội Dung",  callback_data="strategy_ok_run_calendar")],

@@ -636,18 +636,18 @@ PROVIDER_CALLERS = {
 # for the full client-level timeout (300s) and consuming the outer
 # asyncio.wait_for budget before failover can happen.
 _PER_PROVIDER_TIMEOUT: dict[Provider, float] = {
-    Provider.ANTHROPIC_SONNET:    55.0,   # bail early → let GPT-5 take over within outer budget
-    Provider.ANTHROPIC_HAIKU:     45.0,
-    Provider.OPENAI_GPT5:         90.0,   # reasoning model — needs more time
-    Provider.OPENAI_GPT5_MINI:    75.0,
-    Provider.OPENAI_GPT5_NANO:    45.0,
-    Provider.OPENAI_GPT_4_1_MINI: 75.0,
-    Provider.OPENAI_GPT4O:        60.0,
-    Provider.OPENAI_GPT4O_MINI:   45.0,
-    Provider.GEMINI_PRO:          90.0,
-    Provider.GEMINI_PRO_GROUNDED: 90.0,
-    Provider.GEMINI_FLASH:        60.0,
-    Provider.PERPLEXITY_SONAR:    45.0,
+    Provider.ANTHROPIC_SONNET:    300.0,  # content pipeline (post_batch 15K+ tokens) needs 2-3 min
+    Provider.ANTHROPIC_HAIKU:     90.0,   # intake/classify — generous buffer for slow bursts
+    Provider.OPENAI_GPT5:         300.0,  # reasoning model — can take 3-5 min on deep tasks
+    Provider.OPENAI_GPT5_MINI:    180.0,  # sweet-spot model — content gen needs 2 min+
+    Provider.OPENAI_GPT5_NANO:    90.0,   # bulk classify — short tasks but keep buffer
+    Provider.OPENAI_GPT_4_1_MINI: 180.0,  # 1M ctx fallback — long context parsing
+    Provider.OPENAI_GPT4O:        150.0,  # multi-modal capable — moderate buffer
+    Provider.OPENAI_GPT4O_MINI:   90.0,
+    Provider.GEMINI_PRO:          300.0,  # deep analysis tasks
+    Provider.GEMINI_PRO_GROUNDED: 300.0,  # grounded search + analysis
+    Provider.GEMINI_FLASH:        150.0,  # flash — fast but keep buffer for large outputs
+    Provider.PERPLEXITY_SONAR:    90.0,
 }
 
 

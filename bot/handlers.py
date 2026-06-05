@@ -50,6 +50,7 @@ from bot.keyboards import (
     CAMPAIGN_IDEA_CONFIRM_KEYBOARD,
     OFFER_LEVER_KEYBOARD,
     BRAND_VOICE_PROMPT_KEYBOARD,
+    BV_DRAFT_APPROVE_KEYBOARD,
     RESEARCH_GATE_KEYBOARD,
     USP_ANALYZE_KEYBOARD,
 )
@@ -247,6 +248,7 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "_last_image_b64", "_last_image_size", "_img_prompt", "_img_n",
         "_advisor_mode", "_awaiting_calendar_edit", "_awaiting_week_selection",
         "_content_gen_weekly_mode", "_content_gen_week",
+        "_bv_draft",
     ]
     for k in transient_keys:
         session.pending_intake.pop(k, None)
@@ -1605,6 +1607,37 @@ async def _handle_callback_inner(update, context, query, session, data, user_id)
             await _send_single_shot_form(query.message, session, pending_skill)
         else:
             await query.message.reply_text("OK, sếp /start để chọn skill khác nhé.")
+        return
+
+    # ── Brand Voice draft approval callbacks ──────────────────────
+    if data == "bv_draft_approve":
+        await query.edit_message_reply_markup(reply_markup=None)
+        draft = session.pending_intake.pop("_bv_draft", None)
+        await save_session(session)
+        if draft:
+            try:
+                await _persist_brand_voice_from_session(session, draft)
+                await _continue_after_brand_voice(query.message, session)
+            except (TimedOut, NetworkError) as e:
+                logger.warning("[BV] draft approve transient error: %s", e)
+            except Exception as e:
+                logger.exception("[BV] draft approve failed: %s", e)
+                await query.message.reply_text("⚠️ Lỗi lưu Brand Voice. Thử lại nhé.")
+        else:
+            await query.message.reply_text("⚠️ Không tìm thấy draft. Sếp chạy lại Brand Voice nhé.")
+        return
+
+    if data == "bv_draft_regen":
+        await query.edit_message_reply_markup(reply_markup=None)
+        session.pending_intake.pop("_bv_draft", None)
+        await save_session(session)
+        await query.message.reply_text(
+            "🔄 _Viết lại Brand Voice từ đầu..._",
+            parse_mode=ParseMode.MARKDOWN,
+        )
+        session.selected_task = "brand_voice"
+        await save_session(session)
+        await _send_single_shot_form(query.message, session, "brand_voice")
         return
 
     if data == "az_skip_campaign":
@@ -3617,17 +3650,19 @@ async def _handle_ops_intake_reply(update: Update, context: ContextTypes.DEFAULT
                 await _start_tone_calibration(update.message, session, result)
                 return
 
-            # Sprint 5: Persist Brand Voice to DB sau khi gen xong.
-            # Deliverable (card + files) đã gửi xong ở trên — post-processing
-            # KHÔNG được làm skill báo lỗi. Wrap riêng để mọi lỗi đều non-fatal.
+            # Sprint 5: Show Brand Voice draft for user approval before persisting.
+            # Deliverable (card + files) đã gửi xong ở trên — now ask to approve.
             if task_name == "brand_voice":
-                try:
-                    await _persist_brand_voice_from_session(session, result)
-                    await _continue_after_brand_voice(update.message, session)
-                except (TimedOut, NetworkError) as e:
-                    logger.warning("[BV] post-processing transient error (non-fatal): %s", e)
-                except Exception as e:
-                    logger.exception("[BV] post-processing failed (non-fatal): %s", e)
+                session.pending_intake["_bv_draft"] = result
+                await save_session(session)
+                await update.message.reply_text(
+                    "👆 *Brand Voice draft xong rồi sếp!*\n\n"
+                    "Sếp xem qua rồi bấm *Duyệt & Lưu* để em lưu lại — "
+                    "từ đó tất cả nội dung em viết (posts, ads, video...) đều sẽ theo đúng tone này.\n\n"
+                    "Hoặc bấm *Viết lại* nếu muốn thay đổi.",
+                    parse_mode=ParseMode.MARKDOWN,
+                    reply_markup=BV_DRAFT_APPROVE_KEYBOARD,
+                )
     except asyncio.TimeoutError:
         logger.error("Skill %s timeout sau %ds", task_name, 500)
         await update.message.reply_text(

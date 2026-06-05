@@ -183,6 +183,16 @@ async def generate_sample_post(
         "convert": "FAB hoặc PAS",
     }.get(pillar.lower().strip(), "PAS")
 
+    # Fetch Brand Voice if available — inject so the sample reflects approved tone
+    bv_block = ""
+    try:
+        from storage import get_brand_voice as _get_bv
+        bv = await _get_bv(session.user_id)
+        if bv and not bv.is_empty():
+            bv_block = bv.to_prompt_block(max_chars=600)
+    except Exception:
+        pass
+
     user_msg = f"""**Thông tin bài cần viết (từ Content Calendar):**
 - Kênh: {channel}
 - Pillar: {pillar} | Funnel: {funnel}
@@ -195,7 +205,7 @@ async def generate_sample_post(
 - Sản phẩm/dịch vụ: {profile.product_service or 'chưa rõ'}
 - Khách hàng: {profile.target_customer or 'chưa rõ'}
 - Địa bàn: {profile.location or 'Việt Nam'}
-
+{f"{chr(10)}**Brand Voice (TUÂN THỦ TUYỆT ĐỐI):**{chr(10)}{bv_block}" if bv_block else ""}
 Viết bài {channel} hoàn chỉnh theo thông tin trên."""
 
     try:
