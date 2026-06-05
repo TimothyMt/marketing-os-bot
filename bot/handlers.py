@@ -3812,8 +3812,31 @@ async def _handle_ops_intake_reply(update: Update, context: ContextTypes.DEFAULT
                 return
         elif task_name == "ads_analytics":
             fb_status = await _prefetch_performance_data(update.message, session)
-            if not session.pending_intake.get("_fb_data"):
-                await _abort_with_fb_error(update.message, session, "ads_analytics", fb_status)
+            has_live = bool(session.pending_intake.get("_fb_data"))
+            channels = (session.pending_intake.get("channels_data") or "").strip()
+            import re as _re
+            has_manual = bool(channels and len(channels) >= 20 and _re.search(r"\d", channels))
+            if not has_live and not has_manual:
+                # Không có live data và không có paste tay → abort, hướng dẫn cả 2 cách
+                session.stage = PipelineStage.TASK_SELECT
+                session.pending_intake.pop(OPS_INTAKE_AWAITING, None)
+                await save_session(session)
+                reason = fb_status.get("reason", "no_token")
+                detail = fb_status.get("detail", "")
+                if reason in ("no_token", "no_account"):
+                    api_note = f"FB API chưa cấu hình ({detail})."
+                elif reason == "api_error":
+                    api_note = f"FB API lỗi: `{detail}`."
+                else:
+                    api_note = "FB API không trả về data."
+                await update.message.reply_text(
+                    "🛑 *Không có data để phân tích.*\n\n"
+                    f"_{api_note}_\n\n"
+                    "*Cách 1 — Kết nối FB API:* Admin set `FB_ACCESS_TOKEN` + `FB_AD_ACCOUNT_ID` trên Railway.\n\n"
+                    "*Cách 2 — Paste số tay:* Chạy lại skill, điền vào ô *Paste số liệu thủ công*.\n"
+                    "Ví dụ: `Meta: 800 mess, CPMess 19K, CTR 1.2%, Frequency 3.8`",
+                    parse_mode=ParseMode.MARKDOWN,
+                )
                 return
         elif task_name == "ads_intelligence":
             # 1. Prefetch competitor ads (FB Ads Library)
@@ -5347,8 +5370,8 @@ async def _abort_with_fb_error(message: Message, session, task_name: str, fb_sta
             "(text 3-10 ads copy từ https://facebook.com/ads/library)."
         ),
         "ads_analytics": (
-            "*Workaround:* Chạy 📊 *Báo Cáo Ads* (`performance_audit`) thay vì "
-            "*Analytics tự động* — báo cáo cho phép sếp paste metric tay."
+            "*Workaround:* Chạy lại skill và điền số liệu vào ô *Paste số liệu thủ công* — "
+            "em sẽ phân tích từ số sếp paste thay vì pull API."
         ),
         "ads_optimizer": (
             "*Workaround:* Task này BẮT BUỘC live FB API (cần campaign ID thật để "

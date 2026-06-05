@@ -514,16 +514,17 @@ OPERATIONAL_TASKS: dict[str, TaskConfig] = {
     ),
     "ads_analytics": TaskConfig(
         name="ads_analytics",
-        label="Analytics Ads Tự Động",
-        button_emoji="📈",
+        label="Phân Tích & Audit Ads",
+        button_emoji="📊",
         category="analysis",
-        description="Pull live data FB Ad Account → phân tích portfolio: winners/losers, creative fatigue, budget efficiency",
+        description="Phân tích phễu 6 tầng Andromeda — pull live FB API hoặc nhận số paste tay → Winners/Losers/Budget + Deep audit",
         skill_class_name="AdsAnalyticsSkill",
         intake_fields=[
-            {"key": "date_range",      "label": "Khoảng thời gian",                    "example": "30 ngày / 7 ngày / tháng trước / tháng này", "required": True},
-            {"key": "level",           "label": "Mức độ phân tích",                     "example": "campaign (mặc định) / adset / ad", "required": False},
-            {"key": "focus_area",      "label": "Muốn focus vào gì",                    "example": "tổng quan / frequency radar / winners / budget reallocation", "required": False},
+            {"key": "date_range",      "label": "Khoảng thời gian",                              "example": "30 ngày / 7 ngày / tháng trước / tháng này", "required": True},
+            {"key": "level",           "label": "Mức độ phân tích",                               "example": "campaign (mặc định) / adset / ad", "required": False},
             {"key": "campaign_filter", "label": "Lọc campaign cụ thể (bỏ trống = toàn account)", "example": "FT09 / Tết 2026", "required": False},
+            {"key": "key_concern",     "label": "Vấn đề lo lắng nhất (để em audit sâu)",          "example": "Lead nhiều nhưng booking thấp / CPL đang tăng / ROAS giảm", "required": False},
+            {"key": "channels_data",   "label": "Paste số liệu thủ công (nếu chưa kết nối FB API)", "example": "Meta: 800 mess, CPMess 19K, CTR 1.2%\nTikTok: 220 mess, CPMess 27K, VTR3s 18%", "required": False},
         ],
     ),
     "ads_intelligence": TaskConfig(
