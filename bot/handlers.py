@@ -248,7 +248,7 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "_last_image_b64", "_last_image_size", "_img_prompt", "_img_n",
         "_advisor_mode", "_awaiting_calendar_edit", "_awaiting_week_selection",
         "_content_gen_weekly_mode", "_content_gen_week",
-        "_bv_draft",
+        "_bv_draft", "_bv_resume_weekly",
     ]
     for k in transient_keys:
         session.pending_intake.pop(k, None)
@@ -1161,18 +1161,29 @@ async def _handle_callback_inner(update, context, query, session, data, user_id)
     # ── Calendar → Content Gen chain ─────────────────────────────
     if data == "run_content_gen_weekly_after_cal":
         await query.edit_message_reply_markup(reply_markup=None)
-        session.pending_intake["_content_gen_weekly_mode"] = "1"
-        await save_session(session)
-        _max_week = _calendar_max_week(session)
-        await query.message.reply_text(
-            "⭐ *Chạy từng tuần — chất lượng tốt nhất!*\n\n"
-            "Sếp muốn viết nội dung cho *tuần mấy* trước?\n\n"
-            f"_Lịch có {_max_week} tuần — gõ số tuần (vd: `1`) hoặc `Tuần 1`. "
-            "Em sẽ tập trung toàn bộ vào tuần đó._",
-            parse_mode=ParseMode.MARKDOWN,
-        )
-        session.pending_intake["_awaiting_week_selection"] = "content_generator"
-        await save_session(session)
+        # Brand Voice gate (đồng bộ với full-month) — hỏi BV trước nếu chưa có
+        skipped_flag = session.pending_intake.get("_bv_skipped_session")
+        if not skipped_flag:
+            try:
+                from storage import has_brand_voice
+                has_bv = await has_brand_voice(user_id)
+            except Exception:
+                has_bv = True  # fail-safe
+            if not has_bv:
+                session.pending_intake["_bv_pending_skill"] = "content_generator"
+                session.pending_intake["_bv_resume_weekly"] = "1"
+                await save_session(session)
+                await query.message.reply_text(
+                    "🎙 *Sếp chưa setup Brand Voice cho brand.*\n\n"
+                    "Em recommend setup Brand Voice 1 lần để nội dung sau này "
+                    "(*posts, ads, video...*) đều đúng tone & từ ngữ brand — "
+                    "nhất quán hơn nhiều.\n\n"
+                    "_Sếp có thể bỏ qua giờ và setup sau, em vẫn chạy được._",
+                    parse_mode=ParseMode.MARKDOWN,
+                    reply_markup=BRAND_VOICE_PROMPT_KEYBOARD,
+                )
+                return
+        await _prompt_week_selection(query.message, session)
         return
 
     if data == "run_content_gen_after_cal":
@@ -1586,6 +1597,11 @@ async def _handle_callback_inner(update, context, query, session, data, user_id)
                     parse_mode=ParseMode.MARKDOWN,
                 )
                 await _start_tone_calibration(query.message, session, pending_cal)
+                return
+
+            # Special: resume weekly content-gen flow (hỏi tuần thay vì chạy full-month)
+            if pending_skill == "content_generator" and session.pending_intake.pop("_bv_resume_weekly", None):
+                await _prompt_week_selection(query.message, session)
                 return
 
             # Resume skill gốc user định chạy
@@ -5513,6 +5529,24 @@ def _calendar_max_week(session) -> int:
     return max(weeks) if weeks else 4
 
 
+async def _prompt_week_selection(message, session) -> None:
+    """Hiện prompt 'chạy tuần mấy?' cho chế độ content-gen từng tuần.
+    Dùng chung cho cả đường vào trực tiếp lẫn đường resume sau Brand Voice."""
+    session.pending_intake["_content_gen_weekly_mode"] = "1"
+    session.selected_task = "content_generator"
+    await save_session(session)
+    max_week = _calendar_max_week(session)
+    await message.reply_text(
+        "⭐ *Chạy từng tuần — chất lượng tốt nhất!*\n\n"
+        "Sếp muốn viết nội dung cho *tuần mấy* trước?\n\n"
+        f"_Lịch có {max_week} tuần — gõ số tuần (vd: `1`) hoặc `Tuần 1`. "
+        "Em sẽ tập trung toàn bộ vào tuần đó._",
+        parse_mode=ParseMode.MARKDOWN,
+    )
+    session.pending_intake["_awaiting_week_selection"] = "content_generator"
+    await save_session(session)
+
+
 async def _handle_week_selection_text(update, context, session, text: str):
     """User gõ tuần muốn chạy content gen (vd: '1', 'Tuần 2')."""
     import re as _re
@@ -6619,6 +6653,8 @@ async def _continue_after_brand_voice(message: Message, session) -> None:
     qua lazy trigger), hoặc kết thúc bằng rating prompt (standalone)."""
     pending_skill = session.pending_intake.pop("_bv_pending_skill", None)
     session.pending_intake.pop("_bv_skipped_session", None)
+    # Capture TRƯỚC khi nhánh generic wipe sạch pending_intake
+    resume_weekly = session.pending_intake.pop("_bv_resume_weekly", None)
 
     # Standalone — không có skill gốc chờ → kết thúc bằng rating prompt
     if not pending_skill or pending_skill == "brand_voice":
@@ -6644,6 +6680,15 @@ async def _continue_after_brand_voice(message: Message, session) -> None:
             parse_mode=ParseMode.MARKDOWN,
         )
         await _start_tone_calibration(message, session, pending_cal)
+        return
+
+    # Special: resume weekly content-gen flow (hỏi tuần thay vì chạy full-month)
+    if pending_skill == "content_generator" and resume_weekly:
+        await message.reply_text(
+            "✅ *Brand Voice đã lưu!* Giờ mình chạy nội dung từng tuần nhé.",
+            parse_mode=ParseMode.MARKDOWN,
+        )
+        await _prompt_week_selection(message, session)
         return
 
     pending_label = (
