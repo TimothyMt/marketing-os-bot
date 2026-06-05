@@ -36,12 +36,12 @@ DEFAULT_INSIGHT_FIELDS = [
     "frequency",
     "actions",                          # conversions, link_clicks, etc.
     "cost_per_action_type",
-    # Video metrics — Andromeda Tầng 1 + 2
+    # Video metrics — dùng để tính Hook Rate (T1) + Hold Rate (T2) theo framework phân tích
     "video_play_actions",               # tổng lượt play
-    "video_3_sec_watched_actions",      # Tầng 1: Hook Rate = VTR3s / impressions
-    "video_thruplay_watched_actions",   # Tầng 2: Hold Rate = ThruPlay / VTR3s (15s+)
-    "video_p25_watched_actions",        # 25% watched — signal body strength
-    "video_p75_watched_actions",        # 75% watched — signal story compelling
+    "video_3_sec_watched_actions",      # Hook Rate = VTR3s / impressions (Tầng 1)
+    "video_thruplay_watched_actions",   # Hold Rate = ThruPlay / VTR3s (Tầng 2, 15s+)
+    "video_p25_watched_actions",        # 25% watched — body strength signal
+    "video_p75_watched_actions",        # 75% watched — story compelling signal
     "date_start",
     "date_stop",
 ]
@@ -168,9 +168,10 @@ def _hook_hold_rates(r: dict, impressions: int) -> tuple[float | None, float | N
 
 
 def format_insights_for_analysis(insights: list[dict], period: str) -> str:
-    """Convert raw Marketing API response → structured text cho Claude phân tích.
+    """Convert raw FB Marketing API response → structured text cho Claude phân tích.
 
-    Bao gồm Andromeda Tầng 1+2: Hook Rate (VTR 3s / Imp) + Hold Rate (ThruPlay / VTR 3s).
+    Tính Hook Rate (VTR 3s / Imp) + Hold Rate (ThruPlay / VTR 3s) từ video metrics thật.
+    Claude dùng framework phễu 6 tầng để suy luận điểm break — không phải data từ Andromeda.
     """
     if not insights:
         return f"**Không có data ads trong period: {period}**\n(Ad Account chưa có campaign nào chạy hoặc không có spend)"
@@ -234,13 +235,13 @@ def format_insights_for_analysis(insights: list[dict], period: str) -> str:
         lines.append(f"  Spend: {spend:,.0f} VND | Imp: {impressions:,} | Clicks: {clicks:,}")
         lines.append(f"  CTR: {ctr:.2f}% | CPM: {cpm:,.0f} | CPC: {cpc:,.0f} | Frequency: {frequency:.1f}")
 
-        # Andromeda Tầng 1+2 — chỉ hiện nếu là video campaign
+        # Video funnel metrics (từ FB API) — chỉ hiện nếu là video campaign
         if hook is not None or hold is not None:
-            video_line = "  Andromeda:"
+            video_line = "  Video funnel:"
             if hook is not None:
-                video_line += f" Hook Rate(T1): {hook:.1f}%"
+                video_line += f" Hook Rate(VTR3s): {hook:.1f}%"
             if hold is not None:
-                video_line += f" | Hold Rate(T2): {hold:.1f}%"
+                video_line += f" | Hold Rate(ThruPlay): {hold:.1f}%"
             lines.append(video_line)
 
         if conversions:

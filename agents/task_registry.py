@@ -517,7 +517,7 @@ OPERATIONAL_TASKS: dict[str, TaskConfig] = {
         label="Phân Tích & Audit Ads",
         button_emoji="📊",
         category="analysis",
-        description="Phân tích phễu 6 tầng Andromeda — pull live FB API hoặc nhận số paste tay → Winners/Losers/Budget + Deep audit",
+        description="Pull số thật FB Marketing API → phân tích theo framework phễu 6 tầng → Winners/Losers/Budget reallocation + Deep audit",
         skill_class_name="AdsAnalyticsSkill",
         intake_fields=[
             {"key": "date_range",      "label": "Khoảng thời gian",                              "example": "30 ngày / 7 ngày / tháng trước / tháng này", "required": True},
@@ -546,7 +546,7 @@ OPERATIONAL_TASKS: dict[str, TaskConfig] = {
         label="Tối Ưu Ads Trực Tiếp",
         button_emoji="⚡",
         category="analysis",
-        description="Phân tích Andromeda signals → đề xuất + thực thi actions (pause/activate/budget) trên campaigns có sẵn",
+        description="Pull hierarchy FB Ads → đọc CPM/CTR/Frequency → đề xuất + thực thi actions (pause/activate/budget) trên campaigns có sẵn",
         skill_class_name="AdsOptimizerSkill",
         intake_fields=[
             {"key": "target",     "label": "Campaign / Ad Set / Ad cần thao tác",    "example": "FT09 / Lookalike 1% / toàn account", "required": True},
