@@ -6903,6 +6903,51 @@ def _extract_tone_from_md(markdown: str) -> list[str]:
     return [t.strip().strip("*_.`") for t in tones if t.strip()][:5]
 
 
+def _extract_do_rules_from_md(markdown: str) -> list[str]:
+    """Parse Section 1 ('10 quy tắc giọng văn') numbered list → do_rules.
+    Keeps discrete do_rules synced với rules_markdown sau chat-edit."""
+    # Lấy block từ heading chứa "quy tắc giọng văn" → heading kế tiếp
+    m = re.search(
+        r"(?im)^#{1,4}.*?quy\s*tắc\s*giọng\s*văn.*?\n(.*?)(?=^#{1,4}\s|\Z)",
+        markdown, re.DOTALL,
+    )
+    if not m:
+        return []
+    rules = []
+    for line in m.group(1).split("\n"):
+        line = line.strip()
+        if not line or line.startswith("|") or "---" in line:
+            continue
+        # Chỉ lấy dòng list: "1. ...", "- ...", "* ..."
+        if not re.match(r"^[\d]+[\.\)]\s|^[-*+]\s", line):
+            continue
+        cleaned = re.sub(r"^[\d]+[\.\)]\s*|^[-*+]\s*", "", line).strip().strip("*_`")
+        if cleaned and len(cleaned) > 3:
+            rules.append(cleaned)
+    return rules[:10]
+
+
+def _extract_dont_rules_from_md(markdown: str) -> list[str]:
+    """Parse 'NÊN TRÁNH' table → dont_rules dạng 'Tránh "x" — lý do'.
+    Giữ discrete dont_rules synced với rules_markdown sau chat-edit."""
+    m = re.search(r"(?i)NÊN TRÁNH.*?\n((?:\|.*\n){2,})", markdown, re.DOTALL)
+    if not m:
+        return []
+    out = []
+    for line in m.group(1).split("\n"):
+        if "|" not in line or "---" in line or "Lý do" in line:
+            continue
+        cells = [c.strip().strip("`*\"'") for c in line.split("|") if c.strip()]
+        if len(cells) >= 2:
+            # bỏ cột số thứ tự nếu có
+            cells = cells[1:] if cells[0].isdigit() else cells
+            word = cells[0] if cells else ""
+            reason = cells[1] if len(cells) >= 2 else ""
+            if word and word not in ("...", "Từ/cụm tránh"):
+                out.append(f'Tránh "{word}"' + (f" — {reason}" if reason and reason != "..." else ""))
+    return out[:10]
+
+
 async def _continue_after_brand_voice(message: Message, session) -> None:
     """Sau khi brand_voice gen + persist xong: chain sang skill gốc (nếu vào BV
     qua lazy trigger), hoặc kết thúc bằng rating prompt (standalone)."""
@@ -7047,10 +7092,15 @@ async def _apply_bv_edit(session, instruction: str) -> "str | None":
         if not updated_md:
             return None
 
+        # Sync discrete fields từ markdown mới (giữ DB nhất quán sau chat-edit).
+        # Nếu parse được thì dùng bản mới; parse fail → giữ giá trị cũ.
+        new_do = _extract_do_rules_from_md(updated_md) or (bv.do_rules if bv else [])
+        new_dont = _extract_dont_rules_from_md(updated_md) or (bv.dont_rules if bv else [])
+
         new_bv = BrandVoice(
             user_id=session.user_id,
-            do_rules=(bv.do_rules if bv else []),
-            dont_rules=(bv.dont_rules if bv else []),
+            do_rules=new_do,
+            dont_rules=new_dont,
             tone_descriptors=_extract_tone_from_md(updated_md) or (bv.tone_descriptors if bv else []),
             banned_words=_extract_banned_words_from_md(updated_md) or (bv.banned_words if bv else []),
             preferred_words=(bv.preferred_words if bv else []),
