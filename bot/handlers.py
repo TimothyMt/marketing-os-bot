@@ -245,7 +245,8 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "_pending_regen_skill", "_pending_feedback",
         "_monitor_pending_page_id", "_monitor_pending_page_name",
         "_last_image_b64", "_last_image_size", "_img_prompt", "_img_n",
-        "_advisor_mode", "_awaiting_calendar_edit",
+        "_advisor_mode", "_awaiting_calendar_edit", "_awaiting_week_selection",
+        "_content_gen_weekly_mode", "_content_gen_week",
     ]
     for k in transient_keys:
         session.pending_intake.pop(k, None)
@@ -613,6 +614,10 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if session.pending_intake.get("_awaiting_calendar_edit"):
         await _handle_calendar_edit_text(update, context, session, text)
+        return
+
+    if session.pending_intake.get("_awaiting_week_selection"):
+        await _handle_week_selection_text(update, context, session, text)
         return
 
     # Layer 2b: User mô tả phần cần sửa trong campaign brief → surgical edit
@@ -1152,6 +1157,21 @@ async def _handle_callback_inner(update, context, query, session, data, user_id)
         return
 
     # ── Calendar → Content Gen chain ─────────────────────────────
+    if data == "run_content_gen_weekly_after_cal":
+        await query.edit_message_reply_markup(reply_markup=None)
+        session.pending_intake["_content_gen_weekly_mode"] = "1"
+        await save_session(session)
+        await query.message.reply_text(
+            "⭐ *Chạy từng tuần — chất lượng tốt nhất!*\n\n"
+            "Sếp muốn viết nội dung cho *tuần mấy* trước?\n\n"
+            "_Gõ số tuần (vd: `1`, `2`, `3`, `4`) hoặc gõ `Tuần 1` — "
+            "em sẽ tập trung toàn bộ vào tuần đó._",
+            parse_mode=ParseMode.MARKDOWN,
+        )
+        session.pending_intake["_awaiting_week_selection"] = "content_generator"
+        await save_session(session)
+        return
+
     if data == "run_content_gen_after_cal":
         await query.edit_message_reply_markup(reply_markup=None)
         # Brand Voice gate: hỏi BV trước, rồi mới sản xuất content
@@ -5446,6 +5466,39 @@ async def _execute_optimizer_actions(session) -> str:
     return "\n".join(results)
 
 
+async def _handle_week_selection_text(update, context, session, text: str):
+    """User gõ tuần muốn chạy content gen (vd: '1', 'Tuần 2')."""
+    import re as _re
+    raw = (text or "").strip()
+    m = _re.search(r"\d+", raw)
+    if not m:
+        await update.message.reply_text(
+            "⚠️ Em chưa hiểu tuần mấy ạ — sếp gõ số thôi nhé, vd: `1` hoặc `Tuần 2`",
+            parse_mode=ParseMode.MARKDOWN,
+        )
+        return
+
+    week_num = int(m.group())
+    if week_num < 1 or week_num > 8:
+        await update.message.reply_text(
+            "⚠️ Tuần phải từ 1 đến 8 ạ. Sếp thử lại nhé.",
+        )
+        return
+
+    session.pending_intake.pop("_awaiting_week_selection", None)
+    session.pending_intake["scope"] = f"Tuần {week_num}"
+    session.pending_intake["_content_gen_week"] = str(week_num)
+    session.selected_task = "content_generator"
+    await save_session(session)
+
+    await update.message.reply_text(
+        f"⭐ *Chạy nội dung Tuần {week_num}* — em tập trung toàn bộ vào tuần này!\n\n"
+        f"_Sau khi xong sếp có thể tiếp tục Tuần {week_num + 1} để giữ chất lượng cao._",
+        parse_mode=ParseMode.MARKDOWN,
+    )
+    await _send_single_shot_form(update.message, session, "content_generator")
+
+
 async def _handle_calendar_edit_text(update, context, session, text: str):
     """User muốn sửa calendar — re-run content_calendar với feedback injected."""
     comment = (text or "").strip()
@@ -7014,8 +7067,9 @@ async def _tone_lock_and_apply(message, session) -> None:
     # Show content-gen upsell AFTER tone is locked
     await message.reply_text(
         "✅ *Lịch Nội Dung xong rồi sếp!*\n\n"
-        "Lịch ổn chưa ạ? Em có thể chạy hết nội dung theo lịch này luôn.\n"
-        "_(Bài đăng + Kịch bản video + Brief UGC + Ads copy)_",
+        "💡 *Gợi ý để có chất lượng tốt nhất:* Chạy từng tuần một — "
+        "mỗi lần em tập trung sâu hơn vào từng bài thay vì chia token cho cả tháng.\n\n"
+        "Sếp chọn cách nào ạ?",
         parse_mode=ParseMode.MARKDOWN,
         reply_markup=CALENDAR_TO_CONTENT_GEN_KEYBOARD,
     )
@@ -7058,8 +7112,9 @@ async def _handle_tone_callback(query, session) -> None:
         )
         await query.message.reply_text(
             "✅ *Lịch Nội Dung xong rồi sếp!*\n\n"
-            "Sếp muốn sản xuất loại nội dung nào tiếp theo?\n"
-            "_(Mỗi loại được viết riêng theo đúng kênh trong lịch)_",
+            "💡 *Gợi ý để có chất lượng tốt nhất:* Chạy từng tuần một — "
+            "mỗi lần em tập trung sâu hơn vào từng bài thay vì chia token cho cả tháng.\n\n"
+            "Sếp chọn cách nào ạ?",
             parse_mode=ParseMode.MARKDOWN,
             reply_markup=CALENDAR_TO_CONTENT_GEN_KEYBOARD,
         )

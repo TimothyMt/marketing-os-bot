@@ -46,7 +46,7 @@ GPT_4_1_MINI_MODEL  = "gpt-4.1-mini"    # Long context fallback (1M ctx)
 
 # Pipeline timeouts (Sprint hotfix: synthesis với 8-stage pipeline cần buffer lớn hơn)
 # Synthesis context ~70K input + 10K output có thể tốn 180-300s + retry → 540s+ wall time
-AGENT_TIMEOUT  = 900  # 15 phút — buffer cho stage nặng (synthesis sau Sprint 2-3 mở rộng pipeline)
+AGENT_TIMEOUT  = 1800  # 30 phút — buffer cho content generator pipeline (4 sub-skills × batch lớn)
 MAX_HISTORY_TURNS = 20
 
 # Sprint 8 — Multi-Agent Orchestrator feature flag.

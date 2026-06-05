@@ -59,9 +59,10 @@ COMPARE_PROMPT_KEYBOARD = InlineKeyboardMarkup([
 
 # Sau khi Lịch Nội Dung xong — hỏi chạy hết hay cần sửa
 CALENDAR_TO_CONTENT_GEN_KEYBOARD = InlineKeyboardMarkup([
-    [InlineKeyboardButton("✅ Chạy hết nội dung theo lịch",  callback_data="run_content_gen_after_cal")],
-    [InlineKeyboardButton("✏️ Cần sửa lịch",                 callback_data="calendar_edit_request")],
-    [InlineKeyboardButton("⏭️ Để sau",                       callback_data="skip_content_gen_after_cal")],
+    [InlineKeyboardButton("⭐ Chạy từng tuần (chất lượng tốt hơn)", callback_data="run_content_gen_weekly_after_cal")],
+    [InlineKeyboardButton("⚡ Chạy hết cả tháng (nhanh hơn)",       callback_data="run_content_gen_after_cal")],
+    [InlineKeyboardButton("✏️ Cần sửa lịch",                         callback_data="calendar_edit_request")],
+    [InlineKeyboardButton("⏭️ Để sau",                               callback_data="skip_content_gen_after_cal")],
 ])
 
 # Sau khi gửi Funnel Map + Execution Plan (HTML) → chờ user duyệt mới dựng calendar
