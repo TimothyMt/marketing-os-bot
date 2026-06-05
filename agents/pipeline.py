@@ -369,7 +369,7 @@ async def _run_skill(skill: AgentSkill, session: Session) -> str:
     # Sprint 5: Inject Brand Voice nếu user đã setup — chỉ cho creative ops skills
     BV_INJECTED_SKILLS = {
         "post_write", "post_adapt", "post_batch", "post_hooks", "post_visual",
-        "ads_generator", "ads_copy", "video_scripts",
+        "ads_generator", "ads_copy", "video_scripts", "video_script_gen",
         "sales_inbox_script", "email_zalo_sequence", "content_repurpose",
         "content_generator", "social_posts", "ugc_brief",
     }
@@ -383,6 +383,60 @@ async def _run_skill(skill: AgentSkill, session: Session) -> str:
                 logger.info("[BV] Injected for skill=%s user=%d", skill.name, session.user_id)
         except Exception as e:
             logger.warning("[BV] Inject failed (non-fatal) skill=%s: %s", skill.name, e)
+
+    # P0 fix: Inject Content Calendar đã duyệt → production skills bám sát kế hoạch
+    # (topic/hook/pillar/kênh đã lên lịch) thay vì tự bịa chủ đề mới.
+    CALENDAR_DRIVEN_SKILLS = {
+        "post_batch", "video_script_gen", "ugc_brief", "social_posts",
+    }
+    if skill.name in CALENDAR_DRIVEN_SKILLS:
+        try:
+            calendar = session.get_latest_result("content_calendar")
+            if calendar:
+                week_num = (session.pending_intake or {}).get("_content_gen_week")
+                scope_line = ""
+                if week_num:
+                    scope_line = (
+                        f"\n\n🔴 **CHỈ sản xuất nội dung cho TUẦN {week_num}.** "
+                        f"Các tuần khác chỉ tham khảo để giữ mạch story arc — "
+                        f"KHÔNG viết bài cho tuần khác."
+                    )
+                user_msg += (
+                    "\n\n---\n\n"
+                    "**📅 LỊCH NỘI DUNG ĐÃ DUYỆT (BÁM SÁT — viết đúng Topic / Hook angle / "
+                    "Pillar / Funnel / Kênh đã lên lịch cho TỪNG bài. KHÔNG tự bịa chủ đề khác, "
+                    "KHÔNG đổi kênh, KHÔNG đổi pillar):**\n\n"
+                    + calendar[:6000]
+                    + scope_line
+                )
+                logger.info("[CalendarInject] skill=%s week=%s chars=%d",
+                            skill.name, week_num, min(len(calendar), 6000))
+        except Exception as e:
+            logger.warning("[CalendarInject] failed (non-fatal) skill=%s: %s", skill.name, e)
+
+    # P1 fix: Forward tone signals đã chốt ở Tone Calibration vào production skills,
+    # để bài viết giữ đúng tone user đã duyệt (không chỉ dừng ở bài mẫu).
+    if skill.name in CALENDAR_DRIVEN_SKILLS or skill.name in BV_INJECTED_SKILLS:
+        try:
+            signals = (getattr(session, "tone_calibration", None) or {}).get("locked_signals") or {}
+            tone_lines = []
+            if signals.get("tone_words"):
+                tone_lines.append(f"- Tone: {', '.join(signals['tone_words'])}")
+            if signals.get("do_adjust"):
+                tone_lines.append("- Cần làm: " + "; ".join(signals["do_adjust"]))
+            if signals.get("dont_repeat"):
+                tone_lines.append("- Tránh: " + "; ".join(signals["dont_repeat"]))
+            if signals.get("sample_phrase"):
+                tone_lines.append(f"- Câu mẫu tone: {signals['sample_phrase']}")
+            if tone_lines:
+                user_msg += (
+                    "\n\n---\n\n"
+                    "**🎯 TONE ĐÃ CHỐT (sếp duyệt ở bước Kiểm Tra Tone — tuân thủ tuyệt đối):**\n"
+                    + "\n".join(tone_lines)
+                )
+                logger.info("[ToneInject] skill=%s lines=%d", skill.name, len(tone_lines))
+        except Exception as e:
+            logger.warning("[ToneInject] failed (non-fatal) skill=%s: %s", skill.name, e)
 
     # Industry brain — nạp "bộ não ngành" cho mọi content skill (post/video/ads/email/ugc).
     # 1 nguồn duy nhất, áp đồng nhất — không nhân bản subclass cho từng skill.

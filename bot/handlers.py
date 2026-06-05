@@ -1163,11 +1163,12 @@ async def _handle_callback_inner(update, context, query, session, data, user_id)
         await query.edit_message_reply_markup(reply_markup=None)
         session.pending_intake["_content_gen_weekly_mode"] = "1"
         await save_session(session)
+        _max_week = _calendar_max_week(session)
         await query.message.reply_text(
             "⭐ *Chạy từng tuần — chất lượng tốt nhất!*\n\n"
             "Sếp muốn viết nội dung cho *tuần mấy* trước?\n\n"
-            "_Gõ số tuần (vd: `1`, `2`, `3`, `4`) hoặc gõ `Tuần 1` — "
-            "em sẽ tập trung toàn bộ vào tuần đó._",
+            f"_Lịch có {_max_week} tuần — gõ số tuần (vd: `1`) hoặc `Tuần 1`. "
+            "Em sẽ tập trung toàn bộ vào tuần đó._",
             parse_mode=ParseMode.MARKDOWN,
         )
         session.pending_intake["_awaiting_week_selection"] = "content_generator"
@@ -1199,6 +1200,10 @@ async def _handle_callback_inner(update, context, query, session, data, user_id)
                 return
         session.selected_task = "content_generator"
         session.pending_intake.pop("_bv_pending_skill", None)
+        # Full-month mode: xoá scope tuần lẻ (nếu trước đó user từng chọn weekly)
+        session.pending_intake.pop("_content_gen_week", None)
+        session.pending_intake.pop("_content_gen_weekly_mode", None)
+        session.pending_intake.pop("scope", None)
         await save_session(session)
         await query.message.reply_text(
             "✍️ *Tiếp tục Sản Xuất Nội Dung từ Calendar...*",
@@ -5501,6 +5506,13 @@ async def _execute_optimizer_actions(session) -> str:
     return "\n".join(results)
 
 
+def _calendar_max_week(session) -> int:
+    """Số tuần thực tế của calendar — đọc highest 'Tuần N' trong text, fallback 4."""
+    calendar = session.get_latest_result("content_calendar") or ""
+    weeks = [int(n) for n in re.findall(r"(?:Tuần|Week)\s*(\d+)", calendar, re.IGNORECASE)]
+    return max(weeks) if weeks else 4
+
+
 async def _handle_week_selection_text(update, context, session, text: str):
     """User gõ tuần muốn chạy content gen (vd: '1', 'Tuần 2')."""
     import re as _re
@@ -5513,10 +5525,11 @@ async def _handle_week_selection_text(update, context, session, text: str):
         )
         return
 
+    max_week = _calendar_max_week(session)
     week_num = int(m.group())
-    if week_num < 1 or week_num > 8:
+    if week_num < 1 or week_num > max_week:
         await update.message.reply_text(
-            "⚠️ Tuần phải từ 1 đến 8 ạ. Sếp thử lại nhé.",
+            f"⚠️ Lịch nội dung này có {max_week} tuần — sếp chọn tuần từ 1 đến {max_week} nhé.",
         )
         return
 
@@ -5526,9 +5539,14 @@ async def _handle_week_selection_text(update, context, session, text: str):
     session.selected_task = "content_generator"
     await save_session(session)
 
+    next_hint = (
+        f"_Sau khi xong sếp có thể tiếp tục Tuần {week_num + 1} để giữ chất lượng cao._"
+        if week_num < max_week
+        else "_Đây là tuần cuối của lịch — xong tuần này là đủ bộ nội dung._"
+    )
     await update.message.reply_text(
         f"⭐ *Chạy nội dung Tuần {week_num}* — em tập trung toàn bộ vào tuần này!\n\n"
-        f"_Sau khi xong sếp có thể tiếp tục Tuần {week_num + 1} để giữ chất lượng cao._",
+        + next_hint,
         parse_mode=ParseMode.MARKDOWN,
     )
     await _send_single_shot_form(update.message, session, "content_generator")
