@@ -543,7 +543,7 @@ OPERATIONAL_TASKS: dict[str, TaskConfig] = {
     ),
     "ads_optimizer": TaskConfig(
         name="ads_optimizer",
-        label="Tối Ưu Ads Trực Tiếp",
+        label="Điều Chỉnh Ads",
         button_emoji="⚡",
         category="analysis",
         description="Pull hierarchy FB Ads → đọc CPM/CTR/Frequency → đề xuất + thực thi actions (pause/activate/budget) trên campaigns có sẵn",
