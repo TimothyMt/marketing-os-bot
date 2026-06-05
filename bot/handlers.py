@@ -17,6 +17,7 @@ from agents.pipeline import run_intake, run_targeted_pipeline, run_operational_s
 from agents.prompts import INTAKE_CONFIRM_TEMPLATE, PROGRESS_MESSAGES, TASK_OPENING_QUESTIONS
 from agents.task_registry import TASK_REGISTRY, OPERATIONAL_TASKS, STRATEGIC_TASKS, get_task, needs_intake
 from frameworks.kpi_library import KPI_LIBRARY
+from frameworks.industry_context import suggest_key_message_hint
 from bot.keyboards import (
     MAIN_MENU_KEYBOARD,
     TASK_SELECT_KEYBOARD,
@@ -3582,6 +3583,15 @@ async def _send_single_shot_form(message: Message, session, task_name: str):
         required_mark = "" if f.get("required", True) else " _(không bắt buộc)_"
         lines.append(f"*{f['label']}*{required_mark}:")
         lines.append(f"_Vd: {f.get('example', '...')}_")
+        # Gợi ý 'thông điệp chính' video dựa trên Business + tâm lý mua của ngành
+        if task_name == "video_scripts" and f["key"] == "key_message":
+            hint = suggest_key_message_hint(
+                session.profile.industry or "",
+                session.profile.product_service or "",
+                session.profile.target_customer or "",
+            )
+            if hint:
+                lines.append(hint)
         lines.append("")
 
     if remaining_fields:

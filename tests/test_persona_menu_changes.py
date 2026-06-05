@@ -108,6 +108,33 @@ def test_video_scripts_msg_type_drives_format():
     assert "tự chọn người xuất hiện" in msg          # creator không ép
 
 
+# ── Gợi ý thông điệp chính (Business + KPI ngành) ─────────────────
+def test_key_message_hint_uses_business_and_industry():
+    """suggest_key_message_hint neo vào product của user + tâm lý ngành."""
+    from frameworks.industry_context import suggest_key_message_hint
+
+    hint = suggest_key_message_hint(
+        "health_beauty",
+        product_service="Combo trị mụn 30 ngày",
+        target_customer="Nữ 18-25 da dầu mụn",
+    )
+    assert hint, "Ngành đã định nghĩa phải có gợi ý"
+    # Gắn sản phẩm cụ thể của business
+    assert "Combo trị mụn 30 ngày" in hint
+    # Neo vào tâm lý ngành: lý do mua + nỗi lo (buyer trigger/barrier)
+    assert "khách muốn nhất" in hint
+    assert "Nỗi lo cần gỡ" in hint
+    # Viết cho đúng tệp khách
+    assert "Nữ 18-25 da dầu mụn" in hint
+
+
+def test_key_message_hint_unknown_industry_empty():
+    """Ngành chưa định nghĩa → rỗng để form fallback về example tĩnh."""
+    from frameworks.industry_context import suggest_key_message_hint
+
+    assert suggest_key_message_hint("ngành_không_tồn_tại", "X", "Y") == ""
+
+
 # ── Linh (brand voice) ────────────────────────────────────────────
 def test_linh_keyboards():
     exists = _all_callbacks(kb.LINH_BV_EXISTS_KEYBOARD)

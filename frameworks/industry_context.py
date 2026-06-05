@@ -16,7 +16,11 @@ Thiết kế "8 ngành cùng sâu" — mọi ngành đều có đủ 3 lớp.
 from dataclasses import dataclass
 from typing import Optional
 
-from frameworks.kpi_library import get_framework_as_text, list_industries as _kpi_industries
+from frameworks.kpi_library import (
+    get_framework_as_text,
+    get_kpi_framework,
+    list_industries as _kpi_industries,
+)
 
 
 @dataclass
@@ -318,6 +322,52 @@ def get_full_industry_brief(industry: str) -> str:
     if ctx_text:
         parts += ["", "## Bối Cảnh Ngành (Market Dynamics & Buyer Psychology)", "", ctx_text]
     return "\n".join(parts)
+
+
+def suggest_key_message_hint(
+    industry: str,
+    product_service: str = "",
+    target_customer: str = "",
+) -> str:
+    """Gợi ý cách viết 'thông điệp chính' cho video — dựa trên Business của user
+    (product_service / target_customer) ghép với tâm lý mua của ngành (KPI library
+    + industry_context).
+
+    Ý tưởng: 'thông điệp chính' mạnh nhất là câu neo vào ĐÚNG lý do khách mua
+    (buyer_triggers) hoặc hoá giải ĐÚNG nỗi lo lớn nhất (buyer_barriers) của ngành,
+    nói về sản phẩm cụ thể của business — thay vì 1 câu chung chung.
+
+    Trả về block text ngắn (markdown) hiện dưới field key_message trong form.
+    Rỗng nếu ngành chưa được định nghĩa → form fallback về example tĩnh.
+    """
+    ctx = get_industry_context(industry)
+    fw = get_kpi_framework(industry)
+    if not ctx and not fw:
+        return ""
+
+    subject = (product_service or "").strip() or "sản phẩm/dịch vụ của sếp"
+    who = (target_customer or "").strip()
+    name = fw.display_name if fw else industry
+
+    lines = [f"💡 *Gợi ý cho ngành {name}* — thông điệp khách nhớ nhất thường neo vào:"]
+
+    # Lý do khách MUA (trigger) — khuếch đại điều khách KHAO KHÁT
+    if ctx and ctx.buyer_triggers:
+        t = ctx.buyer_triggers[0]
+        lines.append(f"• Điều khách muốn nhất: _{t}_")
+        lines.append(f"  → vd: \"{subject} — {t.split('(')[0].strip().rstrip('.').lower()}\"")
+
+    # Nỗi lo cần GỠ (barrier) — hoá giải rào cản khiến khách chần chừ
+    if ctx and ctx.buyer_barriers:
+        b = ctx.buyer_barriers[0]
+        lines.append(f"• Nỗi lo cần gỡ: _{b}_")
+        lines.append(f"  → vd: \"Đừng để {b.split('(')[0].strip().rstrip('.').lower()} cản bạn — {subject} ...\"")
+
+    if who:
+        lines.append(f"_(Viết cho đúng tệp: {who})_")
+
+    lines.append("Chọn 1 góc, ghép với sản phẩm thành 1 câu duy nhất khách nhớ.")
+    return "\n".join(lines)
 
 
 def get_search_seeds(industry: str) -> dict:
