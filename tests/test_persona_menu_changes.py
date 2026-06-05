@@ -71,6 +71,43 @@ def test_trang_mode_keyboard():
     assert "trang_mode_fresh" in cbs
 
 
+def test_video_scripts_content_first():
+    """Trang 'kịch bản mới' tập trung nội dung/type, KHÔNG ép creator type."""
+    vs = get_task("video_scripts")
+    keys = [f["key"] for f in vs.intake_fields]
+    assert keys == ["topic", "key_message", "content_type", "highlight"]
+    # content_type (loại nội dung) là trục chính, bắt buộc
+    ct = next(f for f in vs.intake_fields if f["key"] == "content_type")
+    assert ct["required"] is True
+    # KHÔNG còn hỏi creator type / funnel / duration trong form
+    assert "creator_type" not in keys
+    assert "funnel" not in keys
+
+
+def test_video_scripts_msg_type_drives_format():
+    """build_user_msg: loại nội dung quyết định format; creator type optional."""
+    from agents.operational_skills_config import VideoScriptsSkill
+
+    class _P:
+        industry = "Mỹ phẩm"
+        target_customer = "Nữ 25-35"
+        def to_context_string(self): return ""
+
+    class _S:
+        profile = _P()
+        pending_intake = {
+            "topic": "Kem chống nắng",
+            "key_message": "Da dầu vẫn phải chống nắng",
+            "content_type": "Educate",
+        }
+        def get_latest_result(self, k): return None
+
+    msg = VideoScriptsSkill().build_user_msg(_S())
+    assert "Da dầu vẫn phải chống nắng" in msg     # thông điệp là gốc
+    assert "EDUCATE" in msg                          # type → format guidance
+    assert "tự chọn người xuất hiện" in msg          # creator không ép
+
+
 # ── Linh (brand voice) ────────────────────────────────────────────
 def test_linh_keyboards():
     exists = _all_callbacks(kb.LINH_BV_EXISTS_KEYBOARD)

@@ -2311,13 +2311,9 @@ async def _handle_callback_inner(update, context, query, session, data, user_id)
     if data == "trang_mode_fresh":
         await query.edit_message_reply_markup(reply_markup=None)
         session.selected_task = "video_scripts"
-        session.pending_intake = {}
+        session.pending_intake = {}  # content-first: KHÔNG ép chọn creator type
         await save_session(session)
-        await query.message.reply_text(
-            "🎬 *Viết Kịch Bản Video* — Brief cho loại creator nào ạ?",
-            parse_mode=ParseMode.MARKDOWN,
-            reply_markup=VIDEO_CREATOR_KEYBOARD,
-        )
+        await _send_single_shot_form(query.message, session, "video_scripts")
         return
 
     # ── Khoa (Growth) channel focus picker ────────────────────────

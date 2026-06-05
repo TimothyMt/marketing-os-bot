@@ -269,12 +269,13 @@ OPERATIONAL_TASKS: dict[str, TaskConfig] = {
         label="Viết Kịch Bản Video",
         button_emoji="🎬",
         category="operational",
-        description="Kịch bản video TikTok/Reels/Shorts — mạnh về social/organic",
+        description="Kịch bản video TikTok/Reels/Shorts — tập trung vào nội dung & thông điệp",
         skill_class_name="VideoScriptsSkill",
         intake_fields=[
-            {"key": "topic",     "label": "Sản phẩm/thông điệp",        "example": "Combo Tết spa — message: yêu bản thân", "required": True},
-            {"key": "funnel",    "label": "Tầng phễu",                  "example": "TOFU (awareness) / MOFU / BOFU", "required": True},
-            {"key": "duration",  "label": "Độ dài video (giây)",         "example": "15s / 30s / 45s / 60s", "required": True},
+            {"key": "topic",        "label": "Chủ đề / sản phẩm",                          "example": "Kem chống nắng SPF50 mới cho da dầu", "required": True},
+            {"key": "key_message",  "label": "Thông điệp chính muốn người xem nhớ",        "example": "Da dầu vẫn phải chống nắng — đừng bỏ bước này", "required": True},
+            {"key": "content_type", "label": "Loại nội dung",                              "example": "Educate (chỉ dạy) / Bán hàng / Giải trí / Xây niềm tin", "required": True},
+            {"key": "highlight",    "label": "Điểm nhấn đặc biệt (nếu có)",                "example": "So sánh với loại bí bách thường gặp / có ưu đãi Tết", "required": False},
         ],
     ),
     "landing_page": TaskConfig(

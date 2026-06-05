@@ -759,12 +759,44 @@ class VideoScriptsSkill(AgentSkill):
 
     def build_user_msg(self, session: Session) -> str:
         intake = session.pending_intake or {}
-        creator_type = (intake.get("creator_type") or "ugc").lower()
+        creator_type = (intake.get("creator_type") or "").lower()
+        creator_chosen = bool(creator_type)
         fgc_channel_mode = (intake.get("fgc_channel_mode") or "").lower()
         profile = session.profile
 
-        # FGC has two modes: separate founder channel vs merged into brand channel
-        if creator_type == "fgc":
+        # ── Loại nội dung (TYPE) quyết định format + hook — đây là trục chính ──
+        content_type_raw = (intake.get("content_type") or "").lower()
+        if any(k in content_type_raw for k in ("educate", "dạy", "day", "hướng dẫn", "huong dan", "chỉ", "tips")):
+            type_guidance = (
+                "EDUCATE — dạy/giải thích. Format gợi ý: tutorial how-to, "
+                "myth-busting (phá vỡ hiểu lầm), hoặc '3 sai lầm phổ biến'. "
+                "Hook 0-3s = câu hỏi nhức nhối hoặc 1 sai lầm đa số đang mắc."
+            )
+        elif any(k in content_type_raw for k in ("bán", "ban", "sell", "sale", "mua", "chốt", "convert")):
+            type_guidance = (
+                "BÁN HÀNG — đẩy hành động mua. Format gợi ý: demo/review sản phẩm, "
+                "before-after, hoặc unbox. Hook = pain point cụ thể → solution. CTA rõ ràng cuối video."
+            )
+        elif any(k in content_type_raw for k in ("giải trí", "giai tri", "entertain", "hài", "hai", "trend", "vui")):
+            type_guidance = (
+                "GIẢI TRÍ — tạo tương tác & lan toả. Format gợi ý: skit/tiểu phẩm, "
+                "relatable situation, hoặc bắt trend. Hook = tình huống đời thường gây cười/đồng cảm. "
+                "Bán hàng ẩn rất nhẹ hoặc không bán."
+            )
+        elif any(k in content_type_raw for k in ("tin", "trust", "uy tín", "uy tin", "niềm tin", "niem tin", "thật", "that")):
+            type_guidance = (
+                "XÂY NIỀM TIN — tăng độ tin cậy. Format gợi ý: behind-the-scenes, "
+                "testimonial/câu chuyện khách thật, hoặc số liệu/quy trình minh bạch. "
+                "Hook = câu chuyện thật hoặc con số bất ngờ."
+            )
+        else:
+            type_guidance = (
+                "Loại nội dung linh hoạt — chọn format phù hợp nhất với thông điệp. "
+                "Hook 0-3s phải chặn người xem ngay."
+            )
+
+        # ── Người xuất hiện (creator type) — phụ, chỉ nêu nếu user đã chọn ──
+        if creator_chosen and creator_type == "fgc":
             is_rieng = any(k in fgc_channel_mode for k in ("riêng", "rièng", "rieng", "separate", "cá nhân"))
             if is_rieng:
                 creator_guidance = (
@@ -784,28 +816,40 @@ class VideoScriptsSkill(AgentSkill):
                     "• Style: founder vibe nhưng brand-forward hơn kênh riêng — chỉn chu vừa phải.\n"
                     "• Background: có thể xuất hiện sản phẩm/không gian brand, logo nhỏ OK."
                 )
-        else:
+        elif creator_chosen:
             creator_guidance = {
-                "ugc": "UGC (User-Generated Content) — khách hàng thật chia sẻ. Tone bình thản, kể chuyện với bạn thân. Authentic > polished. Style: tự nhiên, đứng trước cửa sổ.",
-                "egc": "EGC (Employee-Generated Content) — nhân viên chia sẻ insider knowledge. Tone expert nhẹ, backstage style. Style: trong workspace, có sản phẩm/thiết bị xung quanh.",
-                "kol": "KOL/KOC (Paid Creator) — creator paid để promote. Tone theo persona của KOC, integrated organic. KOC tự quyết góc quay theo style của họ. Brief tập trung message + Do/Don't, không gò cách quay.",
+                "ugc": "UGC (User-Generated Content) — khách hàng thật chia sẻ. Tone bình thản, kể chuyện với bạn thân. Authentic > polished.",
+                "egc": "EGC (Employee-Generated Content) — nhân viên chia sẻ insider knowledge. Tone expert nhẹ, backstage style.",
+                "kol": "KOL/KOC (Paid Creator) — creator paid để promote. Tone theo persona của KOC, integrated organic. Brief tập trung message + Do/Don't.",
             }.get(creator_type, "UGC — authentic style.")
+        else:
+            creator_guidance = (
+                "Chưa chốt — em tự chọn người xuất hiện phù hợp nội dung "
+                "(khách thật / nhân viên / founder / KOC) và ghi rõ trong mỗi variant."
+            )
 
-        return f"""## Yêu cầu: Viết Video Script
+        highlight = (intake.get("highlight") or "").strip()
+        highlight_line = f"\n**Điểm nhấn đặc biệt:** {highlight}" if highlight else ""
 
-**Topic / Sản phẩm:** {intake.get('topic', 'chưa có')}
-**Tầng phễu:** {intake.get('funnel', 'TOFU')}
-**Độ dài video:** {intake.get('duration', '30s')}
+        return f"""## Yêu cầu: Viết Video Script (TikTok/Reels/Shorts)
 
-**Creator type (user đã chọn):** {creator_type.upper()}
-**Hướng dẫn cho creator type này:**
+**Chủ đề / sản phẩm:** {intake.get('topic', 'chưa có')}
+**Thông điệp chính (người xem PHẢI nhớ):** {intake.get('key_message', 'chưa có')}
+**Loại nội dung:** {intake.get('content_type', 'chưa rõ')}{highlight_line}
+
+**Định hướng theo loại nội dung (quyết định format + hook):**
+{type_guidance}
+
+**Người xuất hiện trong video:**
 {creator_guidance}
 
 **Context business:**
 - Ngành: {profile.industry or 'chưa xác định'}
 - Khách hàng: {profile.target_customer or 'chưa xác định'}
 
-Output 2 VARIANTS A/B với angle khác nhau. Mỗi variant: hook đúng dạng phù hợp creator type, script timing chi tiết, caption gợi ý, và hướng dẫn quay phù hợp creator type.
+NGUYÊN TẮC: Nội dung & thông điệp là gốc — format/cách quay do em tự chọn cho khớp loại nội dung, KHÔNG gò ép.
+Output 2 VARIANTS A/B với góc tiếp cận KHÁC NHAU (vd 1 bản kể chuyện, 1 bản thẳng vào vấn đề).
+Mỗi variant: hook 0-3s, script timing chi tiết theo giây, caption + hashtag gợi ý, gợi ý hình ảnh/cách quay.
 
 Lưu ý: KHÔNG bao gồm hợp đồng/commercial terms."""
 
