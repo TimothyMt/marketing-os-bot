@@ -1,0 +1,317 @@
+"""Ads Notifier — pull FB data → compute delta → format → send Telegram.
+
+Hai loại output:
+  - Daily digest (so với hôm qua)
+  - Weekly digest (so với 7 ngày trước, gửi mỗi thứ Hai)
+
+Industry benchmarks (dùng khi user không set ngưỡng):
+  Frequency max: 5.0
+  ROAS drop:     20%
+  CPM spike:     30%
+"""
+import logging
+from datetime import datetime, timezone, timedelta
+from typing import Optional
+
+logger = logging.getLogger(__name__)
+
+# ── Benchmark mặc định (dùng khi alert threshold = NULL) ────────
+DEFAULT_FREQUENCY_MAX  = 5.0
+DEFAULT_ROAS_DROP_PCT  = 20.0
+DEFAULT_CPM_SPIKE_PCT  = 30.0
+
+# ── Metric display config ────────────────────────────────────────
+METRIC_LABELS = {
+    "spend":      ("💰", "Spend",      lambda v: f"{v/1000:.1f}K VND" if v < 1_000_000 else f"{v/1_000_000:.1f}M VND"),
+    "roas":       ("📈", "ROAS",       lambda v: f"{v:.1f}x"),
+    "cpl":        ("🎯", "CPL",        lambda v: f"{v:,.0f} VND"),
+    "frequency":  ("📡", "Frequency",  lambda v: f"{v:.1f}"),
+    "cpm":        ("💵", "CPM",        lambda v: f"{v:,.0f} VND"),
+    "ctr":        ("👆", "CTR",        lambda v: f"{v:.2f}%"),
+    "vtr_3s":     ("🎬", "VTR 3s",     lambda v: f"{v:.1f}%"),
+    "reach":      ("📣", "Reach",      lambda v: f"{v:,.0f}"),
+    "purchases":  ("🛒", "Purchases",  lambda v: f"{v:.0f}"),
+    "cpa":        ("💸", "CPA",        lambda v: f"{v:,.0f} VND"),
+    "cpc":        ("🔗", "CPC",        lambda v: f"{v:,.0f} VND"),
+    "leads":      ("👥", "Leads",      lambda v: f"{v:.0f}"),
+}
+
+AVAILABLE_METRICS = list(METRIC_LABELS.keys())
+RECOMMENDED_METRICS = ["spend", "roas", "cpl", "frequency"]
+
+
+# ── Pull & snapshot ──────────────────────────────────────────────
+
+async def pull_and_snapshot(conn: dict) -> list[dict]:
+    """Pull FB Marketing API data + lưu snapshot. Returns campaign list."""
+    from tools.crypto import decrypt_token
+    from tools.fb_marketing import get_account_insights
+    from storage.fb_connections import save_snapshot, update_last_pull
+
+    user_id   = conn["user_id"]
+    token     = decrypt_token(conn["encrypted_token"])
+    account   = conn["ad_account_id"]
+
+    campaigns = await get_account_insights(
+        date_preset="last_7d",
+        level="campaign",
+        ad_account_id=account,
+        access_token=token,
+        extra_fields=["campaign_id", "action_values"],
+    )
+
+    today = datetime.now(timezone.utc)
+    # save_snapshot trả về rows đã compute (roas/cpl/vtr_3s/campaign_id) — dùng
+    # shape này để delta nhất quán với snapshot đọc từ DB.
+    computed_rows = await save_snapshot(user_id, today, campaigns)
+    await update_last_pull(user_id)
+    return computed_rows
+
+
+# ── Delta computation ────────────────────────────────────────────
+
+def _sum_metric(rows: list[dict], key: str) -> float:
+    return sum(float(r.get(key) or 0) for r in rows)
+
+
+def _avg_metric(rows: list[dict], key: str) -> float:
+    vals = [float(r.get(key) or 0) for r in rows if r.get(key)]
+    return sum(vals) / len(vals) if vals else 0.0
+
+
+def compute_delta(today_rows: list[dict], prev_rows: list[dict]) -> dict:
+    """Tính delta per metric giữa 2 snapshot sets. Returns dict metric → (today, prev, pct_change)."""
+    result = {}
+    for metric in AVAILABLE_METRICS:
+        if metric in ("roas", "cpl", "cpm", "ctr", "vtr_3s", "frequency", "cpa", "cpc"):
+            today_val = _avg_metric(today_rows, metric)
+            prev_val  = _avg_metric(prev_rows, metric)
+        else:
+            today_val = _sum_metric(today_rows, metric)
+            prev_val  = _sum_metric(prev_rows, metric)
+        if prev_val and prev_val != 0:
+            pct = (today_val - prev_val) / prev_val * 100
+        else:
+            pct = None
+        result[metric] = (today_val, prev_val, pct)
+    return result
+
+
+# ── Health assessment ────────────────────────────────────────────
+
+def _account_health(campaigns: list[dict], conn: dict) -> str:
+    freq_max = conn.get("alert_frequency_max") or DEFAULT_FREQUENCY_MAX
+    roas_avg = _avg_metric(campaigns, "roas")
+    freq_max_actual = max((float(c.get("frequency") or 0) for c in campaigns), default=0)
+    if freq_max_actual > freq_max or roas_avg < 1.5:
+        return "🔴 Nguy hiểm"
+    if freq_max_actual > freq_max * 0.7 or roas_avg < 3.0:
+        return "🟡 Cần tối ưu"
+    return "🟢 Healthy"
+
+
+# ── Format daily digest ──────────────────────────────────────────
+
+def format_daily_digest(
+    campaigns: list[dict],
+    delta: dict,
+    conn: dict,
+    account_name: str,
+) -> str:
+    tracked = conn.get("tracked_metrics") or RECOMMENDED_METRICS
+    health  = _account_health(campaigns, conn)
+    today   = datetime.now(timezone.utc).strftime("%d/%m/%Y")
+
+    lines = [
+        f"📊 *Báo cáo Ads — {account_name}*",
+        f"📅 {today}  |  Sức khỏe: {health}",
+        "",
+    ]
+
+    # Tracked metrics với delta
+    for key in tracked:
+        if key not in METRIC_LABELS or key not in delta:
+            continue
+        icon, label, fmt = METRIC_LABELS[key]
+        today_val, prev_val, pct = delta[key]
+        val_str = fmt(today_val)
+        if pct is not None:
+            arrow = "↑" if pct > 0 else "↓"
+            # Nhóm "thấp là tốt": CPL/CPM/CPA/CPC + Frequency (tăng = saturation)
+            good_down = key in ("cpl", "cpm", "cpa", "cpc", "frequency")
+            # Spend là trung tính — không gắn ✅/⚠️
+            if key == "spend":
+                delta_str = f" ({arrow}{abs(pct):.0f}%)"
+            else:
+                is_good = (pct < 0 if good_down else pct > 0)
+                delta_str = f" ({arrow}{abs(pct):.0f}% {'✅' if is_good else '⚠️'})"
+        else:
+            delta_str = ""
+        lines.append(f"{icon} *{label}:* {val_str}{delta_str}")
+
+    # Cảnh báo top 2
+    alerts = _find_alerts(campaigns, conn)
+    if alerts:
+        lines.append("")
+        lines.append("⚠️ *Cần chú ý:*")
+        for a in alerts[:2]:
+            lines.append(f"  {a['icon']} [{a['campaign']}] {a['message']}")
+
+    # Winner
+    winner = _find_winner(campaigns)
+    if winner:
+        lines.append("")
+        lines.append(f"🏆 *Winner:* [{winner['campaign_name']}] ROAS {winner.get('roas', 0):.1f}x — 🟢 tốt")
+
+    lines.extend(["", "👉 /ads\\_analytics — full report  ·  /ads\\_optimizer — thực thi ngay"])
+    return "\n".join(lines)
+
+
+def format_weekly_digest(
+    this_week_rows: list[dict],
+    prev_week_rows: list[dict],
+    conn: dict,
+    account_name: str,
+) -> str:
+    tracked = conn.get("tracked_metrics") or RECOMMENDED_METRICS
+    delta   = compute_delta(this_week_rows, prev_week_rows)
+
+    from datetime import date, timedelta
+    today = date.today()
+    week_start = (today - timedelta(days=6)).strftime("%d/%m")
+    week_end   = today.strftime("%d/%m")
+
+    lines = [
+        f"📊 *Báo cáo tuần — {account_name}*",
+        f"📅 {week_start}–{week_end} so với 7 ngày trước",
+        "",
+    ]
+
+    for key in tracked:
+        if key not in METRIC_LABELS or key not in delta:
+            continue
+        icon, label, fmt = METRIC_LABELS[key]
+        today_val, prev_val, pct = delta[key]
+        val_str  = fmt(today_val)
+        prev_str = fmt(prev_val)
+        if pct is not None:
+            arrow = "↑" if pct > 0 else "↓"
+            lines.append(f"{icon} *{label}:* {val_str} (vs {prev_str}, {arrow}{abs(pct):.0f}%)")
+        else:
+            lines.append(f"{icon} *{label}:* {val_str} (tuần trước: {prev_str})")
+
+    lines.extend(["", "👉 /ads\\_analytics — phân tích chi tiết"])
+    return "\n".join(lines)
+
+
+# ── Alert detection ──────────────────────────────────────────────
+
+def _find_alerts(campaigns: list[dict], conn: dict) -> list[dict]:
+    freq_max   = conn.get("alert_frequency_max") or DEFAULT_FREQUENCY_MAX
+    alerts = []
+    for c in campaigns:
+        freq = float(c.get("frequency") or 0)
+        name = c.get("campaign_name") or "Campaign"
+        if freq > freq_max:
+            alerts.append({
+                "icon": "🔴", "campaign": name[:25],
+                "message": f"Frequency {freq:.1f} — saturate, cần PAUSE hoặc rotate creative",
+                "campaign_id": c.get("campaign_id") or "",
+                "alert_type":  "frequency",
+            })
+        elif freq > freq_max * 0.7:
+            alerts.append({
+                "icon": "🟠", "campaign": name[:25],
+                "message": f"Frequency {freq:.1f} — đang ấm, chuẩn bị creative mới",
+                "campaign_id": c.get("campaign_id") or "",
+                "alert_type":  "frequency_warn",
+            })
+    return alerts
+
+
+async def check_alerts(campaigns: list[dict], prev_campaigns: list[dict], conn: dict) -> list[dict]:
+    """Kiểm tra ngưỡng cảnh báo so với snapshot hôm qua. Áp cooldown."""
+    from storage.fb_connections import check_and_set_cooldown
+    user_id       = conn["user_id"]
+    freq_max      = conn.get("alert_frequency_max") or DEFAULT_FREQUENCY_MAX
+    roas_drop_pct = conn.get("alert_roas_drop_pct") or DEFAULT_ROAS_DROP_PCT
+    cpm_spike_pct = conn.get("alert_cpm_spike_pct") or DEFAULT_CPM_SPIKE_PCT
+
+    # Build lookup prev by campaign_id
+    prev_map = {c.get("campaign_id") or c.get("id"): c for c in prev_campaigns}
+
+    triggered = []
+    for c in campaigns:
+        cid  = c.get("campaign_id") or c.get("id") or ""
+        name = (c.get("campaign_name") or "Campaign")[:25]
+        prev = prev_map.get(cid) or {}
+
+        freq = float(c.get("frequency") or 0)
+        if freq > freq_max:
+            if await check_and_set_cooldown(user_id, cid, "frequency"):
+                days_left = max(0, round(7 / max(freq - 5, 0.1), 1)) if freq > 5 else "?"
+                triggered.append({
+                    "icon": "🔴", "campaign": name,
+                    "message": (
+                        f"Frequency = *{freq:.1f}* — vượt ngưỡng {freq_max}\n"
+                        f"   Ước tính còn ~{days_left} ngày trước khi CPM tăng >30%\n"
+                        f"   → PAUSE creative + reset audience"
+                    ),
+                })
+
+        cpm_today = float(c.get("cpm") or 0)
+        cpm_prev  = float(prev.get("cpm") or 0)
+        if cpm_prev > 0 and cpm_today > 0:
+            cpm_chg = (cpm_today - cpm_prev) / cpm_prev * 100
+            if cpm_chg > cpm_spike_pct:
+                if await check_and_set_cooldown(user_id, cid, "cpm_spike"):
+                    triggered.append({
+                        "icon": "🟠", "campaign": name,
+                        "message": (
+                            f"CPM tăng *{cpm_chg:.0f}%* "
+                            f"({cpm_prev:,.0f} → {cpm_today:,.0f} VND)\n"
+                            f"   → Kiểm tra audience overlap hoặc đổi creative"
+                        ),
+                    })
+
+        roas_today = float(c.get("roas") or 0)
+        roas_prev  = float(prev.get("roas") or 0)
+        if roas_prev > 0 and roas_today > 0:
+            roas_chg = (roas_prev - roas_today) / roas_prev * 100
+            if roas_chg > roas_drop_pct:
+                if await check_and_set_cooldown(user_id, cid, "roas_drop"):
+                    triggered.append({
+                        "icon": "🔴", "campaign": name,
+                        "message": (
+                            f"ROAS giảm *{roas_chg:.0f}%* "
+                            f"({roas_prev:.1f}x → {roas_today:.1f}x)\n"
+                            f"   → Xem lại offer + landing page"
+                        ),
+                    })
+    return triggered
+
+
+def format_alert(alert: dict, account_name: str) -> str:
+    return (
+        f"🚨 *Alert — {account_name}*\n\n"
+        f"Campaign [{alert['campaign']}]\n"
+        f"{alert['message']}\n\n"
+        f"👉 /ads\\_optimizer để thực thi ngay"
+    )
+
+
+def _find_winner(campaigns: list[dict]) -> Optional[dict]:
+    valid = [c for c in campaigns if float(c.get("roas") or 0) > 0]
+    if not valid:
+        return None
+    return max(valid, key=lambda c: float(c.get("roas") or 0))
+
+
+# ── Send helpers ─────────────────────────────────────────────────
+
+async def send_message_safe(bot, user_id: int, text: str) -> None:
+    from telegram.constants import ParseMode
+    try:
+        await bot.send_message(user_id, text, parse_mode=ParseMode.MARKDOWN)
+    except Exception as e:
+        logger.warning("send_message failed user=%d: %s", user_id, e)
