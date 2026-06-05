@@ -16,10 +16,50 @@ MAIN_MENU_KEYBOARD = InlineKeyboardMarkup([
     [InlineKeyboardButton("✍️ Nam — Content",               callback_data="persona_menu_content")],
     [InlineKeyboardButton("🎬 Trang — TikTok",              callback_data="persona_menu_tiktok")],
     [InlineKeyboardButton("🚀 Khoa — Growth & Retention",  callback_data="persona_menu_growth")],
-    [InlineKeyboardButton("💬 Mai — CRM & Zalo",            callback_data="persona_menu_crm")],
 ])
 
 TASK_SELECT_KEYBOARD = MAIN_MENU_KEYBOARD  # alias
+
+# ─────────────────────────────────────────────────────────────────
+# Persona sub-menus (custom flows) — Linh / Nam / Trang / Khoa
+# ─────────────────────────────────────────────────────────────────
+
+# Linh — khi ĐÃ có Brand Voice
+LINH_BV_EXISTS_KEYBOARD = InlineKeyboardMarkup([
+    [InlineKeyboardButton("✏️ Cập nhật / chỉnh sửa (chat)", callback_data="bv_edit_chat")],
+    [InlineKeyboardButton("📋 Xem Brand Voice hiện tại",     callback_data="bv_view")],
+    [InlineKeyboardButton("↩ Hỏi Linh thêm",                callback_data="continue_advisor")],
+])
+
+# Linh — khi CHƯA có Brand Voice
+LINH_BV_NEW_KEYBOARD = InlineKeyboardMarkup([
+    [InlineKeyboardButton("✅ Tạo Brand Voice ngay", callback_data="bv_create")],
+    [InlineKeyboardButton("↩ Hỏi Linh thêm",         callback_data="continue_advisor")],
+])
+
+# Nam — chọn mode viết content
+NAM_MODE_KEYBOARD = InlineKeyboardMarkup([
+    [InlineKeyboardButton("📅 Viết theo Lịch Nội Dung",       callback_data="nam_mode_calendar")],
+    [InlineKeyboardButton("✍️ Viết bài mới theo yêu cầu",     callback_data="nam_mode_fresh")],
+    [InlineKeyboardButton("↩ Hỏi Nam thêm",                   callback_data="continue_advisor")],
+])
+
+# Trang — chọn mode video
+TRANG_MODE_KEYBOARD = InlineKeyboardMarkup([
+    [InlineKeyboardButton("🎬 Video theo Lịch Nội Dung",      callback_data="trang_mode_calendar")],
+    [InlineKeyboardButton("📝 Viết kịch bản video mới",       callback_data="trang_mode_fresh")],
+    [InlineKeyboardButton("↩ Hỏi Trang thêm",                 callback_data="continue_advisor")],
+])
+
+# Khoa — chọn kênh tập trung trước khi chạy retention/winback skill
+GROWTH_CHANNEL_KEYBOARD = InlineKeyboardMarkup([
+    [InlineKeyboardButton("🌐 Full đa kênh (recommend)", callback_data="growth_ch_all")],
+    [
+        InlineKeyboardButton("💬 Zalo OA", callback_data="growth_ch_zalo"),
+        InlineKeyboardButton("📧 Email",   callback_data="growth_ch_email"),
+        InlineKeyboardButton("📱 SMS",     callback_data="growth_ch_sms"),
+    ],
+])
 
 # Sprint 1: Language preference setup (first-time)
 LANG_LEVEL_KEYBOARD = InlineKeyboardMarkup([

@@ -334,7 +334,6 @@ trending sound direction, hook engineering, TikTok Shop, live strategy.
         domain_summary="Retention, referral, viral loops, growth experiments — giữ khách cũ và tăng trưởng từ bên trong",
         owns_skills=[
             "retention_strategy", "winback_campaign",
-            "performance_audit",
         ],
         trigger_keywords=[
             "tăng trưởng", "growth", "giữ khách", "retention",
@@ -360,7 +359,6 @@ referral mechanics, viral loops, A/B experiment design, LTV optimization.
 # SKILLS BẠN GỌI ĐƯỢC:
 - **retention_strategy**: 3-stage retention system (onboarding / nurture / win-back trigger)
 - **winback_campaign**: 3-step winback sequence cho khách đã nghỉ mua
-- **performance_audit**: audit funnel để tìm điểm drop-off chính xác
 
 # GROWTH FRAMEWORKS KHOA DÙNG:
 - **AARRR**: Acquisition → Activation → Retention → Referral → Revenue

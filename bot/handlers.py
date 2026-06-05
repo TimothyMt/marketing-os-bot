@@ -53,6 +53,11 @@ from bot.keyboards import (
     BV_DRAFT_APPROVE_KEYBOARD,
     RESEARCH_GATE_KEYBOARD,
     USP_ANALYZE_KEYBOARD,
+    LINH_BV_EXISTS_KEYBOARD,
+    LINH_BV_NEW_KEYBOARD,
+    NAM_MODE_KEYBOARD,
+    TRANG_MODE_KEYBOARD,
+    GROWTH_CHANNEL_KEYBOARD,
 )
 
 
@@ -249,6 +254,7 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "_advisor_mode", "_awaiting_calendar_edit", "_awaiting_week_selection",
         "_content_gen_weekly_mode", "_content_gen_week",
         "_bv_draft", "_bv_resume_weekly",
+        "_bv_edit_mode", "_growth_skill",
     ]
     for k in transient_keys:
         session.pending_intake.pop(k, None)
@@ -508,6 +514,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "_awaiting_research_paste",
         "_awaiting_usp_text",
         "_awaiting_strategy_q_custom",
+        "_bv_edit_mode",
     )
     _stuck_now = [k for k in _STUCK_FLAGS if session.pending_intake.get(k)]
     _tone_stuck = session.tone_calibration.get("stage") in ("checking_tone", "waiting_feedback")
@@ -557,6 +564,26 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             parse_mode=ParseMode.MARKDOWN,
             reply_markup=MAIN_MENU_KEYBOARD,
         )
+        return
+
+    # Linh — chat-edit Brand Voice (chỉnh sửa tự do)
+    if session.pending_intake.get("_bv_edit_mode"):
+        session.pending_intake.pop("_bv_edit_mode", None)
+        await save_session(session)
+        await update.message.reply_text("✏️ _Linh đang cập nhật Brand Voice..._", parse_mode=ParseMode.MARKDOWN)
+        updated = await _apply_bv_edit(session, text)
+        if updated:
+            await update.message.reply_text(
+                f"✅ *Đã cập nhật Brand Voice!* Dùng chung cho toàn business từ giờ.\n\n{updated[:3000]}",
+                parse_mode=ParseMode.MARKDOWN,
+                reply_markup=LINH_BV_EXISTS_KEYBOARD,
+            )
+        else:
+            await update.message.reply_text(
+                "⚠️ Em chưa cập nhật được (chưa có Brand Voice hoặc lỗi tạm thời). "
+                "Sếp thử lại hoặc tạo Brand Voice mới nhé.",
+                reply_markup=LINH_BV_NEW_KEYBOARD,
+            )
         return
 
     # McKinsey Discovery Gate — user submitted basic business form
@@ -2116,6 +2143,54 @@ async def _handle_callback_inner(update, context, query, session, data, user_id)
             return
         await query.edit_message_reply_markup(reply_markup=None)
 
+        # ── Linh (Brand Voice) — custom flow: check có/chưa có BV ──
+        if persona_key == "brand":
+            try:
+                from storage import has_brand_voice
+                _has_bv = await has_brand_voice(user_id)
+            except Exception as e:
+                logger.warning("[Linh] has_brand_voice check failed: %s", e)
+                _has_bv = False
+            if _has_bv:
+                await query.message.reply_text(
+                    "🎨 *Linh đây sếp!* Brand Voice của brand đã có sẵn rồi ạ.\n\n"
+                    "Sếp muốn làm gì?",
+                    parse_mode=ParseMode.MARKDOWN,
+                    reply_markup=LINH_BV_EXISTS_KEYBOARD,
+                )
+            else:
+                await query.message.reply_text(
+                    "🎨 *Linh đây sếp!* Brand chưa có Brand Voice.\n\n"
+                    "Em tạo 1 lần thôi — dùng chung cho *toàn bộ business*, "
+                    "tất cả skill creative (content, ads, video, email...) sẽ tự "
+                    "tuân thủ đúng tone & từ ngữ brand. Output nhất quán hơn nhiều ạ.",
+                    parse_mode=ParseMode.MARKDOWN,
+                    reply_markup=LINH_BV_NEW_KEYBOARD,
+                )
+            return
+
+        # ── Nam (Content) — 2 mode: theo Calendar / viết bài mới ──
+        if persona_key == "content":
+            await query.message.reply_text(
+                "✍️ *Nam đây sếp!* Sếp muốn viết content kiểu nào?\n\n"
+                "📅 *Theo Lịch Nội Dung* — bám sát calendar đã duyệt, sản xuất hàng loạt.\n"
+                "✍️ *Bài mới theo yêu cầu* — viết 1 bài lẻ, em hỏi sếp vài câu rồi viết.",
+                parse_mode=ParseMode.MARKDOWN,
+                reply_markup=NAM_MODE_KEYBOARD,
+            )
+            return
+
+        # ── Trang (TikTok) — 2 mode: theo Calendar / kịch bản mới ──
+        if persona_key == "tiktok":
+            await query.message.reply_text(
+                "🎬 *Trang đây sếp!* Sếp muốn làm video kiểu nào?\n\n"
+                "🎬 *Theo Lịch Nội Dung* — kịch bản cho các slot video trong calendar.\n"
+                "📝 *Kịch bản mới* — 1 kịch bản lẻ theo yêu cầu, em hỏi creator type rồi viết.",
+                parse_mode=ParseMode.MARKDOWN,
+                reply_markup=TRANG_MODE_KEYBOARD,
+            )
+            return
+
         from agents.task_registry import get_task as _get_task
         buttons = []
         for skill_name in persona.owns_skills:
@@ -2132,6 +2207,135 @@ async def _handle_callback_inner(update, context, query, session, data, user_id)
             parse_mode=ParseMode.MARKDOWN,
             reply_markup=InlineKeyboardMarkup(buttons),
         )
+        return
+
+    # ── Linh (Brand Voice) custom callbacks ───────────────────────
+    if data == "bv_view":
+        await query.edit_message_reply_markup(reply_markup=None)
+        try:
+            from storage import get_brand_voice as _get_bv
+            bv = await _get_bv(user_id)
+        except Exception as e:
+            logger.warning("[Linh] get_brand_voice failed: %s", e)
+            bv = None
+        if bv and not bv.is_empty():
+            body = (bv.rules_markdown or "").strip() or bv.to_prompt_block(max_chars=3000)
+            await query.message.reply_text(
+                f"📋 *Brand Voice hiện tại (v{getattr(bv, 'version', 1)}):*\n\n{body[:3500]}",
+                parse_mode=ParseMode.MARKDOWN,
+                reply_markup=LINH_BV_EXISTS_KEYBOARD,
+            )
+        else:
+            await query.message.reply_text(
+                "Chưa có Brand Voice ạ. Sếp tạo nhé?",
+                reply_markup=LINH_BV_NEW_KEYBOARD,
+            )
+        return
+
+    if data == "bv_create":
+        await query.edit_message_reply_markup(reply_markup=None)
+        session.selected_task = "brand_voice"
+        session.pending_intake = {}
+        await save_session(session)
+        await _send_single_shot_form(query.message, session, "brand_voice")
+        return
+
+    if data == "bv_edit_chat":
+        await query.edit_message_reply_markup(reply_markup=None)
+        session.pending_intake["_bv_edit_mode"] = "1"
+        await save_session(session)
+        await query.message.reply_text(
+            "✏️ *Sếp muốn chỉnh gì trong Brand Voice?*\n\n"
+            "Cứ gõ tự nhiên cho em, ví dụ:\n"
+            "• _\"Thêm tone hài hước nhẹ\"_\n"
+            "• _\"Bỏ từ 'tuyệt vời nhất', nghe sáo\"_\n"
+            "• _\"Xưng 'mình' với khách thay vì 'em'\"_\n"
+            "• _\"Thêm rule: luôn có 1 câu hỏi cuối bài\"_\n\n"
+            "Em sẽ cập nhật Brand Voice dùng chung cho toàn business.",
+            parse_mode=ParseMode.MARKDOWN,
+        )
+        return
+
+    # ── Nam (Content) mode callbacks ──────────────────────────────
+    if data == "nam_mode_calendar":
+        await query.edit_message_reply_markup(reply_markup=None)
+        if not session.get_latest_result("content_calendar"):
+            session.pending_followup_skill = "content_generator"
+            await save_session(session)
+            await query.message.reply_text(
+                "✍️ *Viết theo Lịch Nội Dung cần có Calendar trước ạ.*\n\n"
+                "Em chạy *Lịch Nội Dung* trước nhé — sau đó tự động sản xuất content theo lịch.",
+                parse_mode=ParseMode.MARKDOWN,
+                reply_markup=InlineKeyboardMarkup([
+                    [InlineKeyboardButton("📅 Chạy Lịch Nội Dung trước", callback_data="task_content_calendar")],
+                    [InlineKeyboardButton("⏭️ Quay lại menu",              callback_data="menu_main")],
+                ]),
+            )
+            return
+        session.selected_task = "content_generator"
+        session.pending_intake = {}
+        await save_session(session)
+        await _send_single_shot_form(query.message, session, "content_generator")
+        return
+
+    if data == "nam_mode_fresh":
+        await query.edit_message_reply_markup(reply_markup=None)
+        session.selected_task = "post_write"
+        session.pending_intake = {}
+        await save_session(session)
+        await _send_single_shot_form(query.message, session, "post_write")
+        return
+
+    # ── Trang (TikTok) mode callbacks ─────────────────────────────
+    if data == "trang_mode_calendar":
+        await query.edit_message_reply_markup(reply_markup=None)
+        if not session.get_latest_result("content_calendar"):
+            session.pending_followup_skill = "video_script_gen"
+            await save_session(session)
+            await query.message.reply_text(
+                "🎬 *Video theo Lịch cần có Calendar trước ạ.*\n\n"
+                "Em chạy *Lịch Nội Dung* trước nhé — sau đó viết kịch bản cho các slot video.",
+                parse_mode=ParseMode.MARKDOWN,
+                reply_markup=InlineKeyboardMarkup([
+                    [InlineKeyboardButton("📅 Chạy Lịch Nội Dung trước", callback_data="task_content_calendar")],
+                    [InlineKeyboardButton("⏭️ Quay lại menu",              callback_data="menu_main")],
+                ]),
+            )
+            return
+        session.selected_task = "video_script_gen"
+        session.pending_intake = {}
+        await save_session(session)
+        await _send_single_shot_form(query.message, session, "video_script_gen")
+        return
+
+    if data == "trang_mode_fresh":
+        await query.edit_message_reply_markup(reply_markup=None)
+        session.selected_task = "video_scripts"
+        session.pending_intake = {}
+        await save_session(session)
+        await query.message.reply_text(
+            "🎬 *Viết Kịch Bản Video* — Brief cho loại creator nào ạ?",
+            parse_mode=ParseMode.MARKDOWN,
+            reply_markup=VIDEO_CREATOR_KEYBOARD,
+        )
+        return
+
+    # ── Khoa (Growth) channel focus picker ────────────────────────
+    if data.startswith("growth_ch_"):
+        ch_key = data[len("growth_ch_"):]  # all / zalo / email / sms
+        ch_label = {
+            "all":   "Full đa kênh",
+            "zalo":  "Zalo OA",
+            "email": "Email",
+            "sms":   "SMS",
+        }.get(ch_key, "Full đa kênh")
+        skill_name = session.pending_intake.get("_growth_skill") or "retention_strategy"
+        await query.edit_message_reply_markup(reply_markup=None)
+        session.selected_task = skill_name
+        session.pending_intake = {}  # fresh intake; channel_focus prefilled below
+        session.pending_intake["channel_focus"] = ch_label
+        await save_session(session)
+        await _send_single_shot_form(query.message, session, skill_name)
         return
 
     # ── Variant choosers for special ops skills ───────────────────
@@ -2475,6 +2679,23 @@ async def _handle_callback_inner(update, context, query, session, data, user_id)
         session.selected_task = task_type
         session.pending_intake = {}  # reset for fresh single-shot intake
         await save_session(session)
+
+        # ── Khoa (Growth) — chọn kênh tập trung trước khi chạy ────
+        # Nếu user vào lại qua growth_ch_* thì channel_focus đã prefill,
+        # callback đó gọi thẳng _send_single_shot_form (không qua đây).
+        if task_type in ("retention_strategy", "winback_campaign"):
+            await query.edit_message_reply_markup(reply_markup=None)
+            session.pending_intake["_growth_skill"] = task_type
+            await save_session(session)
+            task_label = get_task(task_type).label if get_task(task_type) else task_type
+            await query.message.reply_text(
+                f"🚀 *{task_label}* — sếp muốn tập trung kênh nào ạ?\n\n"
+                "_Chọn 1 kênh để em viết sâu cho kênh đó, hoặc Full đa kênh "
+                "để có hệ thống tổng thể (recommend)._",
+                parse_mode=ParseMode.MARKDOWN,
+                reply_markup=GROWTH_CHANNEL_KEYBOARD,
+            )
+            return
 
         # ── Smart gating: skill cần Strategy base ─────────────────
         STRATEGY_GATED_SKILLS = {"campaign_brief", "content_calendar", "landing_page"}
@@ -3323,8 +3544,13 @@ async def _send_single_shot_form(message: Message, session, task_name: str):
             _brief_name = intake.get("campaign_name") or intake.get("current_campaign") or "Campaign Brief"
             prefilled["_brief_source"] = _brief_name  # dùng để hiển thị, không phải field thật
 
-    # Fields còn lại cần hỏi user
-    remaining_fields = [f for f in task.intake_fields if f["key"] not in prefilled]
+    # Fields còn lại cần hỏi user.
+    # Bỏ qua field đã prefill từ profile HOẶC đã set sẵn trong pending_intake
+    # (vd channel_focus do nút chooser của Khoa set) → không hỏi lại.
+    remaining_fields = [
+        f for f in task.intake_fields
+        if f["key"] not in prefilled and not session.pending_intake.get(f["key"])
+    ]
 
     # ── Build form ────────────────────────────────────────────
     lines = [
@@ -6755,6 +6981,61 @@ async def _persist_brand_voice_from_session(session, raw_markdown: str):
     except Exception as e:
         # Non-fatal — flow vẫn tiếp tục
         logger.exception("[BV] persist failed for user=%d: %s", session.user_id, e)
+
+
+_BV_EDIT_SYSTEM = """Bạn là chuyên gia Brand Voice. User đưa Brand Voice hiện tại (markdown) \
+và 1 yêu cầu chỉnh sửa. Nhiệm vụ: trả về BẢN BRAND VOICE ĐÃ CẬP NHẬT, GIỮ NGUYÊN cấu trúc \
+markdown gốc, chỉ thay đổi đúng phần user yêu cầu. KHÔNG giải thích, KHÔNG thêm lời dẫn — \
+chỉ xuất markdown Brand Voice mới."""
+
+
+async def _apply_bv_edit(session, instruction: str) -> "str | None":
+    """Linh chat-edit: cập nhật Brand Voice theo yêu cầu tự do của user.
+    Returns updated markdown nếu thành công, None nếu fail. Non-fatal."""
+    try:
+        from storage import get_brand_voice, save_brand_voice, BrandVoice
+        from agents.pipeline import client as _anthropic_client
+        from config import CLAUDE_SONNET_MODEL
+
+        bv = await get_brand_voice(session.user_id)
+        current_md = ((bv.rules_markdown if bv else "") or
+                      (bv.to_prompt_block(max_chars=4000) if bv and not bv.is_empty() else ""))
+        if not current_md.strip():
+            return None
+
+        user_msg = (
+            f"**Brand Voice hiện tại:**\n\n{current_md[:8000]}\n\n"
+            f"---\n\n**Yêu cầu chỉnh sửa của sếp:**\n{instruction}\n\n"
+            f"Trả về Brand Voice đã cập nhật (markdown)."
+        )
+        resp = await _anthropic_client.messages.create(
+            model=CLAUDE_SONNET_MODEL,
+            max_tokens=4000,
+            system=_BV_EDIT_SYSTEM,
+            messages=[{"role": "user", "content": user_msg}],
+        )
+        updated_md = resp.content[0].text.strip()
+        if not updated_md:
+            return None
+
+        new_bv = BrandVoice(
+            user_id=session.user_id,
+            do_rules=(bv.do_rules if bv else []),
+            dont_rules=(bv.dont_rules if bv else []),
+            tone_descriptors=_extract_tone_from_md(updated_md) or (bv.tone_descriptors if bv else []),
+            banned_words=_extract_banned_words_from_md(updated_md) or (bv.banned_words if bv else []),
+            preferred_words=(bv.preferred_words if bv else []),
+            sample_content=(bv.sample_content if bv else None),
+            rules_markdown=updated_md[:10000],
+            industry_context=(bv.industry_context if bv else session.profile.industry),
+        )
+        saved = await save_brand_voice(new_bv)
+        if saved:
+            logger.info("[BV] Edited via chat user=%d version=%d", session.user_id, saved.version)
+        return updated_md
+    except Exception as e:
+        logger.exception("[BV] chat-edit failed user=%d: %s", session.user_id, e)
+        return None
 
 
 # ─── Admin Commands ───────────────────────────────────────────────

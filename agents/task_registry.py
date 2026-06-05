@@ -395,6 +395,7 @@ OPERATIONAL_TASKS: dict[str, TaskConfig] = {
             {"key": "segments_data",    "label": "Phân bổ 4 nhóm khách cụ thể (nếu có)", "example": "Mới 200, Active 80, Nguy cơ 50, Đã bỏ 30 / bỏ trống nếu chưa rõ", "required": False},
             {"key": "top_products",     "label": "Top 3 SP/DV bán chạy + giá (nếu có)",  "example": "Liệu trình HydraFacial 1.5tr / Combo skincare 800k / Mask đơn lẻ 250k", "required": False},
             {"key": "churn_pattern",    "label": "Khách thường bỏ sau bao lâu / sau hành vi gì (nếu rõ)", "example": "Bỏ sau lần 1 (~60%), bỏ sau 90 ngày không nhắc, bỏ khi giá tăng", "required": False},
+            {"key": "channel_focus",    "label": "Kênh tập trung",                        "example": "Full đa kênh / Zalo OA / Email / SMS", "required": False},
         ],
     ),
     "winback_campaign": TaskConfig(
@@ -412,6 +413,7 @@ OPERATIONAL_TASKS: dict[str, TaskConfig] = {
             {"key": "last_purchase_data","label": "Phân bố ngày mua cuối (nếu có)",        "example": "50 khách 60-90 ngày, 40 khách 90-180 ngày, 30 khách >180 ngày", "required": False},
             {"key": "avg_order_value",  "label": "AOV cũ của nhóm winback (nếu rõ)",       "example": "AOV ~1.2tr/lần, top 20% ~3tr", "required": False},
             {"key": "past_winback_tried","label": "Đã thử winback chưa, kết quả?",         "example": "Có thử SMS giảm 20% tháng trước, reply <5%, 1 vài người block", "required": False},
+            {"key": "channel_focus",    "label": "Kênh tập trung",                        "example": "Full đa kênh / Zalo OA / Email / SMS", "required": False},
         ],
     ),
     # ─────────────────────────────────────────────────────────────
@@ -423,13 +425,13 @@ OPERATIONAL_TASKS: dict[str, TaskConfig] = {
         label="Viết 1 Bài Content",
         button_emoji="✍️",
         category="operational",
-        description="Single Post Generator — input 1 row Calendar → output Hook 3 variants + Body + CTA + Visual brief",
+        description="Single Post Generator — viết 1 bài mới theo yêu cầu → output Hook 3 variants + Body + CTA + Visual brief",
         skill_class_name="PostWriteSkill",
         intake_fields=[
-            {"key": "date_channel", "label": "Ngày + Kênh đăng",          "example": "Thứ 2 8:30 sáng — Facebook Page", "required": True},
-            {"key": "topic",        "label": "Chủ đề bài viết",            "example": "Hướng dẫn chọn bảng trắng phòng họp B2B", "required": True},
-            {"key": "pillar_funnel","label": "Pillar + Funnel",            "example": "Educate / TOFU", "required": True},
-            {"key": "audience",     "label": "Đối tượng cụ thể",           "example": "Office manager 28-40 tuổi SME 50-200 người", "required": False},
+            {"key": "topic",        "label": "Chủ đề / nội dung bài",      "example": "Ra mắt kem chống nắng SPF50 mới", "required": True},
+            {"key": "channel",      "label": "Đăng ở đâu",                 "example": "Facebook Page / Zalo OA / Instagram", "required": True},
+            {"key": "post_goal",    "label": "Mục tiêu bài",               "example": "Educate (TOFU) / Kéo mua (BOFU) / Tăng tương tác", "required": True},
+            {"key": "tone_angle",   "label": "Góc độ / tone đặc biệt?",    "example": "Câu chuyện thật / hài hước nhẹ / so sánh với đối thủ", "required": False},
         ],
     ),
     "post_adapt": TaskConfig(
