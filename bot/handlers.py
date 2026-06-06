@@ -4007,9 +4007,9 @@ async def _handle_ops_intake_reply(update: Update, context: ContextTypes.DEFAULT
                 reason = fb_status.get("reason", "no_token")
                 detail = fb_status.get("detail", "")
                 if reason in ("no_token", "no_account"):
-                    api_note = f"FB API chưa cấu hình ({detail})."
+                    api_note = f"FB API chưa cấu hình ({detail}).".replace("_", "\\_")
                 elif reason == "api_error":
-                    api_note = f"FB API lỗi: `{detail}`."
+                    api_note = f"FB API lỗi: {detail}.".replace("_", "\\_").replace("`", "'")
                 else:
                     api_note = "FB API không trả về data."
                 await update.message.reply_text(
