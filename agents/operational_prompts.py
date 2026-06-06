@@ -1844,19 +1844,41 @@ Framework này dựa trên nghiên cứu cơ chế phân phối Meta — có đ�
 
 ⚠️ **Spend từ Ads Library chỉ là RANGE** (lower–upper bound) — LUÔN note: "Chi phí ước tính: X–Y VND (⚠️ range, không phải số chính xác)". Chỉ Marketing API mới có spend thật.
 
-# FRAMEWORK PHÂN TÍCH — PHỄU 6 TẦNG
+# FRAMEWORK PHÂN TÍCH — PHỄU 6 TẦNG (THEO OBJECTIVE)
 
 Meta Andromeda chấm mỗi ad theo công thức nội bộ: **Expected Value = Bid × P(Action) × Quality Score**
-Em dùng framework này để đọc metrics FB API trả về và suy luận tầng nào đang cản phân phối:
+Em dùng framework này để đọc metrics FB API trả về và suy luận tầng nào đang cản phân phối.
+
+**Tầng 1–3 giống nhau cho mọi objective:**
 
 | Tầng | Phễu | Metric (từ FB API) | Benchmark VN | Tầng yếu → Fix |
 |------|------|--------------------|-------------|----------------|
 | 1 | Impression → Hook | VTR 3s / Impression | <20% kém · 20–35% tốt · >35% xuất sắc | Thumbnail / 3s đầu video |
 | 2 | Hook → Hold | ThruPlay / VTR 3s | <15% kém · 15–35% tốt · >35% xuất sắc | Story / body video |
 | 3 | Hold → Click | CTR (link click) | <0.5% kém · 0.5–2% tốt · >2% xuất sắc | CTA / offer trong creative |
-| 4 | Click → Landing | Landing arrival rate | <70% kém · 70–90% tốt | Landing page speed / UX |
-| 5 | Landing → Convert | Conversion rate | <1% kém · 1–3% tốt · >3% xuất sắc | Offer / trust / pricing |
+
+**Tầng 4–6 khác nhau theo objective — đọc field `[objective]` trong data để chọn đúng nhánh:**
+
+**Nhánh A — Messages** (`objective` chứa MESSAGES / CONVERSATIONS / OUTCOME_ENGAGEMENT):
+| Tầng | Phễu | Metric (từ FB API) | Benchmark VN | Tầng yếu → Fix |
+|------|------|--------------------|-------------|----------------|
+| 4 | Click → Mở Messenger | Open rate = conversations / clicks | <30% kém · 30–60% tốt · >60% xuất sắc | Copy CTA / offer trong creative |
+| 5 | Mở → Khách nhắn lại | Reply rate = first_reply / conversations | <40% kém · 40–70% tốt · >70% xuất sắc | Opener tin nhắn tự động / response time |
+| 6 | Phản hồi → Booking/Sale | CPMess = spend / conversations | >40K kém · 18–25K tốt · <18K xuất sắc | Offer / sales script / follow-up speed |
+
+> Tầng 6 Messages: FB API không biết Booking/Sale — nếu sếp cần ROAS thật phải paste tay từ CRM.
+> Nếu data có `Messages funnel:` → dùng ngay. Nếu không → báo "Em cần bật Messenger optimization để đo tầng 4–5".
+
+**Nhánh B — Website / Lead Ads** (`objective` chứa LINK_CLICKS / CONVERSIONS / OUTCOME_TRAFFIC / LEAD_GENERATION):
+| Tầng | Phễu | Metric (từ FB API) | Benchmark VN | Tầng yếu → Fix |
+|------|------|--------------------|-------------|----------------|
+| 4 | Click → Landing | landing_page_views / clicks | <70% kém · 70–90% tốt | Landing page speed / UX mobile |
+| 5 | Landing → Convert | Conversions / landing_page_views | <1% kém · 1–3% tốt · >3% xuất sắc | Offer / trust / pricing / form |
 | 6 | Convert → ROAS | AOV × ROAS | ROAS <2x kém · 4–7x tốt · >7x xuất sắc | Upsell / AOV strategy |
+
+> Tầng 4–5 Website cần Pixel. Nếu không có `landing_page_views` trong data → báo "Em thiếu Pixel data cho tầng 4–5, chỉ phân tích được tầng 1–3 + CPM×CTR".
+
+**Khi không rõ objective:** ưu tiên đọc data — nếu có `Messages funnel:` → dùng Nhánh A; nếu có `Conversions:` → dùng Nhánh B; nếu cả hai đều không có → phân tích tầng 1–3 + CPM×CTR matrix, báo rõ tầng 4–6 thiếu data.
 
 **Đọc CPM × CTR để suy luận tình trạng phân phối:**
 - CPM thấp + CTR cao → Phân phối tốt, audience match → **SCALE NGAY**
