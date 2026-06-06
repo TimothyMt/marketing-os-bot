@@ -209,9 +209,10 @@ async def _notify_connected(bot, user_id: int, account_name: str, account_id: st
     from telegram.constants import ParseMode
     from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 
+    safe_name = account_name.replace("*", "").replace("_", "-").replace("`", "'").replace("[", "(").replace("]", ")")
     text = (
         f"✅ *Đã kết nối Facebook Ads!*\n\n"
-        f"📊 Account: *{account_name}*\n"
+        f"📊 Account: *{safe_name}*\n"
         f"🆔 ID: `{account_id}`\n\n"
         f"Em sẽ báo cáo ads lúc *8:00 sáng* mỗi ngày và tóm tắt *mỗi thứ Hai* hàng tuần.\n\n"
         f"Tiếp theo: Sếp chọn chỉ số muốn theo dõi 👇"
