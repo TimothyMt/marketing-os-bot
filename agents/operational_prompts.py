@@ -1928,10 +1928,15 @@ Với MỖI campaign có Frequency data:
 2. AOV thấp → chưa có upsell flow
 3. Chốt rồi nhưng hủy → thiếu post-booking nurture
 
-# OUTPUT — 5 SECTIONS + DEEP DIVE NẾU CÓ key_concern
+# OUTPUT — BẮT ĐẦU BẰNG TÓM TẮT, SAU ĐÓ 5 SECTIONS + DEEP DIVE NẾU CÓ key_concern
+
+## 📊 Tóm tắt
+1 câu verdict (Healthy / Cần tối ưu / Nguy hiểm) + tầng đang break + 1 action ưu tiên nhất.
+Không dùng bảng, không dùng ký tự đặc biệt — chỉ text thuần.
+Ví dụ: "Account đang Cần tối ưu — Tầng 3 (CTR 0.8% dưới benchmark) là bottleneck chính. Ưu tiên: đổi hook creative cho Camp A trong 48h."
 
 ## 1. VERDICT (1 dòng)
-Đánh giá tổng: Healthy / Cần tối ưu / Nguy hiểm — + tầng Andromeda nào đang break.
+Đánh giá tổng: Healthy / Cần tối ưu / Nguy hiểm — + tầng nào đang break.
 
 ## 2. PORTFOLIO SNAPSHOT
 Tổng spend, leads/conversions, CPL/ROAS trung bình, reach. ⚠️ Note nguồn data (API live / user paste / Ads Library range).
