@@ -1188,6 +1188,28 @@ async def _handle_callback_inner(update, context, query, session, data, user_id)
     if data == "noop":
         return
 
+    if data.startswith("fb_acct:"):
+        account_id = data.split(":", 1)[1]
+        from services.fb_oauth import _pending_connections, _norm_id, _notify_connected
+        from storage.fb_connections import save_connection
+
+        pending = _pending_connections.pop(user_id, None)
+        if not pending:
+            await query.answer("Link đã hết hạn. Vui lòng /connect_ads lại.", show_alert=True)
+            return
+
+        accounts = pending["accounts"]
+        chosen = next((a for a in accounts if _norm_id(a) == account_id), None)
+        if not chosen:
+            await query.answer("Tài khoản không hợp lệ.", show_alert=True)
+            return
+
+        account_name = chosen.get("name") or account_id
+        await save_connection(user_id, pending["encrypted_token"], account_id, account_name, pending["expires_at"])
+        await query.edit_message_text(f"⏳ Đang lưu kết nối với *{account_name}*...", parse_mode=ParseMode.MARKDOWN)
+        await _notify_connected(context.bot, user_id, account_name, account_id, accounts)
+        return
+
     if data == "ads_toggle_notify":
         from storage.fb_connections import get_connection, update_notification_settings
         conn = await get_connection(user_id)

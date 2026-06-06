@@ -147,15 +147,24 @@ async def refresh_token_if_needed(user_id: int) -> bool:
         return False
 
 
+# Temp in-memory store for pending account selections.
+# Keyed by user_id; cleared when user picks an account or starts a new OAuth.
+_pending_connections: dict[int, dict] = {}
+
+
+def _norm_id(acc: dict) -> str:
+    aid = acc.get("id") or acc.get("account_id") or ""
+    return aid if aid.startswith("act_") else f"act_{aid.replace('act_', '')}"
+
+
 # ── OAuth callback handler ───────────────────────────────────────
 
 async def handle_callback(request: Request, bot) -> HTMLResponse:
     """Starlette handler cho /oauth/fb/callback.
     Được gắn vào main.py khi khởi động bot.
     """
-    from storage.fb_connections import consume_oauth_state, save_connection, get_connection
+    from storage.fb_connections import consume_oauth_state, save_connection
     from tools.crypto import encrypt_token
-    from telegram.constants import ParseMode
 
     code  = request.query_params.get("code")
     state = request.query_params.get("state")
@@ -166,7 +175,6 @@ async def handle_callback(request: Request, bot) -> HTMLResponse:
     if not code or not state:
         return HTMLResponse(_HTML_ERROR.format(reason="Thiếu tham số code hoặc state."))
 
-    # Validate state → user_id
     user_id = await consume_oauth_state(state)
     if not user_id:
         return HTMLResponse(_HTML_ERROR.format(reason="Link đã hết hạn hoặc không hợp lệ. Vui lòng /connect_ads lại."))
@@ -186,22 +194,48 @@ async def handle_callback(request: Request, bot) -> HTMLResponse:
 
     encrypted = encrypt_token(long_token)
 
-    # Chọn account: ưu tiên account active (status==1) đầu tiên.
-    # FB trả accounts sorted; nếu user có nhiều account và muốn account khác,
-    # họ /disconnect_ads rồi /connect_ads lại (đơn giản, tránh state phức tạp).
-    def _norm_id(acc: dict) -> str:
-        aid = acc.get("id") or acc.get("account_id") or ""
-        return aid if aid.startswith("act_") else f"act_{aid.replace('act_', '')}"
-
-    active = [a for a in accounts if a.get("account_status") == 1]
-    chosen = active[0] if active else accounts[0]
-    account_id   = _norm_id(chosen)
-    account_name = chosen.get("name") or account_id
-
-    await save_connection(user_id, encrypted, account_id, account_name, expires_at)
-    await _notify_connected(bot, user_id, account_name, account_id, accounts)
+    if len(accounts) == 1:
+        # Only one account — save and notify immediately
+        chosen = accounts[0]
+        account_id = _norm_id(chosen)
+        account_name = chosen.get("name") or account_id
+        await save_connection(user_id, encrypted, account_id, account_name, expires_at)
+        await _notify_connected(bot, user_id, account_name, account_id, accounts)
+    else:
+        # Multiple accounts — ask user to pick
+        _pending_connections[user_id] = {
+            "encrypted_token": encrypted,
+            "expires_at": expires_at,
+            "accounts": accounts,
+        }
+        await _ask_account_selection(bot, user_id, accounts)
 
     return HTMLResponse(_HTML_SUCCESS)
+
+
+async def _ask_account_selection(bot, user_id: int, accounts: list) -> None:
+    """Gửi Telegram inline keyboard để user chọn Ad Account."""
+    from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+    from telegram.constants import ParseMode
+
+    buttons = []
+    for acc in accounts[:10]:  # Tối đa 10 accounts
+        acc_id = _norm_id(acc)
+        name = acc.get("name") or acc_id
+        status = acc.get("account_status")
+        label = f"{'✅' if status == 1 else '⏸'} {name}"
+        buttons.append([InlineKeyboardButton(label, callback_data=f"fb_acct:{acc_id}")])
+
+    keyboard = InlineKeyboardMarkup(buttons)
+    try:
+        await bot.send_message(
+            user_id,
+            "🔗 *Facebook đã xác nhận!*\n\nSếp có nhiều Ad Account — chọn tài khoản muốn dùng:",
+            parse_mode=ParseMode.MARKDOWN,
+            reply_markup=keyboard,
+        )
+    except Exception as e:
+        logger.warning("_ask_account_selection failed for user=%d: %s", user_id, e)
 
 
 async def _notify_connected(bot, user_id: int, account_name: str, account_id: str, all_accounts: list) -> None:
