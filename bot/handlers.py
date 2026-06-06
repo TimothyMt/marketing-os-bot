@@ -5863,13 +5863,13 @@ async def _prefetch_performance_data(message: Message, session) -> dict:
     pull_text = f"📊 Em đang pull data *{safe_name}*..." if safe_name else "📊 Em đang pull data Facebook Ads của sếp..."
     if len(user_available) > 1:
         from telegram import InlineKeyboardButton, InlineKeyboardMarkup
-        sw_buttons = [
-            InlineKeyboardButton(
-                f"{'✅' if (a.get('id') == user_account_id or f'act_{a.get(\"id\")}' == user_account_id) else '○'} {a.get('name') or a.get('id')}",
-                callback_data=f"sw_acct:{a.get('id')}",
-            )
-            for a in user_available[:8]
-        ]
+        sw_buttons = []
+        for a in user_available[:8]:
+            aid = a.get("id", "")
+            norm = aid if aid.startswith("act_") else f"act_{aid}"
+            is_active = (norm == user_account_id or aid == user_account_id)
+            label = ("✅ " if is_active else "○ ") + (a.get("name") or aid)
+            sw_buttons.append(InlineKeyboardButton(label, callback_data=f"sw_acct:{aid}"))
         kb = InlineKeyboardMarkup([[b] for b in sw_buttons])
         await message.reply_text(pull_text + "\n\n_Đổi tài khoản:_", parse_mode=ParseMode.MARKDOWN, reply_markup=kb)
     else:
