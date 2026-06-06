@@ -202,11 +202,15 @@ async def _safe_reply(message: Message, text: str, **kwargs):
     try:
         await message.reply_text(text, **kwargs)
     except Exception as e:
-        # Markdown parse error (unbalanced *, _, etc.) — strip parse_mode and retry
+        # Markdown parse error (unbalanced *, _, [, etc.) — strip parse_mode and retry.
+        # Note: in PTB 22+, BadRequest is a subclass of NetworkError, so check message first.
         if "parse" in str(e).lower() or "entities" in str(e).lower():
             logger.warning("Markdown parse failed (%s) — sending as plain text", e)
             kwargs_plain = {k: v for k, v in kwargs.items() if k != "parse_mode"}
-            await message.reply_text(text, **kwargs_plain)
+            try:
+                await message.reply_text(text, **kwargs_plain)
+            except Exception as e2:
+                logger.warning("Plain text fallback also failed (%s) — swallowing", e2)
         else:
             raise
 
@@ -4125,9 +4129,20 @@ async def _handle_ops_intake_reply(update: Update, context: ContextTypes.DEFAULT
             f"Nếu lặp lại, có thể giảm scope intake để output ngắn hơn."
         )
     except (TimedOut, NetworkError) as e:
-        # Telegram delivery timed out — output thường ĐÃ gửi tới user.
-        # Không hiện lỗi "thử /start" gây hiểu nhầm là skill fail.
-        logger.warning("Skill %s: Telegram delivery timeout (output likely delivered): %s", task_name, e)
+        # In PTB 22+, BadRequest (400) is a subclass of NetworkError.
+        # Tách riêng: nếu là Markdown parse error → retry plain text; nếu là timeout thật → log như cũ.
+        if "parse" in str(e).lower() or "entities" in str(e).lower():
+            logger.warning("Skill %s: Markdown parse error — retrying as plain text: %s", task_name, e)
+            try:
+                await update.message.reply_text(
+                    "⚠️ Lỗi format Markdown khi gửi kết quả — đây là bản text thuần:\n\n"
+                    + (result[:3000] if isinstance(result, str) else str(result)[:3000])
+                )
+            except Exception:
+                pass
+        else:
+            # Timeout thật — output thường ĐÃ gửi tới user.
+            logger.warning("Skill %s: Telegram delivery timeout (output likely delivered): %s", task_name, e)
     except Exception as e:
         logger.exception("Skill %s failed: %s", task_name, e)
         await update.message.reply_text(
