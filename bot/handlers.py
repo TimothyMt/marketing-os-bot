@@ -4007,14 +4007,14 @@ async def _handle_ops_intake_reply(update: Update, context: ContextTypes.DEFAULT
                 reason = fb_status.get("reason", "no_token")
                 detail = fb_status.get("detail", "")
                 if reason in ("no_token", "no_account"):
-                    api_note = f"FB API chưa cấu hình ({detail}).".replace("_", "\\_")
+                    api_note = f"FB API chưa cấu hình ({_md_detail(detail)})."
                 elif reason == "api_error":
-                    api_note = f"FB API lỗi: {detail}.".replace("_", "\\_").replace("`", "'")
+                    api_note = f"FB API lỗi: {_md_detail(detail[:150])}."
                 else:
                     api_note = "FB API không trả về data."
                 await update.message.reply_text(
                     "🛑 *Không có data để phân tích.*\n\n"
-                    f"_{api_note}_\n\n"
+                    f"{api_note}\n\n"
                     "*Cách 1 — Kết nối FB API:* Admin set `FB_ACCESS_TOKEN` + `FB_AD_ACCOUNT_ID` trên Railway.\n\n"
                     "*Cách 2 — Paste số tay:* Chạy lại skill, điền vào ô *Paste số liệu thủ công*.\n"
                     "Ví dụ: `Meta: 800 mess, CPMess 19K, CTR 1.2%, Frequency 3.8`",
@@ -4052,17 +4052,14 @@ async def _handle_ops_intake_reply(update: Update, context: ContextTypes.DEFAULT
                 reason = fb_status.get("reason", "no_token")
                 detail = fb_status.get("detail", "")
                 if reason in ("no_token", "no_account"):
-                    api_note = (
-                        f"FB API chưa cấu hình ({detail}). "
-                        "Admin set env var trên Railway, HOẶC:"
-                    )
+                    api_note = f"FB API chưa cấu hình ({_md_detail(detail)}). Admin set env var trên Railway, HOẶC:"
                 elif reason == "api_error":
-                    api_note = f"FB API lỗi: `{detail}`. Admin fix token, HOẶC:"
+                    api_note = f"FB API lỗi: {_md_detail(detail[:150])}. Admin fix token, HOẶC:"
                 else:
                     api_note = "FB API không trả về data. HOẶC:"
                 await update.message.reply_text(
                     "🛑 *Không có data để audit.*\n\n"
-                    f"_{api_note}_\n\n"
+                    f"{api_note}\n\n"
                     "*Sếp paste số liệu thật vào ô `Số liệu theo kênh` khi chạy lại task* "
                     "(vd: `Meta: 800 mess, CPMess 19K, CTR 1.2%, 120 lead`). "
                     "Không có số thật → em không audit được.\n\n"
@@ -5553,6 +5550,12 @@ async def _log_feedback_to_db(session, skill_name: str, rating: int, feedback_te
 
 # ─── Facebook API pre-fetch helpers ─────────────────────────────
 
+def _md_detail(s: str) -> str:
+    """Strip Markdown v1 special characters from a dynamic detail string.
+    Telegram Markdown v1 has no backslash escaping, so _ * ` [ must be removed."""
+    return s.replace("_", "-").replace("*", "").replace("`", "'").replace("[", "(").replace("]", ")")
+
+
 async def _abort_with_fb_error(message: Message, session, task_name: str, fb_status: dict):
     """Send reason-specific error message + reset session, so user knows
     why the skill refused to run. No menu keyboard inline (per user feedback)."""
@@ -5595,13 +5598,13 @@ async def _abort_with_fb_error(message: Message, session, task_name: str, fb_sta
     elif reason == "page_not_found":
         body = (
             f"🛑 *Không tìm được Page trên FB.*\n\n"
-            f"_{detail}_\n\n"
+            f"{_md_detail(detail)}\n\n"
             "Sếp check lại link fanpage (URL công khai dạng `https://facebook.com/tenpage`)."
         )
     elif reason == "is_user":
         body = (
             f"🛑 *Link này là user profile cá nhân, không phải Page.*\n\n"
-            f"_{detail}_\n\n"
+            f"{_md_detail(detail)}\n\n"
             "FB Ads Library *chỉ phân tích Pages* (Page có `category`, user thì không). "
             "Nếu đối thủ chạy quảng cáo từ user profile thì sẽ không có data Ads Library."
         )
@@ -5615,26 +5618,26 @@ async def _abort_with_fb_error(message: Message, session, task_name: str, fb_sta
     elif reason == "invalid_url":
         body = (
             f"🛑 *URL không hợp lệ.*\n\n"
-            f"_{detail}_\n\n"
+            f"{_md_detail(detail)}\n\n"
             "Sếp gửi URL Facebook đầy đủ (vd `https://facebook.com/cocoonvn`)."
         )
     elif reason == "no_ads_in_country":
         body = (
             f"🛑 *Page không có ads đang chạy ở VN.*\n\n"
-            f"_{detail}_\n\n"
+            f"{_md_detail(detail)}\n\n"
             "Có thể đối thủ không chạy quảng cáo Meta hiện tại, hoặc chạy ở thị trường khác."
         )
     elif reason == "no_insights":
         body = (
             f"🛑 *Ad Account không có data trong khoảng thời gian này.*\n\n"
-            f"_{detail}_\n\n"
+            f"{_md_detail(detail)}\n\n"
             "Sếp check: account ID có đúng không, period có campaign chạy không, "
             "hoặc đổi `date_range` sang khoảng dài hơn."
         )
     elif reason == "no_campaigns":
         body = (
             f"🛑 *Ad Account chưa có campaign nào.*\n\n"
-            f"_{detail}_\n\n"
+            f"{_md_detail(detail)}\n\n"
             "Task tối ưu cần campaign tồn tại trên FB. Tạo campaign trước trong Ads Manager."
         )
     elif reason == "api_error":
@@ -5650,7 +5653,7 @@ async def _abort_with_fb_error(message: Message, session, task_name: str, fb_sta
             "Chạy lại task và điền *Tên đối thủ* (bắt buộc) hoặc *Link Facebook Page*."
         )
     else:
-        body = f"🛑 *FB API fail — {reason}*\n\n_{detail}_"
+        body = f"🛑 *FB API fail — {reason}*\n\n{_md_detail(detail)}"
 
     full = body + (f"\n\n{workaround}" if workaround else "") + "\n\n_Gõ /menu để chọn task khác._"
     await message.reply_text(full, parse_mode=ParseMode.MARKDOWN)
