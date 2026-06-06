@@ -34,7 +34,6 @@ DEFAULT_INSIGHT_FIELDS = [
     "cpm",
     "cpp",
     "frequency",
-    "objective",                        # Messages / Conversions / Traffic / etc. — để chọn đúng phễu
     "actions",                          # conversions, link_clicks, etc.
     "cost_per_action_type",
     # Video metrics — dùng để tính Hook Rate (T1) + Hold Rate (T2) theo framework phân tích
@@ -168,34 +167,6 @@ def _hook_hold_rates(r: dict, impressions: int) -> tuple[float | None, float | N
     return hook, hold
 
 
-def _messaging_metrics(r: dict, clicks: int) -> dict[str, float | None]:
-    """Tính metrics cho campaign Messages từ actions array.
-
-    Returns dict với: conversations, first_replies, open_rate, reply_rate, cpmess
-    None = không có data (không phải campaign Messages).
-    """
-    actions = r.get("actions") or []
-    spend = float(r.get("spend", 0))
-
-    conversations = _extract_action_value(
-        actions, "onsite_conversion.messaging_conversation_started_7d"
-    )
-    first_replies = _extract_action_value(
-        actions, "onsite_conversion.messaging_first_reply"
-    )
-
-    if not conversations and not first_replies:
-        return {}
-
-    return {
-        "conversations": conversations,
-        "first_replies": first_replies,
-        "open_rate": (conversations / clicks * 100) if clicks and conversations else None,
-        "reply_rate": (first_replies / conversations * 100) if conversations and first_replies else None,
-        "cpmess": (spend / conversations) if conversations else None,
-    }
-
-
 def format_insights_for_analysis(insights: list[dict], period: str) -> str:
     """Convert raw FB Marketing API response → structured text cho Claude phân tích.
 
@@ -243,7 +214,6 @@ def format_insights_for_analysis(insights: list[dict], period: str) -> str:
 
     for r in insights[:20]:  # Cap ở 20
         name = r.get("campaign_name") or r.get("adset_name") or r.get("ad_name", "Unknown")
-        objective = r.get("objective", "")
         spend = float(r.get("spend", 0))
         impressions = int(r.get("impressions", 0))
         clicks = int(r.get("clicks", 0))
@@ -252,23 +222,20 @@ def format_insights_for_analysis(insights: list[dict], period: str) -> str:
         cpc = float(r.get("cpc", 0))
         frequency = float(r.get("frequency", 0))
         hook, hold = _hook_hold_rates(r, impressions)
-        mess = _messaging_metrics(r, clicks)
 
-        # Extract conversions (website/lead ads — không phải Messages)
+        # Extract conversions from actions
         actions = r.get("actions") or []
         conversions = next(
             (int(float(a.get("value", 0))) for a in actions
-             if a.get("action_type") in ("purchase", "lead", "complete_registration",
-                                         "offsite_conversion.fb_pixel_lead")),
+             if a.get("action_type") in ("purchase", "lead", "complete_registration")),
             0,
         )
 
-        obj_label = f" ({objective})" if objective else ""
-        lines.append(f"\n**{name}**{obj_label}")
+        lines.append(f"\n**{name}**")
         lines.append(f"  Spend: {spend:,.0f} VND | Imp: {impressions:,} | Clicks: {clicks:,}")
         lines.append(f"  CTR: {ctr:.2f}% | CPM: {cpm:,.0f} | CPC: {cpc:,.0f} | Frequency: {frequency:.1f}")
 
-        # Video funnel metrics — chỉ hiện nếu là video campaign
+        # Video funnel metrics (từ FB API) — chỉ hiện nếu là video campaign
         if hook is not None or hold is not None:
             video_line = "  Video funnel:"
             if hook is not None:
@@ -277,23 +244,7 @@ def format_insights_for_analysis(insights: list[dict], period: str) -> str:
                 video_line += f" | Hold Rate(ThruPlay): {hold:.1f}%"
             lines.append(video_line)
 
-        # Messages funnel metrics — chỉ hiện nếu là Messages campaign
-        if mess:
-            convs = mess["conversations"]
-            replies = mess["first_replies"]
-            open_r = mess["open_rate"]
-            reply_r = mess["reply_rate"]
-            cpmess = mess["cpmess"]
-            mess_line = f"  Messages funnel: Conversations: {convs:,} | First replies: {replies:,}"
-            if open_r is not None:
-                mess_line += f" | Open rate: {open_r:.1f}%"
-            if reply_r is not None:
-                mess_line += f" | Reply rate: {reply_r:.1f}%"
-            if cpmess is not None:
-                mess_line += f" | CPMess: {cpmess:,.0f} VND"
-            lines.append(mess_line)
-
-        elif conversions:
+        if conversions:
             cost_per_conv = spend / conversions if conversions else 0
             lines.append(f"  Conversions: {conversions} | Cost/Conv: {cost_per_conv:,.0f} VND")
 
