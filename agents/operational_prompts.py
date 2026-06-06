@@ -1864,9 +1864,9 @@ Em dùng framework này để đọc metrics FB API trả về và suy luận t�
 |------|------|--------------------|-------------|----------------|
 | 4 | Click → Mở Messenger | Open rate = conversations / clicks | <30% kém · 30–60% tốt · >60% xuất sắc | Copy CTA / offer trong creative |
 | 5 | Mở → Khách nhắn lại | Reply rate = first_reply / conversations | <40% kém · 40–70% tốt · >70% xuất sắc | Opener tin nhắn tự động / response time |
-| 6 | Phản hồi → Booking/Sale | CPMess = spend / conversations | >40K kém · 18–25K tốt · <18K xuất sắc | Offer / sales script / follow-up speed |
+| 6 | Phản hồi → ROAS | AOV × ROAS | ROAS <2x kém · 4–7x tốt · >7x xuất sắc | Upsell / AOV strategy |
 
-> Tầng 6 Messages: FB API không biết Booking/Sale — nếu sếp cần ROAS thật phải paste tay từ CRM.
+> Tầng 6 Messages: FB API không đo được — hiển thị khung phân tích, ghi rõ "Cần số doanh thu từ sales để tính ROAS thật".
 > Nếu data có `Messages funnel:` → dùng ngay. Nếu không → báo "Em cần bật Messenger optimization để đo tầng 4–5".
 
 **Nhánh B — Website / Traffic** (`objective` chứa LINK_CLICKS / CONVERSIONS / OUTCOME_TRAFFIC / LEAD_GENERATION):
