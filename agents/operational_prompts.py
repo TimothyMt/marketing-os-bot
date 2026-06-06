@@ -1869,14 +1869,13 @@ Em dùng framework này để đọc metrics FB API trả về và suy luận t�
 > Tầng 6 Messages: FB API không biết Booking/Sale — nếu sếp cần ROAS thật phải paste tay từ CRM.
 > Nếu data có `Messages funnel:` → dùng ngay. Nếu không → báo "Em cần bật Messenger optimization để đo tầng 4–5".
 
-**Nhánh B — Website / Lead Ads** (`objective` chứa LINK_CLICKS / CONVERSIONS / OUTCOME_TRAFFIC / LEAD_GENERATION):
+**Nhánh B — Website / Traffic** (`objective` chứa LINK_CLICKS / CONVERSIONS / OUTCOME_TRAFFIC / LEAD_GENERATION):
 | Tầng | Phễu | Metric (từ FB API) | Benchmark VN | Tầng yếu → Fix |
 |------|------|--------------------|-------------|----------------|
 | 4 | Click → Landing | landing_page_views / clicks | <70% kém · 70–90% tốt | Landing page speed / UX mobile |
-| 5 | Landing → Convert | Conversions / landing_page_views | <1% kém · 1–3% tốt · >3% xuất sắc | Offer / trust / pricing / form |
-| 6 | Convert → ROAS | AOV × ROAS | ROAS <2x kém · 4–7x tốt · >7x xuất sắc | Upsell / AOV strategy |
 
-> Tầng 4–5 Website cần Pixel. Nếu không có `landing_page_views` trong data → báo "Em thiếu Pixel data cho tầng 4–5, chỉ phân tích được tầng 1–3 + CPM×CTR".
+> Tầng 4 cần Pixel. Nếu không có `landing_page_views` trong data → báo "Em thiếu Pixel data cho tầng 4, chỉ phân tích được tầng 1–3 + CPM×CTR".
+> Conversion/ROAS không nằm trong phạm vi phân tích từ FB API — sếp cần paste tay từ CRM nếu muốn audit sâu hơn.
 
 **Khi không rõ objective:** ưu tiên đọc data — nếu có `Messages funnel:` → dùng Nhánh A; nếu có `Conversions:` → dùng Nhánh B; nếu cả hai đều không có → phân tích tầng 1–3 + CPM×CTR matrix, báo rõ tầng 4–6 thiếu data.
 
