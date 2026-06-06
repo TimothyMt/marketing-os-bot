@@ -10,6 +10,7 @@ import uuid
 import logging
 from datetime import datetime, timezone, timedelta
 from typing import Optional
+from urllib.parse import quote
 
 import httpx
 from starlette.requests import Request
@@ -49,7 +50,7 @@ async def build_oauth_url(user_id: int) -> str:
     await save_oauth_state(state, user_id)
     params = (
         f"client_id={FB_APP_ID}"
-        f"&redirect_uri={REDIRECT_URI}"
+        f"&redirect_uri={quote(REDIRECT_URI, safe='')}"
         f"&scope={OAUTH_SCOPES}"
         f"&state={state}"
         f"&response_type=code"
