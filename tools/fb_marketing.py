@@ -263,7 +263,7 @@ def format_insights_for_analysis(insights: list[dict], period: str) -> str:
             0,
         )
 
-        obj_label = f" [{objective}]" if objective else ""
+        obj_label = f" ({objective})" if objective else ""
         lines.append(f"\n**{name}**{obj_label}")
         lines.append(f"  Spend: {spend:,.0f} VND | Imp: {impressions:,} | Clicks: {clicks:,}")
         lines.append(f"  CTR: {ctr:.2f}% | CPM: {cpm:,.0f} | CPC: {cpc:,.0f} | Frequency: {frequency:.1f}")
