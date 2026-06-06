@@ -199,7 +199,8 @@ async def handle_callback(request: Request, bot) -> HTMLResponse:
         chosen = accounts[0]
         account_id = _norm_id(chosen)
         account_name = chosen.get("name") or account_id
-        await save_connection(user_id, encrypted, account_id, account_name, expires_at)
+        await save_connection(user_id, encrypted, account_id, account_name, expires_at,
+                              available_accounts=accounts)
         await _notify_connected(bot, user_id, account_name, account_id, accounts)
     else:
         # Multiple accounts — ask user to pick

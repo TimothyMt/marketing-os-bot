@@ -1205,9 +1205,29 @@ async def _handle_callback_inner(update, context, query, session, data, user_id)
             return
 
         account_name = chosen.get("name") or account_id
-        await save_connection(user_id, pending["encrypted_token"], account_id, account_name, pending["expires_at"])
+        await save_connection(user_id, pending["encrypted_token"], account_id, account_name,
+                              pending["expires_at"], available_accounts=accounts)
         await query.edit_message_text(f"⏳ Đang lưu kết nối với *{account_name}*...", parse_mode=ParseMode.MARKDOWN)
         await _notify_connected(context.bot, user_id, account_name, account_id, accounts)
+        return
+
+    if data.startswith("sw_acct:"):
+        account_id = data.split(":", 1)[1]
+        from storage.fb_connections import get_available_accounts, update_active_account
+        accounts = await get_available_accounts(user_id)
+        chosen = next((a for a in accounts if a.get("id") == account_id or
+                       (not a["id"].startswith("act_") and f"act_{a['id']}" == account_id)), None)
+        if not chosen:
+            await query.answer("Tài khoản không tìm thấy.", show_alert=True)
+            return
+        acc_id = chosen["id"] if chosen["id"].startswith("act_") else f"act_{chosen['id']}"
+        acc_name = chosen.get("name") or acc_id
+        await update_active_account(user_id, acc_id, acc_name)
+        safe = acc_name.replace("*", "").replace("_", "-")
+        await query.edit_message_text(
+            f"✅ Đã chuyển sang *{safe}*\n`{acc_id}`\n\nChạy lại skill để pull data từ account này.",
+            parse_mode=ParseMode.MARKDOWN,
+        )
         return
 
     if data == "ads_toggle_notify":
@@ -5779,19 +5799,42 @@ async def _prefetch_competitor_ads(message: Message, session) -> dict:
 
 async def _prefetch_performance_data(message: Message, session) -> dict:
     """Pre-fetch FB Marketing API data cho performance_audit / ads_analytics skill.
-    Lấy date range từ pending_intake, pull insights, inject vào _fb_data.
+    Ưu tiên token per-user (OAuth), fallback về global env var.
 
     Returns dict: {"ok": bool, "reason": str, "detail": str}
       reason ∈ {"ok", "no_token", "no_account", "no_insights", "api_error"}
     """
     from tools.fb_marketing import get_account_insights, format_insights_for_analysis, is_available
+    from tools.crypto import decrypt_token
+    from storage.fb_connections import get_connection, get_available_accounts
     from config import FB_ACCESS_TOKEN, FB_AD_ACCOUNT_ID
 
-    if not FB_ACCESS_TOKEN:
+    # ── Ưu tiên per-user OAuth token ────────────────────────────
+    user_token = None
+    user_account_id = None
+    user_account_name = None
+    user_available = []
+
+    user_conn = await get_connection(session.user_id)
+    if user_conn and user_conn.get("encrypted_token"):
+        try:
+            user_token = decrypt_token(user_conn["encrypted_token"])
+            user_account_id = user_conn.get("ad_account_id")
+            user_account_name = user_conn.get("account_name") or user_account_id
+            user_available = await get_available_accounts(session.user_id)
+        except Exception as e:
+            logger.warning("Decrypt user token failed for user=%d: %s", session.user_id, e)
+            user_token = None
+
+    # ── Fallback về global env var ───────────────────────────────
+    access_token = user_token or FB_ACCESS_TOKEN
+    account_id   = user_account_id or FB_AD_ACCOUNT_ID
+
+    if not access_token:
         return {"ok": False, "reason": "no_token", "detail": "FB_ACCESS_TOKEN chưa set trên server"}
-    if not FB_AD_ACCOUNT_ID:
+    if not account_id:
         return {"ok": False, "reason": "no_account", "detail": "FB_AD_ACCOUNT_ID chưa set trên server"}
-    if not is_available():
+    if not user_token and not is_available():
         return {"ok": False, "reason": "no_token", "detail": "FB Marketing API không khả dụng"}
 
     # Map date label → FB date_preset
@@ -5815,10 +5858,22 @@ async def _prefetch_performance_data(message: Message, session) -> dict:
             date_preset = preset
             break
 
-    await message.reply_text(
-        "📊 Em đang pull data Facebook Ads của sếp...",
-        parse_mode=ParseMode.MARKDOWN,
-    )
+    # Hiện account đang dùng + nút đổi nếu có nhiều account
+    safe_name = (user_account_name or "").replace("*", "").replace("_", "-")
+    pull_text = f"📊 Em đang pull data *{safe_name}*..." if safe_name else "📊 Em đang pull data Facebook Ads của sếp..."
+    if len(user_available) > 1:
+        from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+        sw_buttons = [
+            InlineKeyboardButton(
+                f"{'✅' if (a.get('id') == user_account_id or f'act_{a.get(\"id\")}' == user_account_id) else '○'} {a.get('name') or a.get('id')}",
+                callback_data=f"sw_acct:{a.get('id')}",
+            )
+            for a in user_available[:8]
+        ]
+        kb = InlineKeyboardMarkup([[b] for b in sw_buttons])
+        await message.reply_text(pull_text + "\n\n_Đổi tài khoản:_", parse_mode=ParseMode.MARKDOWN, reply_markup=kb)
+    else:
+        await message.reply_text(pull_text, parse_mode=ParseMode.MARKDOWN)
 
     level_raw = session.pending_intake.get("level", "campaign").lower()
     level = level_raw if level_raw in ("campaign", "adset", "ad") else "campaign"
@@ -5827,6 +5882,8 @@ async def _prefetch_performance_data(message: Message, session) -> dict:
         insights = await get_account_insights(
             date_preset=date_preset,
             level=level,
+            ad_account_id=account_id,
+            access_token=access_token,
         )
     except Exception as e:
         err = str(e)[:300]
@@ -8364,6 +8421,46 @@ async def cmd_connect_ads(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     except Exception as e:
         logger.error("cmd_connect_ads failed user=%d: %s", user_id, e)
         await update.message.reply_text("❌ Lỗi tạo link OAuth. Admin kiểm tra log.")
+
+
+async def cmd_switch_account(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """/switch_account — chọn Ad Account khác (không cần re-OAuth)."""
+    user_id = update.effective_user.id
+    from storage.fb_connections import get_connection, get_available_accounts
+    from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+
+    conn = await get_connection(user_id)
+    if not conn:
+        await update.message.reply_text(
+            "⚠️ Sếp chưa kết nối Facebook. Dùng /connect\\_ads trước.",
+            parse_mode=ParseMode.MARKDOWN,
+        )
+        return
+
+    accounts = await get_available_accounts(user_id)
+    if len(accounts) <= 1:
+        current = conn.get("account_name") or conn.get("ad_account_id") or "?"
+        await update.message.reply_text(
+            f"ℹ️ Sếp chỉ có 1 Ad Account: *{current.replace('*','').replace('_','-')}*\n\n"
+            "Để thêm account, /disconnect\\_ads rồi connect lại bằng FB có nhiều accounts.",
+            parse_mode=ParseMode.MARKDOWN,
+        )
+        return
+
+    active_id = conn.get("ad_account_id", "")
+    buttons = []
+    for a in accounts[:10]:
+        aid = a.get("id", "")
+        norm = aid if aid.startswith("act_") else f"act_{aid}"
+        is_active = (norm == active_id or aid == active_id)
+        label = f"{'✅' if is_active else '○'} {a.get('name') or aid}"
+        buttons.append([InlineKeyboardButton(label, callback_data=f"sw_acct:{aid}")])
+
+    await update.message.reply_text(
+        "🔄 *Chọn Ad Account muốn dùng:*",
+        parse_mode=ParseMode.MARKDOWN,
+        reply_markup=InlineKeyboardMarkup(buttons),
+    )
 
 
 async def cmd_disconnect_ads(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:

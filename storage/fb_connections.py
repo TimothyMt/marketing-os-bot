@@ -29,12 +29,14 @@ async def save_connection(
     ad_account_id: str,
     account_name: str,
     expires_at: datetime,
+    available_accounts: list | None = None,
 ) -> None:
+    import json
     client = _client()
     if client is None:
         logger.warning("save_connection: client not init")
         return
-    await client.table("user_fb_connections").upsert({
+    payload = {
         "user_id":          user_id,
         "encrypted_token":  encrypted_token,
         "ad_account_id":    ad_account_id,
@@ -42,7 +44,45 @@ async def save_connection(
         "expires_at":       expires_at.isoformat(),
         "connected_at":     _now().isoformat(),
         "notification_enabled": True,
-    }, on_conflict="user_id").execute()
+    }
+    if available_accounts is not None:
+        payload["available_accounts"] = json.dumps([
+            {
+                "id":     (a.get("id") or a.get("account_id") or ""),
+                "name":   a.get("name") or "",
+                "status": a.get("account_status"),
+            }
+            for a in available_accounts
+        ])
+    await client.table("user_fb_connections").upsert(payload, on_conflict="user_id").execute()
+
+
+async def update_active_account(user_id: int, account_id: str, account_name: str) -> None:
+    """Đổi active Ad Account (không re-OAuth)."""
+    client = _client()
+    if client is None:
+        return
+    await client.table("user_fb_connections").update({
+        "ad_account_id": account_id,
+        "account_name":  account_name,
+    }).eq("user_id", user_id).execute()
+
+
+async def get_available_accounts(user_id: int) -> list[dict]:
+    """Trả list accounts đã lưu: [{'id': 'act_...', 'name': '...', 'status': 1}]."""
+    import json
+    conn = await get_connection(user_id)
+    if not conn:
+        return []
+    raw = conn.get("available_accounts")
+    if not raw:
+        return []
+    if isinstance(raw, str):
+        try:
+            raw = json.loads(raw)
+        except Exception:
+            return []
+    return raw if isinstance(raw, list) else []
 
 
 async def get_connection(user_id: int) -> Optional[dict]:
