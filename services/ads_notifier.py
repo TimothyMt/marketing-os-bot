@@ -163,7 +163,7 @@ def format_daily_digest(
         lines.append("")
         lines.append(f"🏆 *Winner:* [{winner['campaign_name']}] ROAS {winner.get('roas', 0):.1f}x — 🟢 tốt")
 
-    lines.extend(["", "👉 /ads\\_analytics — full report  ·  /ads\\_optimizer — thực thi ngay"])
+    lines.extend(["", "👉 `/ads_analytics` — full report  ·  `/ads_optimizer` — thực thi ngay"])
     return "\n".join(lines)
 
 
@@ -200,7 +200,7 @@ def format_weekly_digest(
         else:
             lines.append(f"{icon} *{label}:* {val_str} (tuần trước: {prev_str})")
 
-    lines.extend(["", "👉 /ads\\_analytics — phân tích chi tiết"])
+    lines.extend(["", "👉 `/ads_analytics` — phân tích chi tiết"])
     return "\n".join(lines)
 
 
@@ -296,7 +296,7 @@ def format_alert(alert: dict, account_name: str) -> str:
         f"🚨 *Alert — {account_name}*\n\n"
         f"Campaign [{alert['campaign']}]\n"
         f"{alert['message']}\n\n"
-        f"👉 /ads\\_optimizer để thực thi ngay"
+        f"👉 `/ads_optimizer` để thực thi ngay"
     )
 
 
@@ -311,7 +311,19 @@ def _find_winner(campaigns: list[dict]) -> Optional[dict]:
 
 async def send_message_safe(bot, user_id: int, text: str) -> None:
     from telegram.constants import ParseMode
+    from telegram.error import BadRequest
     try:
         await bot.send_message(user_id, text, parse_mode=ParseMode.MARKDOWN)
+    except BadRequest as e:
+        if "parse entities" in str(e).lower():
+            # Markdown entity lỗi (vd ký tự đặc biệt trong dynamic data) — gửi lại không format
+            # còn hơn mất tin báo cáo/alert.
+            logger.warning("send_message markdown parse failed user=%d, retry plain text: %s", user_id, e)
+            try:
+                await bot.send_message(user_id, text.replace("*", "").replace("_", "").replace("`", ""))
+            except Exception as e2:
+                logger.warning("send_message plain-text retry failed user=%d: %s", user_id, e2)
+        else:
+            logger.warning("send_message failed user=%d: %s", user_id, e)
     except Exception as e:
         logger.warning("send_message failed user=%d: %s", user_id, e)

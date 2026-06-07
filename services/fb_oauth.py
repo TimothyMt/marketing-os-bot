@@ -255,8 +255,8 @@ async def _notify_connected(bot, user_id: int, account_name: str, account_id: st
     # Nếu user có nhiều account → note để họ biết cách đổi
     if len(all_accounts) > 1:
         text += (
-            f"\n\n_Sếp có {len(all_accounts)} Ad Account — em đang dùng account active đầu tiên. "
-            f"Muốn đổi: /disconnect\\_ads rồi /connect\\_ads lại._"
+            f"\n\nSếp có {len(all_accounts)} Ad Account — em đang dùng account vừa chọn. "
+            f"Muốn đổi tài khoản bất kỳ lúc nào: gõ lệnh `/switch_account`."
         )
 
     keyboard = InlineKeyboardMarkup([[

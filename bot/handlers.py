@@ -1238,7 +1238,7 @@ async def _handle_callback_inner(update, context, query, session, data, user_id)
             await update_notification_settings(user_id, notification_enabled=new_state)
             state_text = "🟢 Đã bật" if new_state else "🔴 Đã tắt"
             await query.edit_message_text(
-                f"{state_text} báo cáo ads hàng ngày.\n\nDùng /ads\\_settings để chỉnh thêm.",
+                f"{state_text} báo cáo ads hàng ngày.\n\nDùng `/ads_settings` để chỉnh thêm.",
                 parse_mode=ParseMode.MARKDOWN,
             )
         return
@@ -1297,7 +1297,7 @@ async def _handle_callback_inner(update, context, query, session, data, user_id)
             "📊 Theo dõi: Spend · ROAS · CPL · Frequency\n"
             "⚠️ Ngưỡng alert: Max tự theo benchmark ngành\n"
             "🕗 Báo cáo: 8:00 sáng mỗi ngày, Thứ Hai = weekly report\n\n"
-            "Dùng /ads\\_settings bất kỳ lúc nào để chỉnh.",
+            "Dùng `/ads_settings` bất kỳ lúc nào để chỉnh.",
             parse_mode=ParseMode.MARKDOWN,
         )
         return
@@ -5134,10 +5134,16 @@ def _personalize(text: str, session) -> str:
 # ─── Claude advisor fallback ────────────────────────────────────
 
 def _escape_md(val) -> str:
-    """Escape markdown-sensitive characters in user-provided values for legacy Markdown mode."""
+    """Loại bỏ ký tự đặc biệt Markdown khỏi giá trị động.
+
+    Telegram legacy Markdown (ParseMode.MARKDOWN) KHÔNG hỗ trợ backslash-escape —
+    `\\_` vẫn bị parse thành entity dở dang → lỗi "Can't parse entities". Cách an
+    toàn duy nhất là loại bỏ/thay thế các ký tự _ * ` [ ] khỏi nội dung động.
+    """
     if not val:
         return str(val) if val is not None else ""
-    return str(val).replace("\\", "\\\\").replace("*", "\\*").replace("_", "\\_").replace("`", "\\`").replace("[", "\\[")
+    return (str(val).replace("*", "").replace("_", "-")
+            .replace("`", "'").replace("[", "(").replace("]", ")"))
 
 
 def _sanitize_telegram_md(text: str) -> str:
@@ -8392,10 +8398,11 @@ async def cmd_connect_ads(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     from storage.fb_connections import get_connection
     existing = await get_connection(user_id)
     if existing and existing.get("notification_enabled"):
-        name = existing.get("account_name") or existing.get("ad_account_id")
+        name = (existing.get("account_name") or existing.get("ad_account_id") or "?").replace("*", "").replace("_", "-")
         await update.message.reply_text(
             f"✅ *Đã kết nối:* {name}\n\n"
-            "Muốn kết nối lại tài khoản khác? Dùng /disconnect\\_ads trước.",
+            "Có nhiều Ad Account muốn xem? Dùng `/switch_account` để đổi — không cần kết nối lại.\n"
+            "Muốn đổi sang tài khoản FB khác hẳn? Dùng `/disconnect_ads` trước.",
             parse_mode=ParseMode.MARKDOWN,
         )
         return
@@ -8432,7 +8439,7 @@ async def cmd_switch_account(update: Update, context: ContextTypes.DEFAULT_TYPE)
     conn = await get_connection(user_id)
     if not conn:
         await update.message.reply_text(
-            "⚠️ Sếp chưa kết nối Facebook. Dùng /connect\\_ads trước.",
+            "⚠️ Sếp chưa kết nối Facebook. Dùng `/connect_ads` trước.",
             parse_mode=ParseMode.MARKDOWN,
         )
         return
@@ -8442,7 +8449,7 @@ async def cmd_switch_account(update: Update, context: ContextTypes.DEFAULT_TYPE)
         current = conn.get("account_name") or conn.get("ad_account_id") or "?"
         await update.message.reply_text(
             f"ℹ️ Sếp chỉ có 1 Ad Account: *{current.replace('*','').replace('_','-')}*\n\n"
-            "Để thêm account, /disconnect\\_ads rồi connect lại bằng FB có nhiều accounts.",
+            "Để thêm account khác, dùng `/disconnect_ads` rồi connect lại bằng FB có nhiều accounts.",
             parse_mode=ParseMode.MARKDOWN,
         )
         return
@@ -8473,7 +8480,7 @@ async def cmd_disconnect_ads(update: Update, context: ContextTypes.DEFAULT_TYPE)
         await update.message.reply_text("Chưa kết nối FB Ads nào cả sếp ơi.")
         return
 
-    name = conn.get("account_name") or conn.get("ad_account_id")
+    name = (conn.get("account_name") or conn.get("ad_account_id") or "?").replace("*", "").replace("_", "-")
     await delete_connection(user_id)
     await update.message.reply_text(
         f"✅ Đã ngắt kết nối *{name}*.\n\nToken đã được xóa khỏi hệ thống.",
@@ -8496,7 +8503,7 @@ async def cmd_ads_settings(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     conn = await get_connection(user_id)
     if not conn:
         await update.message.reply_text(
-            "Chưa kết nối FB Ads. Dùng /connect\\_ads trước nhé sếp.",
+            "Chưa kết nối FB Ads. Dùng `/connect_ads` trước nhé sếp.",
             parse_mode=ParseMode.MARKDOWN,
         )
         return

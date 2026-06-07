@@ -77,7 +77,7 @@ async def _run_daily_digest(bot) -> None:
 
     for conn in connections:
         user_id      = conn["user_id"]
-        account_name = conn.get("account_name") or "Ads Account"
+        account_name = (conn.get("account_name") or "Ads Account").replace("*", "").replace("_", "-").replace("`", "'").replace("[", "(").replace("]", ")")
         try:
             today_campaigns = await pull_and_snapshot(conn)
 
@@ -107,7 +107,7 @@ async def _run_weekly_report(bot) -> None:
 
     for conn in connections:
         user_id      = conn["user_id"]
-        account_name = conn.get("account_name") or "Ads Account"
+        account_name = (conn.get("account_name") or "Ads Account").replace("*", "").replace("_", "-").replace("`", "'").replace("[", "(").replace("]", ")")
         try:
             this_week_campaigns = await pull_and_snapshot(conn)
 
@@ -140,7 +140,7 @@ async def _run_alert_monitor(bot) -> None:
 
     for conn in connections:
         user_id      = conn["user_id"]
-        account_name = conn.get("account_name") or "Ads Account"
+        account_name = (conn.get("account_name") or "Ads Account").replace("*", "").replace("_", "-").replace("`", "'").replace("[", "(").replace("]", ")")
         try:
             today_campaigns = await pull_and_snapshot(conn)
             yesterday = datetime.now(timezone.utc) - timedelta(days=1)
@@ -193,6 +193,6 @@ async def _handle_token_revoked(bot, conn: dict) -> None:
         bot, user_id,
         "⚠️ *Kết nối Facebook Ads đã ngắt*\n\n"
         "Token hết hạn hoặc quyền bị thu hồi.\n"
-        "Gõ /connect\\_ads để kết nối lại — settings cũ vẫn giữ nguyên."
+        "Gõ `/connect_ads` để kết nối lại — settings cũ vẫn giữ nguyên."
     )
     logger.info("[AdsScheduler] Token revoked, disabled connection for user=%d", user_id)
