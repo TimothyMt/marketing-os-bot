@@ -1211,6 +1211,22 @@ async def _handle_callback_inner(update, context, query, session, data, user_id)
         await _notify_connected(context.bot, user_id, account_name, account_id, accounts)
         return
 
+    if data.startswith("aud_pick:"):
+        _, account_id, picked_task = data.split(":", 2)
+        from storage.fb_connections import get_available_accounts, update_active_account
+        accounts = await get_available_accounts(user_id)
+        chosen = next((a for a in accounts if a.get("id") == account_id or
+                       (not a["id"].startswith("act_") and f"act_{a['id']}" == account_id)), None)
+        if not chosen:
+            await query.answer("Tài khoản không tìm thấy.", show_alert=True)
+            return
+        acc_id = chosen["id"] if chosen["id"].startswith("act_") else f"act_{chosen['id']}"
+        acc_name = (chosen.get("name") or acc_id).replace("*", "").replace("_", "-")
+        await update_active_account(user_id, acc_id, acc_name)
+        await query.edit_message_text(f"✅ Đang phân tích *{acc_name}*...", parse_mode=ParseMode.MARKDOWN)
+        await _send_single_shot_form(query.message, session, picked_task, _skip_account_pick=True)
+        return
+
     if data.startswith("sw_acct:"):
         account_id = data.split(":", 1)[1]
         from storage.fb_connections import get_available_accounts, update_active_account
@@ -3693,7 +3709,7 @@ async def _run_write_content_workflow_handler(message: Message, session, topic_t
         )
 
 
-async def _send_single_shot_form(message: Message, session, task_name: str):
+async def _send_single_shot_form(message: Message, session, task_name: str, _skip_account_pick: bool = False):
     """Send a paste-template form for ops skill intake.
     User fills in template, replies once with all fields.
 
@@ -3708,6 +3724,30 @@ async def _send_single_shot_form(message: Message, session, task_name: str):
     if not task:
         await message.reply_text(f"⚠️ Skill {task_name} không tồn tại.")
         return
+
+    # Ads tasks pull data từ 1 Ad Account cụ thể — nếu user có nhiều account,
+    # cho chọn account trước khi vào form (tránh audit/phân tích nhầm account).
+    if task_name in ("ads_analytics", "performance_audit") and not _skip_account_pick:
+        from storage.fb_connections import get_connection, get_available_accounts
+        conn = await get_connection(session.user_id)
+        if conn:
+            accounts = await get_available_accounts(session.user_id)
+            if len(accounts) > 1:
+                from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+                active_id = conn.get("ad_account_id", "")
+                buttons = []
+                for a in accounts[:10]:
+                    aid = a.get("id", "")
+                    norm = aid if aid.startswith("act_") else f"act_{aid}"
+                    is_active = (norm == active_id or aid == active_id)
+                    label = ("✅ " if is_active else "○ ") + (a.get("name") or aid)
+                    buttons.append([InlineKeyboardButton(label, callback_data=f"aud_pick:{aid}:{task_name}")])
+                await message.reply_text(
+                    "🔄 *Sếp có nhiều Ad Account — chọn account muốn phân tích trước nhé:*",
+                    parse_mode=ParseMode.MARKDOWN,
+                    reply_markup=InlineKeyboardMarkup(buttons),
+                )
+                return
 
     # ── McKinsey discovery gate — basic context required ──────
     if not session.profile.is_basic_business_context_ready():
