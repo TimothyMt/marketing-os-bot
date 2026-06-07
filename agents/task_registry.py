@@ -520,7 +520,7 @@ OPERATIONAL_TASKS: dict[str, TaskConfig] = {
         description="Pull số thật FB Marketing API → phân tích theo framework phễu 6 tầng → Winners/Losers/Budget reallocation + Deep audit",
         skill_class_name="AdsAnalyticsSkill",
         intake_fields=[
-            {"key": "date_range",      "label": "Khoảng thời gian",                              "example": "30 ngày / 7 ngày / tháng trước / tháng này", "required": True},
+            {"key": "date_range",      "label": "Khoảng thời gian",                              "example": "30 ngày / 7 ngày / tháng trước / tháng này / hôm nay (xem live)", "required": True},
             {"key": "level",           "label": "Mức độ phân tích",                               "example": "campaign (mặc định) / adset / ad", "required": False},
             {"key": "campaign_filter", "label": "Lọc campaign cụ thể (bỏ trống = toàn account)", "example": "FT09 / Tết 2026", "required": False},
             {"key": "key_concern",     "label": "Vấn đề lo lắng nhất (để em audit sâu)",          "example": "Lead nhiều nhưng booking thấp / CPL đang tăng / ROAS giảm", "required": False},

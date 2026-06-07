@@ -5906,6 +5906,8 @@ async def _prefetch_performance_data(message: Message, session) -> dict:
     ).lower()
 
     date_preset_map = {
+        "hôm nay": "today", "today": "today", "live": "today", "real-time": "today", "realtime": "today",
+        "hôm qua": "yesterday", "yesterday": "yesterday",
         "7":  "last_7d",  "7 ngày":  "last_7d",
         "14": "last_14d", "14 ngày": "last_14d",
         "30": "last_30d", "30 ngày": "last_30d",
