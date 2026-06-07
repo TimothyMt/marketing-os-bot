@@ -37,8 +37,9 @@ DEFAULT_INSIGHT_FIELDS = [
     "actions",                          # conversions, link_clicks, etc.
     "cost_per_action_type",
     # Video metrics — dùng để tính Hook Rate (T1) + Hold Rate (T2) theo framework phân tích
+    # Lưu ý: "video_3_sec_watched_actions" đã bị FB loại khỏi fields param (lỗi #100 trên v20.0+)
+    # → 3-sec video view giờ lấy qua actions[action_type=video_view] (cùng field "actions" ở trên).
     "video_play_actions",               # tổng lượt play
-    "video_3_sec_watched_actions",      # Hook Rate = VTR3s / impressions (Tầng 1)
     "video_thruplay_watched_actions",   # Hold Rate = ThruPlay / VTR3s (Tầng 2, 15s+)
     "video_p25_watched_actions",        # 25% watched — body strength signal
     "video_p75_watched_actions",        # 75% watched — story compelling signal
@@ -158,8 +159,12 @@ def _extract_action_value(actions: list[dict], action_type: str) -> int:
 
 
 def _hook_hold_rates(r: dict, impressions: int) -> tuple[float | None, float | None]:
-    """Tính Hook Rate (VTR 3s/imp) và Hold Rate (ThruPlay/VTR3s). None = không có data."""
-    vtr3 = _extract_action_value(r.get("video_3_sec_watched_actions") or [], "video_view")
+    """Tính Hook Rate (VTR 3s/imp) và Hold Rate (ThruPlay/VTR3s). None = không có data.
+
+    3-sec video view lấy từ actions[action_type=video_view] — field dedicated
+    "video_3_sec_watched_actions" đã bị FB từ chối trong fields param (lỗi #100).
+    """
+    vtr3 = _extract_action_value(r.get("actions") or [], "video_view")
     thruplay = _extract_action_value(r.get("video_thruplay_watched_actions") or [], "video_view")
 
     hook = (vtr3 / impressions * 100) if impressions and vtr3 else None
@@ -181,7 +186,7 @@ def format_insights_for_analysis(insights: list[dict], period: str) -> str:
     total_impressions = sum(int(r.get("impressions", 0)) for r in insights)
     total_clicks = sum(int(r.get("clicks", 0)) for r in insights)
     total_vtr3 = sum(
-        _extract_action_value(r.get("video_3_sec_watched_actions") or [], "video_view")
+        _extract_action_value(r.get("actions") or [], "video_view")
         for r in insights
     )
     total_thruplay = sum(
