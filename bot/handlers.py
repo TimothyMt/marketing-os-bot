@@ -1263,12 +1263,27 @@ async def _handle_callback_inner(update, context, query, session, data, user_id)
         return
 
     if data == "ads_set_thresholds":
+        from storage.fb_connections import get_connection
+        conn = await get_connection(user_id)
+        freq = conn.get("alert_frequency_max")  if conn else None
+        roas = conn.get("alert_roas_drop_pct")  if conn else None
+        cpm  = conn.get("alert_cpm_spike_pct")  if conn else None
+        has_current = any(v is not None for v in (freq, roas, cpm))
+
+        # Nhắc lại giá trị đang dùng (nếu có) làm mẫu sẵn để khách dễ chỉnh,
+        # không thì mới show ví dụ/benchmark mặc định.
+        ex_freq = freq if freq is not None else 5.0
+        ex_roas = int(roas) if roas is not None else 20
+        ex_cpm  = int(cpm)  if cpm  is not None else 30
+        intro = "Sếp đang để mức này — gửi lại 3 dòng nếu muốn đổi:" if has_current \
+            else "Gửi cho em 3 dòng theo format:"
+
         await query.edit_message_text(
             "⚠️ *Đặt ngưỡng cảnh báo*\n\n"
-            "Gửi cho em 3 dòng theo format:\n"
-            "`frequency: 5.0`\n"
-            "`roas_drop: 20`\n"
-            "`cpm_spike: 30`\n\n"
+            f"{intro}\n"
+            f"`frequency: {ex_freq}`\n"
+            f"`roas_drop: {ex_roas}`\n"
+            f"`cpm_spike: {ex_cpm}`\n\n"
             "Bỏ trống dòng nào = Max tự dùng benchmark ngành.",
             parse_mode=ParseMode.MARKDOWN,
         )
