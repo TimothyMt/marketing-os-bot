@@ -79,14 +79,14 @@ async def _run_daily_digest(bot) -> None:
         user_id      = conn["user_id"]
         account_name = (conn.get("account_name") or "Ads Account").replace("*", "").replace("_", "-").replace("`", "'").replace("[", "(").replace("]", ")")
         try:
-            today_campaigns = await pull_and_snapshot(conn)
+            yesterday_campaigns, report_date = await pull_and_snapshot(conn)
 
-            # Lấy snapshot hôm qua để tính delta
-            yesterday = datetime.now(timezone.utc) - timedelta(days=1)
-            prev_rows = await get_snapshot(user_id, yesterday)
+            # Lấy snapshot 2 ngày trước để so sánh ngày-qua-ngày với "hôm qua"
+            day_before = report_date - timedelta(days=1)
+            prev_rows = await get_snapshot(user_id, day_before)
 
-            delta = compute_delta(today_campaigns, prev_rows)
-            text  = format_daily_digest(today_campaigns, delta, conn, account_name)
+            delta = compute_delta(yesterday_campaigns, prev_rows)
+            text  = format_daily_digest(yesterday_campaigns, delta, conn, account_name, report_date=report_date)
             await send_message_safe(bot, user_id, text)
 
         except Exception as e:
@@ -109,7 +109,7 @@ async def _run_weekly_report(bot) -> None:
         user_id      = conn["user_id"]
         account_name = (conn.get("account_name") or "Ads Account").replace("*", "").replace("_", "-").replace("`", "'").replace("[", "(").replace("]", ")")
         try:
-            this_week_campaigns = await pull_and_snapshot(conn)
+            await pull_and_snapshot(conn)  # đảm bảo snapshot hôm qua đã có trước khi query range
 
             # Snapshot 7 ngày vừa rồi vs 7 ngày trước đó
             this_week_start = datetime.combine(today - timedelta(days=6), datetime.min.time()).replace(tzinfo=timezone.utc)
@@ -142,11 +142,11 @@ async def _run_alert_monitor(bot) -> None:
         user_id      = conn["user_id"]
         account_name = (conn.get("account_name") or "Ads Account").replace("*", "").replace("_", "-").replace("`", "'").replace("[", "(").replace("]", ")")
         try:
-            today_campaigns = await pull_and_snapshot(conn)
-            yesterday = datetime.now(timezone.utc) - timedelta(days=1)
-            prev_rows = await get_snapshot(user_id, yesterday)
+            yesterday_campaigns, report_date = await pull_and_snapshot(conn)
+            day_before = report_date - timedelta(days=1)
+            prev_rows = await get_snapshot(user_id, day_before)
 
-            alerts = await check_alerts(today_campaigns, prev_rows, conn)
+            alerts = await check_alerts(yesterday_campaigns, prev_rows, conn)
             for alert in alerts:
                 text = format_alert(alert, account_name)
                 await send_message_safe(bot, user_id, text)

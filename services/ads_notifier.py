@@ -42,8 +42,21 @@ RECOMMENDED_METRICS = ["spend", "roas", "cpl", "frequency"]
 
 # ── Pull & snapshot ──────────────────────────────────────────────
 
-async def pull_and_snapshot(conn: dict) -> list[dict]:
-    """Pull FB Marketing API data + lưu snapshot. Returns campaign list."""
+async def pull_and_snapshot(conn: dict) -> tuple[list[dict], datetime]:
+    """Pull data của NGÀY HÔM QUA + lưu snapshot dưới đúng ngày đó.
+
+    Returns (rows, report_date).
+
+    Dùng 'yesterday' (ngày đã đóng, ổn định) — KHÔNG dùng:
+    - 'today': digest chạy 8h sáng + alert monitor chạy mỗi 4h → mỗi lần pull
+      data "hôm nay" lại khác nhau (ngày chưa hết), snapshot bị ghi đè liên tục
+      → so sánh ngày-qua-ngày lệch pha, ra số vô nghĩa.
+    - 'last_7d': cumulative rolling 7 ngày nhưng lại lưu/so sánh như 1 ngày →
+      frequency/spend/CPL bị thổi phồng ~7 lần so với thực tế 1 ngày, false-trigger
+      alert liên tục (frequency 7-ngày gần như luôn > ngưỡng 5.0 của 1-ngày).
+    'yesterday' là data đã chốt — pull lúc nào cũng ra cùng kết quả, khớp với số
+    user thấy trong FB Ads Manager khi xem "Hôm qua".
+    """
     from tools.crypto import decrypt_token
     from tools.fb_marketing import get_account_insights
     from storage.fb_connections import save_snapshot, update_last_pull
@@ -53,19 +66,20 @@ async def pull_and_snapshot(conn: dict) -> list[dict]:
     account   = conn["ad_account_id"]
 
     campaigns = await get_account_insights(
-        date_preset="last_7d",
+        date_preset="yesterday",
         level="campaign",
         ad_account_id=account,
         access_token=token,
         extra_fields=["campaign_id", "action_values"],
     )
 
-    today = datetime.now(timezone.utc)
+    report_date = datetime.now(timezone.utc) - timedelta(days=1)
     # save_snapshot trả về rows đã compute (roas/cpl/vtr_3s/campaign_id) — dùng
     # shape này để delta nhất quán với snapshot đọc từ DB.
-    computed_rows = await save_snapshot(user_id, today, campaigns)
+    computed_rows = await save_snapshot(user_id, report_date, campaigns)
     await update_last_pull(user_id)
-    return computed_rows
+    return computed_rows, report_date
+
 
 
 # ── Delta computation ────────────────────────────────────────────
@@ -117,14 +131,15 @@ def format_daily_digest(
     delta: dict,
     conn: dict,
     account_name: str,
+    report_date: Optional[datetime] = None,
 ) -> str:
     tracked = conn.get("tracked_metrics") or RECOMMENDED_METRICS
     health  = _account_health(campaigns, conn)
-    today   = datetime.now(timezone.utc).strftime("%d/%m/%Y")
+    rdate   = (report_date or (datetime.now(timezone.utc) - timedelta(days=1))).strftime("%d/%m/%Y")
 
     lines = [
         f"📊 *Báo cáo Ads — {account_name}*",
-        f"📅 {today}  |  Sức khỏe: {health}",
+        f"📅 Hôm qua ({rdate})  |  Sức khỏe: {health}",
         "",
     ]
 
