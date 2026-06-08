@@ -272,6 +272,107 @@ def format_weekly_digest(
     return "\n".join(lines)
 
 
+# ── Báo Cáo Nhanh (on-demand, theo khung thời gian) ──────────────
+
+LIVE_REPORT_NOTE = (
+    "⚠️ *Lưu ý:* Số liệu hôm nay chưa chốt — Facebook vẫn đang cập nhật "
+    "(đặc biệt conversions/ROAS do attribution window chưa đủ 24-72h), "
+    "số có thể đổi nếu sếp xem lại sau vài giờ. So với hôm qua chỉ mang tính "
+    "tham khảo vì hôm nay chưa hết ngày."
+)
+
+QUICK_REPORT_PERIODS = {
+    "live":      {"title": "🔴 Live — hôm nay (tính đến giờ)", "vs": "hôm qua"},
+    "yesterday": {"title": "📅 Hôm qua",                       "vs": "hôm kia"},
+    "7d":        {"title": "📊 7 ngày qua",                    "vs": "7 ngày trước đó"},
+}
+
+
+async def fetch_quick_report(conn: dict, period: str) -> tuple[list[dict], list[dict]]:
+    """Pull data cho Báo Cáo Nhanh — period = 'live' | 'yesterday' | '7d'.
+
+    Trả về (current_rows, compare_rows) đã compute metrics (roas/cpl/...) — CHỈ
+    xem nhanh, KHÔNG lưu snapshot (tránh ghi đè data dùng cho digest/alert tracking).
+
+    Mỗi cặp current/compare luôn cùng granularity (cùng số ngày, cùng cách pull)
+    để compute_delta so sánh đúng nghĩa — không lệch pha kiểu cumulative-vs-daily.
+    """
+    from tools.crypto import decrypt_token
+    from tools.fb_marketing import get_account_insights, get_account_insights_daily
+    from storage.fb_connections import compute_campaign_metrics
+
+    token   = decrypt_token(conn["encrypted_token"])
+    account = conn["ad_account_id"]
+    today   = datetime.now(timezone.utc).date()
+    extra   = ["campaign_id", "action_values"]
+
+    if period == "live":
+        # 'today' (chưa chốt) so với 'yesterday' (đã chốt) — cùng là 1 tổng/account/campaign
+        current = await get_account_insights(date_preset="today", level="campaign",
+                                              ad_account_id=account, access_token=token, extra_fields=extra)
+        compare = await get_account_insights(date_preset="yesterday", level="campaign",
+                                              ad_account_id=account, access_token=token, extra_fields=extra)
+
+    elif period == "yesterday":
+        # Pull 2 ngày liền kề theo time_increment=1 rồi tách — cả 2 đều là "1 ngày đã chốt"
+        since = (today - timedelta(days=2)).strftime("%Y-%m-%d")
+        until = (today - timedelta(days=1)).strftime("%Y-%m-%d")
+        rows = await get_account_insights_daily(since, until, ad_account_id=account,
+                                                 access_token=token, extra_fields=extra)
+        d_yesterday = (today - timedelta(days=1)).strftime("%Y-%m-%d")
+        current = [r for r in rows if r.get("date_start") == d_yesterday]
+        compare = [r for r in rows if r.get("date_start") != d_yesterday]
+
+    else:  # "7d"
+        # Pull 14 ngày theo từng ngày rồi chia đôi — tránh trộn cumulative (last_7d)
+        # với daily (như bug đã sửa ở pull_and_snapshot — xem b62d7eb)
+        since = (today - timedelta(days=14)).strftime("%Y-%m-%d")
+        until = (today - timedelta(days=1)).strftime("%Y-%m-%d")
+        rows = await get_account_insights_daily(since, until, ad_account_id=account,
+                                                 access_token=token, extra_fields=extra)
+        cutoff = (today - timedelta(days=7)).strftime("%Y-%m-%d")
+        current = [r for r in rows if r.get("date_start") >= cutoff]
+        compare = [r for r in rows if r.get("date_start") <  cutoff]
+
+    return [compute_campaign_metrics(c) for c in current], [compute_campaign_metrics(c) for c in compare]
+
+
+def format_quick_report(period: str, current_rows: list[dict], compare_rows: list[dict],
+                        conn: dict, account_name: str) -> str:
+    meta    = QUICK_REPORT_PERIODS[period]
+    tracked = conn.get("tracked_metrics") or RECOMMENDED_METRICS
+    delta   = compute_delta(current_rows, compare_rows)
+
+    lines = [
+        f"📈 *Báo Cáo Nhanh — {account_name}*",
+        meta["title"],
+        "",
+    ]
+
+    for key in tracked:
+        if key not in METRIC_LABELS or key not in delta:
+            continue
+        icon, label, fmt = METRIC_LABELS[key]
+        today_val, prev_val, pct = delta[key]
+        val_str = fmt(today_val)
+        if pct is not None:
+            arrow = "↑" if pct > 0 else "↓"
+            delta_str = f" ({arrow}{abs(pct):.0f}% so với {meta['vs']})"
+        else:
+            delta_str = ""
+        lines.append(f"{icon} *{label}:* {val_str}{delta_str}")
+
+    if not current_rows:
+        lines.append("_Chưa có data cho khung giờ này._")
+
+    if period == "live":
+        lines.append("")
+        lines.append(LIVE_REPORT_NOTE)
+
+    lines.extend(["", "👉 `/ads_analytics` — phân tích sâu  ·  `/ads_optimizer` — thực thi ngay"])
+    return "\n".join(lines)
+
+
 # ── Alert detection ──────────────────────────────────────────────
 
 def _find_alerts(campaigns: list[dict], conn: dict) -> list[dict]:

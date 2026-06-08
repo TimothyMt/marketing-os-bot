@@ -196,6 +196,40 @@ async def consume_oauth_state(state_token: str) -> Optional[int]:
 
 # ─── ads_snapshots ──────────────────────────────────────────────
 
+def compute_campaign_metrics(c: dict) -> dict:
+    """Tính các metric derived (roas/cpl/vtr_3s/...) từ 1 raw insight row của FB
+    (đã pull kèm extra_fields=['campaign_id','action_values']).
+
+    Dùng chung cho save_snapshot (lưu DB) và các chỗ cần xem nhanh không lưu
+    (vd Báo Cáo Nhanh) — đảm bảo cách tính nhất quán ở mọi nơi.
+    """
+    spend = float(c.get("spend") or 0)
+    impressions = float(c.get("impressions") or 0)
+    leads = _extract_action(c, "lead")
+    purchases = _extract_action(c, "purchase")
+    purchase_value = _extract_action_value(c, "purchase")
+    video_3s = _extract_action(c, "video_view")
+    return {
+        # campaign_id có thể thiếu nếu API không trả → fallback campaign_name (key ổn định)
+        "campaign_id":    c.get("campaign_id") or c.get("campaign_name") or "unknown",
+        "campaign_name":  c.get("campaign_name") or "Unknown",
+        "spend":          spend,
+        "impressions":    impressions,
+        "reach":          float(c.get("reach") or 0),
+        "clicks":         float(c.get("clicks") or 0),
+        "ctr":            float(c.get("ctr") or 0),
+        "cpm":            float(c.get("cpm") or 0),
+        "frequency":      float(c.get("frequency") or 0),
+        "leads":          leads,
+        "purchases":      purchases,
+        "purchase_value": purchase_value,
+        "video_views_3s": video_3s,
+        "roas":           round(purchase_value / spend, 4) if spend > 0 else 0,
+        "cpl":            round(spend / leads, 0) if leads > 0 else 0,
+        "vtr_3s":         round(video_3s / impressions * 100, 2) if impressions > 0 else 0,
+    }
+
+
 async def save_snapshot(user_id: int, date: datetime, campaigns: list[dict]) -> list[dict]:
     """Lưu snapshot ngày hôm nay cho user. campaigns = list từ fb_marketing.py
     (đã pull kèm extra_fields=['campaign_id','action_values']).
@@ -204,37 +238,8 @@ async def save_snapshot(user_id: int, date: datetime, campaigns: list[dict]) -> 
     để delta hôm-nay-vs-hôm-qua nhất quán.
     """
     client = _client()
-    rows = []
     date_str = date.strftime("%Y-%m-%d")
-    for c in campaigns:
-        spend = float(c.get("spend") or 0)
-        impressions = float(c.get("impressions") or 0)
-        leads = _extract_action(c, "lead")
-        purchases = _extract_action(c, "purchase")
-        purchase_value = _extract_action_value(c, "purchase")
-        video_3s = _extract_action(c, "video_view")
-        # campaign_id có thể thiếu nếu API không trả → fallback campaign_name (key ổn định)
-        camp_id = c.get("campaign_id") or c.get("campaign_name") or "unknown"
-        rows.append({
-            "user_id":        user_id,
-            "snapshot_date":  date_str,
-            "campaign_id":    camp_id,
-            "campaign_name":  c.get("campaign_name") or "Unknown",
-            "spend":          spend,
-            "impressions":    impressions,
-            "reach":          float(c.get("reach") or 0),
-            "clicks":         float(c.get("clicks") or 0),
-            "ctr":            float(c.get("ctr") or 0),
-            "cpm":            float(c.get("cpm") or 0),
-            "frequency":      float(c.get("frequency") or 0),
-            "leads":          leads,
-            "purchases":      purchases,
-            "purchase_value": purchase_value,
-            "video_views_3s": video_3s,
-            "roas":           round(purchase_value / spend, 4) if spend > 0 else 0,
-            "cpl":            round(spend / leads, 0) if leads > 0 else 0,
-            "vtr_3s":         round(video_3s / impressions * 100, 2) if impressions > 0 else 0,
-        })
+    rows = [{"user_id": user_id, "snapshot_date": date_str, **compute_campaign_metrics(c)} for c in campaigns]
     if rows and client is not None:
         await client.table("ads_snapshots").upsert(
             rows, on_conflict="user_id,snapshot_date,campaign_id"

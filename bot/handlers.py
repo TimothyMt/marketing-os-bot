@@ -1246,6 +1246,51 @@ async def _handle_callback_inner(update, context, query, session, data, user_id)
         )
         return
 
+    if data == "ads_report_menu":
+        await query.edit_message_reply_markup(reply_markup=None)
+        from storage.fb_connections import get_connection
+        conn = await get_connection(user_id)
+        if not conn:
+            await query.message.reply_text(
+                "📈 Sếp chưa kết nối Facebook Ads. Gõ `/connect_ads` để kết nối nhé.",
+                parse_mode=ParseMode.MARKDOWN,
+            )
+            return
+        kb = InlineKeyboardMarkup([
+            [InlineKeyboardButton("🔴 Live — hôm nay",  callback_data="ads_report:live")],
+            [InlineKeyboardButton("📅 Hôm qua",          callback_data="ads_report:yesterday")],
+            [InlineKeyboardButton("📊 7 ngày qua",       callback_data="ads_report:7d")],
+        ])
+        await query.message.reply_text(
+            "📈 *Báo Cáo Nhanh — Ads*\n\nSếp muốn xem chỉ số khung thời gian nào?",
+            parse_mode=ParseMode.MARKDOWN,
+            reply_markup=kb,
+        )
+        return
+
+    if data.startswith("ads_report:"):
+        period = data.split(":", 1)[1]
+        await query.edit_message_reply_markup(reply_markup=None)
+        from storage.fb_connections import get_connection
+        from services.ads_notifier import fetch_quick_report, format_quick_report, send_message_safe
+        conn = await get_connection(user_id)
+        if not conn:
+            await query.message.reply_text(
+                "📈 Sếp chưa kết nối Facebook Ads. Gõ `/connect_ads` để kết nối nhé.",
+                parse_mode=ParseMode.MARKDOWN,
+            )
+            return
+        account_name = (conn.get("account_name") or "Ads Account").replace("*", "").replace("_", "-").replace("`", "'").replace("[", "(").replace("]", ")")
+        await query.message.reply_text("📊 Em đang pull số liệu...", parse_mode=ParseMode.MARKDOWN)
+        try:
+            current_rows, compare_rows = await fetch_quick_report(conn, period)
+            text = format_quick_report(period, current_rows, compare_rows, conn, account_name)
+            await send_message_safe(context.bot, user_id, text)
+        except Exception as e:
+            logger.warning("[AdsReport] quick report failed user=%d period=%s: %s", user_id, period, e)
+            await query.message.reply_text(f"🛑 Không pull được số liệu: {str(e)[:200]}")
+        return
+
     if data == "ads_toggle_notify":
         from storage.fb_connections import get_connection, update_notification_settings
         conn = await get_connection(user_id)
@@ -2457,6 +2502,12 @@ async def _handle_callback_inner(update, context, query, session, data, user_id)
             else:
                 label = skill_name
             buttons.append([InlineKeyboardButton(label, callback_data=f"task_{skill_name}")])
+
+        # Minh — thêm nút Báo Cáo Nhanh: xem chỉ số theo khung giờ (live/hôm qua/7 ngày),
+        # pull trực tiếp + so sánh, không qua AI audit (nhanh hơn ads_analytics)
+        if persona_key == "digital_marketing":
+            buttons.append([InlineKeyboardButton("📈 Báo Cáo Nhanh — Ads", callback_data="ads_report_menu")])
+
         buttons.append([InlineKeyboardButton("↩ Hỏi thêm", callback_data="continue_advisor")])
 
         await query.message.reply_text(
