@@ -373,6 +373,40 @@ def format_quick_report(period: str, current_rows: list[dict], compare_rows: lis
     return "\n".join(lines)
 
 
+def ads_table_from_metrics(
+    ads: list[dict],
+    tracked_metrics: list[str],
+    name_key: str = "ad_name",
+    campaign_key: str = "campaign_name",
+) -> tuple[list[str], list[dict]]:
+    """Dựng (columns, rows) cho render_ads_table/build_ads_dashboard_report (bot.html_report)
+    từ list ad-level metric dict + tracked_metrics user đã chọn qua menu /ads_settings.
+
+    Cột = "Ad name" + "Campaign" (cố định, để biết đang xem ad nào) + đúng những
+    metric user đã bật trong tracked_metrics — dùng chung METRIC_LABELS làm nguồn
+    label/format với phần notification/quick-report, nên user đổi lựa chọn ở
+    /ads_settings sẽ tự phản ánh vào bảng dashboard, không cần sửa code/đợi release.
+    """
+    metric_keys = [k for k in tracked_metrics if k in METRIC_LABELS]
+    columns = ["Ad name", "Campaign"] + [METRIC_LABELS[k][1] for k in metric_keys]
+
+    rows = []
+    for ad in ads:
+        cells = [ad.get(name_key) or "—", ad.get(campaign_key) or "—"]
+        for key in metric_keys:
+            _, _, fmt = METRIC_LABELS[key]
+            try:
+                cells.append(fmt(ad.get(key) or 0))
+            except Exception:
+                cells.append(str(ad.get(key, "—")))
+        row = {"cells": cells}
+        if ad.get("badge"):
+            row["badge"] = ad["badge"]
+            row["badge_cls"] = ad.get("badge_cls", "pill-win")
+        rows.append(row)
+    return columns, rows
+
+
 # ── Alert detection ──────────────────────────────────────────────
 
 def _find_alerts(campaigns: list[dict], conn: dict) -> list[dict]:
