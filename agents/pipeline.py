@@ -469,6 +469,22 @@ async def _run_skill(skill: AgentSkill, session: Session) -> str:
             "Apply correction vào output mới."
         )
 
+    # Refine-mode: tinh chỉnh có chủ đích trên bản phân tích đã có (khác với regen toàn bộ)
+    refine_request = (session.pending_intake or {}).get("_refine_request")
+    if refine_request and "YÊU CẦU CHỈNH SỬA" not in user_msg:
+        user_msg += (
+            "\n\n---\n\n"
+            "**🔧 ĐÂY LÀ YÊU CẦU CHỈNH SỬA TRÊN BẢN PHÂN TÍCH ĐÃ CÓ (không phải làm mới từ đầu):**\n"
+            "Bản phân tích hiện tại của đúng mảng này đã có sẵn trong context phía trên "
+            "(tìm phần có heading '## Kết quả ...' tương ứng — đó là kết quả gần nhất của chính skill này).\n\n"
+            f"Yêu cầu cụ thể của sếp:\n> {refine_request}\n\n"
+            "Hãy viết lại bản phân tích đầy đủ theo đúng format chuẩn, nhưng:\n"
+            "- GIỮ NGUYÊN các luận điểm/số liệu/cấu trúc vẫn còn đúng và không liên quan tới yêu cầu trên\n"
+            "- CHỈ thay đổi/bổ sung đúng phần mà yêu cầu đề cập — đào sâu, cụ thể, có số liệu\n"
+            "- Đảm bảo phần mới nhất quán logic với phần giữ nguyên (không tạo mâu thuẫn nội bộ)\n"
+            "- Output là MỘT bản phân tích hoàn chỉnh đã cập nhật (không phải bản diff hay ghi chú thay đổi)"
+        )
+
     format_instruction = get_format_instruction(skill.output_format)
     en_level = (session.preferences or {}).get("en_level", "moderate")
     lang_instruction = get_lang_instruction(en_level)

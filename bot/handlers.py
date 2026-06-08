@@ -391,6 +391,37 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text.strip()
     session = await get_session(user_id)
 
+    # Refine mode: user vừa gõ yêu cầu chỉnh sửa tự do cho 1 phân tích đã có sẵn
+    # (xem nhánh "REFINABLE_STRATEGIC" trong handle_callback) — cập nhật trên bản
+    # cũ qua injection riêng "_refine_request" (chỉ dẫn AI giữ nguyên phần không
+    # liên quan, chỉ sửa đúng phần được yêu cầu — khác với regen toàn bộ).
+    refine_target = session.pending_intake.get("_awaiting_refine_for")
+    if refine_target:
+        session.pending_intake.pop("_awaiting_refine_for", None)
+        session.pending_intake["_refine_request"] = text
+        session.selected_task = refine_target
+        await save_session(session)
+
+        await update.message.reply_text(
+            "🔧 Em đang cập nhật bản phân tích theo đúng yêu cầu của sếp...",
+            parse_mode=ParseMode.MARKDOWN,
+        )
+        try:
+            from agents.pipeline import run_strategic_single_skill
+            from config import AGENT_TIMEOUT
+            result = await asyncio.wait_for(
+                run_strategic_single_skill(refine_target, session),
+                timeout=AGENT_TIMEOUT,
+            )
+            session.pending_intake.pop("_refine_request", None)
+            session.stage = PipelineStage.TASK_SELECT
+            await save_session(session)
+            await _send_ops_result(update.message, session, refine_target, result)
+        except Exception as e:
+            logger.exception("Refine run failed: %s", e)
+            await update.message.reply_text(f"⚠️ Cập nhật gặp lỗi: {str(e)[:200]}")
+        return
+
     # Quick-menu (persistent reply keyboard) — bấm nút gửi về plain text trùng label
     if text == "🛍 Dịch vụ":
         await update.message.reply_text(
@@ -2545,8 +2576,23 @@ async def _handle_callback_inner(update, context, query, session, data, user_id)
             return
 
         from agents.task_registry import get_task as _get_task
+        skill_list = persona.owns_skills
+        intro = f"{persona.emoji} *{persona.name} — Chọn skill muốn chạy:*"
+
+        # Max (CMO): khoá các phân tích lẻ cho tới khi đã chạy xong "full" A→Z —
+        # tránh sếp chọn nhầm 1 mảnh nhỏ rồi thiếu context tổng thể. Sau khi có
+        # "synthesis" (kết quả cuối của full), các skill lẻ mới mở ra để đào sâu/tinh chỉnh.
+        if persona_key == "cmo" and not session.has_result("synthesis"):
+            skill_list = ["full"]
+            intro = (
+                f"{persona.emoji} *{persona.name} đây sếp!*\n\n"
+                "Để có context đầy đủ, mình bắt đầu với phân tích tổng thể trước nhé — "
+                "sau khi xong, các công cụ đào sâu từng mảng (Đối thủ / Khách hàng / Giá...) "
+                "sẽ tự mở khoá để sếp tinh chỉnh dựa trên kết quả này."
+            )
+
         buttons = []
-        for skill_name in persona.owns_skills:
+        for skill_name in skill_list:
             task_cfg = _get_task(skill_name)
             if task_cfg:
                 label = f"{task_cfg.button_emoji} {task_cfg.label}"
@@ -2562,7 +2608,7 @@ async def _handle_callback_inner(update, context, query, session, data, user_id)
         buttons.append([InlineKeyboardButton("↩ Hỏi thêm", callback_data="continue_advisor")])
 
         await query.message.reply_text(
-            f"{persona.emoji} *{persona.name} — Chọn skill muốn chạy:*",
+            intro,
             parse_mode=ParseMode.MARKDOWN,
             reply_markup=InlineKeyboardMarkup(buttons),
         )
@@ -3280,6 +3326,27 @@ async def _handle_callback_inner(update, context, query, session, data, user_id)
             return
 
         # ── Strategic skills ─────────────────────────────────────
+        # Refine mode: nếu đã có bản phân tích mảng này VÀ đã chạy xong full A→Z,
+        # cho sếp gõ yêu cầu chỉnh sửa tự do — cập nhật trên bản cũ thay vì làm lại từ đầu.
+        REFINABLE_STRATEGIC = {"market", "competitor", "customer", "pricing"}
+        if task_type in REFINABLE_STRATEGIC:
+            from agents.pipeline import STRATEGIC_RESULT_KEYS
+            result_key = STRATEGIC_RESULT_KEYS[task_type]
+            if session.has_result(result_key) and session.has_result("synthesis"):
+                await query.edit_message_reply_markup(reply_markup=None)
+                session.pending_intake = {"_awaiting_refine_for": task_type}
+                await save_session(session)
+                task_label = get_task(task_type).label if get_task(task_type) else task_type
+                await query.message.reply_text(
+                    f"🔧 *{task_label} — Tinh chỉnh trên bản đã có*\n\n"
+                    "Sếp gõ ngay yêu cầu cụ thể, em sẽ cập nhật trên bản phân tích cũ "
+                    "(không chạy lại từ đầu):\n\n"
+                    "_Ví dụ: \"thêm đối thủ ABC vào phân tích\", \"đào sâu hơn về pricing "
+                    "của Cocoon\", \"audience đổi sang nhóm 35-45 tuổi rồi, cập nhật lại insight\"_",
+                    parse_mode=ParseMode.MARKDOWN,
+                )
+                return
+
         # Phase 1.3: Profile reuse — nếu profile đã có required fields, skip intake
         if not needs_intake(session, task_type):
             await query.edit_message_reply_markup(reply_markup=None)
