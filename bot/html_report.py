@@ -231,6 +231,53 @@ body {
 .pos-x-l, .pos-x-r { flex-shrink: 0; }
 .pos-x-line { flex: 1; height: 2px; background: var(--border); }
 
+/* === Ads Dashboard: horizontal bar chart === */
+.barchart { margin: 8px 0 28px; }
+.barchart-title {
+  font-size: 11px; font-weight: 700; text-transform: uppercase;
+  letter-spacing: 0.6px; color: var(--muted); margin-bottom: 16px;
+}
+.barchart-row { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; }
+.barchart-label { width: 120px; flex-shrink: 0; font-size: 13px; color: var(--text); text-align: right; }
+.barchart-track {
+  flex: 1; background: #f1f5f9; border-radius: 6px; height: 30px;
+  position: relative; overflow: hidden;
+}
+.barchart-fill {
+  height: 100%; border-radius: 6px; display: flex; align-items: center;
+  padding: 0 12px; color: white; font-size: 12px; font-weight: 600; white-space: nowrap;
+}
+.barchart-fill.c1 { background: linear-gradient(90deg, #7c3aed, #a78bfa); }
+.barchart-fill.c2 { background: linear-gradient(90deg, #6366f1, #a5b4fc); }
+.barchart-fill.c3 { background: linear-gradient(90deg, #14b8a6, #5eead4); color: #134e4a; }
+.barchart-fill.c4 { background: linear-gradient(90deg, #10b981, #6ee7b7); color: #064e3b; }
+.barchart-fill.c5 { background: linear-gradient(90deg, #94a3b8, #cbd5e1); color: #334155; }
+
+/* === Ads Dashboard: pill badge inline trong bảng (Win #1, CPL thấp nhất...) === */
+.pill {
+  display: inline-block; font-size: 9px; font-weight: 700; padding: 2px 8px;
+  border-radius: 10px; margin-left: 6px; text-transform: uppercase; letter-spacing: 0.3px;
+  vertical-align: middle;
+}
+.pill-win  { background: #dcfce7; color: #15803d; }
+.pill-best { background: #dbeafe; color: #1d4ed8; }
+
+/* === Ads Dashboard: lưới insight 2 cột (pattern thắng / điểm cần chú ý) === */
+.insight-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin: 16px 0 8px; }
+.insight-card { border-radius: 10px; padding: 18px 20px; }
+.insight-card.good { background: #f0fdf4; border: 1px solid #bbf7d0; }
+.insight-card.warn { background: #fffbeb; border: 1px solid #fde68a; }
+.insight-card-title { font-size: 13px; font-weight: 700; margin-bottom: 12px; }
+.insight-card.good .insight-card-title { color: #15803d; }
+.insight-card.warn .insight-card-title { color: #b45309; }
+.insight-card ul { list-style: none; margin: 0; padding: 0; }
+.insight-card li {
+  font-size: 13px; line-height: 1.6; padding-left: 18px; position: relative;
+  margin-bottom: 10px; color: var(--text);
+}
+.insight-card.good li::before { content: "●"; color: #22c55e; position: absolute; left: 0; top: 6px; font-size: 9px; }
+.insight-card.warn li::before { content: "▲"; color: #f59e0b; position: absolute; left: 0; top: 6px; font-size: 9px; }
+
 /* Mobile */
 @media (max-width: 640px) {
   body { padding: 12px 8px; }
@@ -243,6 +290,8 @@ body {
   .content th, .content td { padding: 8px 10px; }
   .pos-q { padding: 10px; min-height: 80px; }
   .pos-q-desc { font-size: 11px; }
+  .insight-grid { grid-template-columns: 1fr; }
+  .barchart-label { width: 86px; font-size: 11px; }
 }
 """
 
@@ -530,6 +579,107 @@ def _generate_tab_css(n: int) -> str:
             f"{{ background: var(--primary); color: white; font-weight: 600; }}"
         )
     return "\n".join(rules)
+
+
+def render_bar_chart(title: str, items: list[dict]) -> str:
+    """Bar chart ngang. items = [{"label","value","display"}] — value quyết định
+    độ dài thanh, display là text hiện trong thanh (vd '303 leads · 11.3K/lead')."""
+    if not items:
+        return ""
+    max_val = max((it.get("value") or 0) for it in items) or 1
+    palette = ["c1", "c2", "c3", "c4", "c5"]
+    rows = []
+    for i, it in enumerate(items):
+        pct = max(10, round((it.get("value") or 0) / max_val * 100))
+        cls = palette[min(i, len(palette) - 1)]
+        label = (it.get("label") or "").replace("<", "&lt;").replace(">", "&gt;")
+        display = (it.get("display") or str(it.get("value") or "")).replace("<", "&lt;").replace(">", "&gt;")
+        rows.append(
+            f'<div class="barchart-row">'
+            f'<div class="barchart-label">{label}</div>'
+            f'<div class="barchart-track"><div class="barchart-fill {cls}" style="width:{pct}%">{display}</div></div>'
+            f'</div>'
+        )
+    return f'<div class="barchart"><div class="barchart-title">{title}</div>{"".join(rows)}</div>'
+
+
+def render_ads_table(columns: list[str], rows: list[dict]) -> str:
+    """Bảng kèm pill badge inline ở cột đầu.
+    rows = [{"cells": [...], "badge": "Win #1" | None, "badge_cls": "pill-win" | "pill-best"}]."""
+    if not rows:
+        return ""
+    head = "".join(f"<th>{c}</th>" for c in columns)
+    body = []
+    for r in rows:
+        cells = r.get("cells") or []
+        badge = r.get("badge")
+        badge_html = f' <span class="pill {r.get("badge_cls", "pill-win")}">{badge}</span>' if badge else ""
+        tds = "".join(f"<td>{c}{badge_html if i == 0 else ''}</td>" for i, c in enumerate(cells))
+        body.append(f"<tr>{tds}</tr>")
+    return (
+        '<div class="table-wrap"><table><thead><tr>' + head + '</tr></thead>'
+        '<tbody>' + "".join(body) + '</tbody></table></div>'
+    )
+
+
+def render_insight_grid(good_title: str, good_items: list[str], warn_title: str, warn_items: list[str]) -> str:
+    """Lưới 2 cột: pattern thắng (xanh, ●) vs điểm cần chú ý (vàng, ▲)."""
+    def _card(cls: str, title: str, items: list[str]) -> str:
+        lis = "".join(f"<li>{it}</li>" for it in items)
+        return f'<div class="insight-card {cls}"><div class="insight-card-title">{title}</div><ul>{lis}</ul></div>'
+    return f'<div class="insight-grid">{_card("good", good_title, good_items)}{_card("warn", warn_title, warn_items)}</div>'
+
+
+def build_ads_dashboard_report(
+    account_name: str,
+    period_label: str,
+    bar_chart_title: str,
+    bar_chart_items: list[dict],
+    table_title: str,
+    table_columns: list[str],
+    table_rows: list[dict],
+    good_title: str,
+    good_items: list[str],
+    warn_title: str,
+    warn_items: list[str],
+    business_name: str = "",
+    industry: str = "",
+    stage: str = "",
+) -> str:
+    """Render dashboard hiệu suất Ads dạng visual: bar chart leads theo campaign +
+    bảng top ads (kèm pill badge) + lưới insight 2 cột (pattern thắng / điểm cần chú ý)."""
+    section_body = "".join(filter(None, [
+        render_bar_chart(bar_chart_title, bar_chart_items),
+        f"<h2>{table_title}</h2>" if table_title else "",
+        render_ads_table(table_columns, table_rows),
+        "<h2>📌 Insight</h2>",
+        render_insight_grid(good_title, good_items, warn_title, warn_items),
+    ]))
+    section_html = f"""
+<div class="section strategy active" data-idx="0">
+  <div class="section-header">
+    <span class="icon">📈</span>
+    <h2>{period_label} — {account_name}</h2>
+  </div>
+  <div class="content">{section_body}</div>
+</div>"""
+
+    radio = '<input type="radio" name="tab" id="tab-0" class="tab-state" checked>'
+    tab_label = '<label for="tab-0" class="tab-btn"><span>📈</span> Báo cáo Ads</label>'
+
+    return HTML_TEMPLATE.format(
+        report_title=f"📈 Báo Cáo Hiệu Suất Ads — {account_name}",
+        business_name=business_name or account_name or "Business",
+        industry=industry or "—",
+        stage=stage or "—",
+        date=datetime.now().strftime("%d/%m/%Y · %H:%M"),
+        radio_inputs=radio,
+        tabs_html=tab_label,
+        sections_html=section_html,
+        css=CSS,
+        tab_rules=_generate_tab_css(1),
+        pos_map_script=POS_MAP_SCRIPT,
+    )
 
 
 def build_single_skill_report(
