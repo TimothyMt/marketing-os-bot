@@ -5974,14 +5974,13 @@ async def _prefetch_performance_data(message: Message, session) -> dict:
     """
     from tools.fb_marketing import get_account_insights, format_insights_for_analysis, is_available
     from tools.crypto import decrypt_token
-    from storage.fb_connections import get_connection, get_available_accounts
+    from storage.fb_connections import get_connection
     from config import FB_ACCESS_TOKEN, FB_AD_ACCOUNT_ID
 
     # ── Ưu tiên per-user OAuth token ────────────────────────────
     user_token = None
     user_account_id = None
     user_account_name = None
-    user_available = []
 
     user_conn = await get_connection(session.user_id)
     if user_conn and user_conn.get("encrypted_token"):
@@ -5989,7 +5988,6 @@ async def _prefetch_performance_data(message: Message, session) -> dict:
             user_token = decrypt_token(user_conn["encrypted_token"])
             user_account_id = user_conn.get("ad_account_id")
             user_account_name = user_conn.get("account_name") or user_account_id
-            user_available = await get_available_accounts(session.user_id)
         except Exception as e:
             logger.warning("Decrypt user token failed for user=%d: %s", session.user_id, e)
             user_token = None
@@ -6028,22 +6026,12 @@ async def _prefetch_performance_data(message: Message, session) -> dict:
             date_preset = preset
             break
 
-    # Hiện account đang dùng + nút đổi nếu có nhiều account
+    # Hiện account đang dùng để pull (chọn account đã làm ở bước trước —
+    # gate aud_pick: trong _send_single_shot_form — không hiện lại bộ đổi
+    # tài khoản ở đây nữa, kẻo user tưởng phải chọn lại giữa lúc đang chạy).
     safe_name = (user_account_name or "").replace("*", "").replace("_", "-")
     pull_text = f"📊 Em đang pull data *{safe_name}*..." if safe_name else "📊 Em đang pull data Facebook Ads của sếp..."
-    if len(user_available) > 1:
-        from telegram import InlineKeyboardButton, InlineKeyboardMarkup
-        sw_buttons = []
-        for a in user_available[:8]:
-            aid = a.get("id", "")
-            norm = aid if aid.startswith("act_") else f"act_{aid}"
-            is_active = (norm == user_account_id or aid == user_account_id)
-            label = ("✅ " if is_active else "○ ") + (a.get("name") or aid)
-            sw_buttons.append(InlineKeyboardButton(label, callback_data=f"sw_acct:{aid}"))
-        kb = InlineKeyboardMarkup([[b] for b in sw_buttons])
-        await message.reply_text(pull_text + "\n\n_Đổi tài khoản:_", parse_mode=ParseMode.MARKDOWN, reply_markup=kb)
-    else:
-        await message.reply_text(pull_text, parse_mode=ParseMode.MARKDOWN)
+    await message.reply_text(pull_text, parse_mode=ParseMode.MARKDOWN)
 
     level_raw = session.pending_intake.get("level", "campaign").lower()
     level = level_raw if level_raw in ("campaign", "adset", "ad") else "campaign"
