@@ -1291,6 +1291,21 @@ async def _handle_callback_inner(update, context, query, session, data, user_id)
             await query.message.reply_text(f"🛑 Không pull được số liệu: {str(e)[:200]}")
         return
 
+    if data.startswith("opt_pick:"):
+        choice = data.split(":", 1)[1]
+        await query.edit_message_reply_markup(reply_markup=None)
+        choices = session.pending_intake.pop("_optimizer_choices", {})
+        if choice == "_custom":
+            session.pending_intake["_optimizer_skip_pick"] = True
+        else:
+            name = choices.get(choice)
+            if name:
+                session.pending_intake["target"] = name
+                await query.message.reply_text(f"✅ Đã chọn: *{_escape_md(name)}*", parse_mode=ParseMode.MARKDOWN)
+        await save_session(session)
+        await _send_single_shot_form(query.message, session, "ads_optimizer")
+        return
+
     if data == "ads_toggle_notify":
         from storage.fb_connections import get_connection, update_notification_settings
         conn = await get_connection(user_id)
@@ -3795,6 +3810,47 @@ async def _send_single_shot_form(message: Message, session, task_name: str, _ski
                     buttons.append([InlineKeyboardButton(label, callback_data=f"aud_pick:{aid}:{task_name}")])
                 await message.reply_text(
                     "🔄 *Sếp có nhiều Ad Account — chọn account muốn phân tích trước nhé:*",
+                    parse_mode=ParseMode.MARKDOWN,
+                    reply_markup=InlineKeyboardMarkup(buttons),
+                )
+                return
+
+    # Ads Optimizer — hiện list campaign trong account dạng nút bấm để user
+    # chọn thẳng (đỡ phải gõ đúng tên), thay vì bắt nhập tay ngay từ đầu.
+    # Bỏ qua nếu đã có target (user chọn rồi, hoặc bấm "nhập tay").
+    if (task_name == "ads_optimizer"
+            and not session.pending_intake.get("target")
+            and not session.pending_intake.get("_optimizer_skip_pick")):
+        from storage.fb_connections import get_connection
+        conn = await get_connection(session.user_id)
+        if conn:
+            try:
+                from tools.crypto import decrypt_token
+                from tools.fb_marketing import get_active_campaigns
+                token = decrypt_token(conn["encrypted_token"])
+                campaigns = await get_active_campaigns(ad_account_id=conn["ad_account_id"], access_token=token)
+            except Exception as e:
+                logger.warning("[AdsOptimizer] load campaigns for picker failed: %s", e)
+                campaigns = []
+
+            if campaigns:
+                from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+                _STATUS_ICON = {"ACTIVE": "🟢", "PAUSED": "⏸"}
+                choices: dict[str, str] = {}
+                buttons = []
+                for i, c in enumerate(campaigns[:15]):
+                    cid  = c.get("id") or str(i)
+                    name = (c.get("name") or "Campaign").replace("*", "").replace("_", "-")
+                    icon = _STATUS_ICON.get(c.get("status"), "⚪")
+                    choices[cid] = name
+                    buttons.append([InlineKeyboardButton(f"{icon} {name[:40]}", callback_data=f"opt_pick:{cid}")])
+                buttons.append([InlineKeyboardButton("✍️ Khác — Ad Set / Ad / nhập tay", callback_data="opt_pick:_custom")])
+
+                session.pending_intake["_optimizer_choices"] = choices
+                await save_session(session)
+                await message.reply_text(
+                    "⚡ *Sếp muốn thao tác campaign nào?*\n\n"
+                    "_Chọn 1 campaign trong list, hoặc nhập tay nếu muốn nhắm Ad Set / Ad cụ thể._",
                     parse_mode=ParseMode.MARKDOWN,
                     reply_markup=InlineKeyboardMarkup(buttons),
                 )
