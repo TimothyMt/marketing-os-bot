@@ -1,7 +1,7 @@
 """
 Telegram inline keyboards for the bot.
 """
-from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardMarkup
 
 
 # ─────────────────────────────────────────────────────────────────
@@ -19,6 +19,19 @@ MAIN_MENU_KEYBOARD = InlineKeyboardMarkup([
 ])
 
 TASK_SELECT_KEYBOARD = MAIN_MENU_KEYBOARD  # alias
+
+# ─────────────────────────────────────────────────────────────────
+# QUICK MENU — persistent reply keyboard (góc dưới khung chat, kiểu shop bot)
+# ─────────────────────────────────────────────────────────────────
+
+QUICK_MENU_KEYBOARD = ReplyKeyboardMarkup(
+    [
+        ["🛍 Dịch vụ", "💬 Hỗ trợ"],
+        ["👛 Ví token"],
+    ],
+    resize_keyboard=True,
+    input_field_placeholder="Chọn menu nhanh bên dưới",
+)
 
 # ─────────────────────────────────────────────────────────────────
 # Persona sub-menus (custom flows) — Linh / Nam / Trang / Khoa

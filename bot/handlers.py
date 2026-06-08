@@ -20,6 +20,7 @@ from frameworks.kpi_library import KPI_LIBRARY
 from frameworks.industry_context import suggest_key_message_hint
 from bot.keyboards import (
     MAIN_MENU_KEYBOARD,
+    QUICK_MENU_KEYBOARD,
     TASK_SELECT_KEYBOARD,
     CONFIRM_KEYBOARD,
     RESTART_KEYBOARD,
@@ -310,6 +311,12 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         parse_mode=ParseMode.MARKDOWN,
         reply_markup=MAIN_MENU_KEYBOARD,
     )
+    # Persistent quick-menu (góc dưới khung chat) — gửi riêng vì 1 message chỉ
+    # nhận 1 reply_markup, và inline keyboard ở trên đã chiếm slot đó.
+    await update.message.reply_text(
+        "💡 Menu nhanh luôn sẵn ở dưới khung chat 👇",
+        reply_markup=QUICK_MENU_KEYBOARD,
+    )
 
 
 @with_user_lock
@@ -383,6 +390,35 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     text = update.message.text.strip()
     session = await get_session(user_id)
+
+    # Quick-menu (persistent reply keyboard) — bấm nút gửi về plain text trùng label
+    if text == "🛍 Dịch vụ":
+        await update.message.reply_text(
+            "Đây là các dịch vụ Max có thể giúp sếp 👇",
+            reply_markup=MAIN_MENU_KEYBOARD,
+        )
+        return
+    if text == "💬 Hỗ trợ":
+        await update.message.reply_text(
+            "Sếp cần hỗ trợ gì cứ nhắn trực tiếp ở đây — em chuyển admin xử lý sớm nhất ạ 🙏\n\n"
+            "_Xem hướng dẫn nhanh qua /help_",
+            parse_mode=ParseMode.MARKDOWN,
+        )
+        return
+    if text == "👛 Ví token":
+        from tools.token_tracker import get_used, get_remaining, get_quota, fmt, is_low, is_exhausted
+        used, remaining, quota = get_used(session), get_remaining(session), get_quota(session)
+        pct_used = (used / quota * 100) if quota else 0
+        status_emoji = "🔴" if is_exhausted(session) else "🟡" if is_low(session) else "🟢"
+        await update.message.reply_text(
+            f"👛 *Ví token của sếp*\n\n"
+            f"{status_emoji} Quota: *{fmt(quota)}*\n"
+            f"📉 Đã dùng: *{fmt(used)}* ({pct_used:.1f}%)\n"
+            f"📊 Còn lại: *{fmt(remaining)}*\n\n"
+            f"_Xem chi tiết & lịch sử qua /settings_",
+            parse_mode=ParseMode.MARKDOWN,
+        )
+        return
 
     # NEW: First-time name capture
     if session.pending_intake.get("_awaiting_user_name"):
