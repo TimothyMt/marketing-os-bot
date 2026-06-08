@@ -5972,7 +5972,9 @@ async def _prefetch_performance_data(message: Message, session) -> dict:
     Returns dict: {"ok": bool, "reason": str, "detail": str}
       reason ∈ {"ok", "no_token", "no_account", "no_insights", "api_error"}
     """
-    from tools.fb_marketing import get_account_insights, format_insights_for_analysis, is_available
+    from tools.fb_marketing import (
+        get_account_insights, format_insights_for_analysis, format_ad_level_for_analysis, is_available,
+    )
     from tools.crypto import decrypt_token
     from storage.fb_connections import get_connection
     from config import FB_ACCESS_TOKEN, FB_AD_ACCOUNT_ID
@@ -6056,6 +6058,22 @@ async def _prefetch_performance_data(message: Message, session) -> dict:
         }
 
     fb_data = format_insights_for_analysis(insights, period_raw)
+
+    # Đào thêm 1 lớp xuống cấp AD — campaign-level chỉ biết "kênh nào thắng/thua",
+    # không biết CREATIVE nào trong kênh đó đang kéo/ghì kết quả ("Content Win").
+    # Pull riêng ở level="ad" (giữ nguyên level chính cho Frequency Radar/Budget
+    # Reallocation vốn thiết kế theo campaign — tránh vỡ cấu trúc phân tích cũ).
+    try:
+        ad_insights = insights if level == "ad" else await get_account_insights(
+            date_preset=date_preset, level="ad",
+            ad_account_id=account_id, access_token=access_token,
+        )
+        ad_breakdown = format_ad_level_for_analysis(ad_insights, period_raw)
+        if ad_breakdown:
+            fb_data = f"{fb_data}\n\n{ad_breakdown}"
+    except Exception as e:
+        logger.warning("Ad-level pull for Content Win skipped: %s", e)
+
     session.pending_intake["_fb_data"] = fb_data
     logger.info("FB Marketing API: fetched %d rows | preset=%s | level=%s", len(insights), date_preset, level)
     return {"ok": True, "reason": "ok", "detail": f"{len(insights)} rows"}

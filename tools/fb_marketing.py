@@ -311,6 +311,63 @@ def format_insights_for_analysis(insights: list[dict], period: str) -> str:
     return "\n".join(lines)
 
 
+def format_ad_level_for_analysis(insights: list[dict], period: str, top_n: int = 15) -> str:
+    """Format breakdown ở CẤP AD (level='ad') thành bảng "Content Win" — xếp hạng
+    theo leads để Claude đào sâu xuống TỪNG CREATIVE cụ thể.
+
+    Khác với format_insights_for_analysis (cấp campaign — biết "kênh nào thắng"
+    nhưng không biết "creative nào trong kênh đó đang kéo kết quả"), hàm này cho
+    Claude thấy tên ad/post cụ thể + leads/CPL/CPM/Reach/Freq từng cái — đủ để trả
+    lời "Post nào nên scale, Post nào đang ghì account xuống".
+    """
+    if not insights:
+        return ""
+
+    rows = []
+    for r in insights:
+        spend = float(r.get("spend") or 0)
+        actions = r.get("actions") or []
+        leads = next(
+            (float(a.get("value") or 0) for a in actions if a.get("action_type") == "lead"),
+            0.0,
+        )
+        rows.append({
+            "ad_name":       r.get("ad_name") or "Unknown",
+            "campaign_name": r.get("campaign_name") or "Unknown",
+            "spend":         spend,
+            "leads":         leads,
+            "cpl":           round(spend / leads, 0) if leads > 0 else None,
+            "cpm":           float(r.get("cpm") or 0),
+            "reach":         float(r.get("reach") or 0),
+            "frequency":     float(r.get("frequency") or 0),
+        })
+
+    ranked = sorted(rows, key=lambda a: a["leads"], reverse=True)[:top_n]
+    with_leads = [a for a in ranked if a["leads"] > 0]
+    cheapest = min(with_leads, key=lambda a: a["cpl"]) if with_leads else None
+
+    lines = [
+        f"### BREAKDOWN THEO AD — CONTENT WIN ({len(ranked)} ads, xếp hạng theo leads, period: {period})",
+        "",
+        "| Ad name | Campaign | Spend (VND) | Leads | CPL (VND) | CPM (VND) | Reach | Freq | Note |",
+        "|---|---|---|---|---|---|---|---|---|",
+    ]
+    for i, a in enumerate(ranked):
+        notes = []
+        if a["leads"] > 0 and i == 0:
+            notes.append("🏆 Win #1")
+        elif a["leads"] > 0 and i == 1:
+            notes.append("🏆 Win #2")
+        if cheapest is a:
+            notes.append("💰 CPL thấp nhất")
+        cpl_str = f"{a['cpl']:,.0f}" if a["cpl"] is not None else "—"
+        lines.append(
+            f"| {a['ad_name']} | {a['campaign_name']} | {a['spend']:,.0f} | {a['leads']:.0f} "
+            f"| {cpl_str} | {a['cpm']:,.0f} | {a['reach']:,.0f} | {a['frequency']:.2f} | {' · '.join(notes)} |"
+        )
+    return "\n".join(lines)
+
+
 def is_available() -> bool:
     """Check nếu Marketing API đã được config."""
     return bool(FB_ACCESS_TOKEN and FB_AD_ACCOUNT_ID)

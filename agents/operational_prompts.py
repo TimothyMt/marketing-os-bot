@@ -1918,14 +1918,22 @@ Tổng spend, leads/conversions, CPL/ROAS trung bình, reach. ⚠️ Note nguồ
 ## 3. FREQUENCY RADAR 📡
 Tất cả campaigns → phân loại 🟢🟡🟠🔴 → action + deadline với mỗi campaign 🟠 trở lên.
 
-## 4. WINNERS 🏆 / LOSERS 🔻
+## 4. WINNERS 🏆 / LOSERS 🔻 (cấp Campaign)
 Với mỗi winner: Andromeda signal (CPM×CTR) + tại sao thắng + action scale cụ thể.
 Với mỗi loser: tầng Andromeda break + root cause + action (Pause / Fix hook / Fix audience / Fix offer) + budget tiết kiệm ước tính.
 
-## 5. BUDGET REALLOCATION — 7 ngày tới
+## 5. CONTENT WIN — TOP ADS 🎬 (đào sâu cấp Ad/Creative — CHỈ khi data có block "BREAKDOWN THEO AD — CONTENT WIN")
+Mục 4 cho biết "campaign nào thắng"; mục này trả lời "CREATIVE NÀO trong campaign đó đang kéo kết quả" — đừng dừng lại ở tên campaign, gọi thẳng tên ad/post cụ thể:
+- **Top ads ra leads nhiều nhất** (dùng nhãn 🏆 Win #1/#2 có sẵn trong data): tên ad + campaign + Spend/Leads/CPL/CPM/Reach/Freq + LÝ DO thắng — đọc CPM×Frequency để suy luận (CPM thấp → audience match tốt; Freq <2.0 → tệp còn fresh, chưa fatigue)
+- **Ad CPL thấp nhất** (nhãn 💰 có sẵn): tên + số liệu + có đáng tăng budget không (cân nhắc reach hiện còn nhỏ hay đã đủ lớn để scale)
+- **Ad đang ghì account lên cao**: tên + campaign + so sánh TRỰC TIẾP với ad thắng cùng campaign (vd "Post 2 CPM 64.6K — đắt hơn hẳn Post 1 cùng campaign chỉ 44.2K → cùng audience, khác mỗi creative → vấn đề nằm ở hook/format")
+- ✅ **Pattern của content win** (3–4 điểm): rút công thức chung từ các ad thắng — định dạng nào, CPM range nào, Frequency range nào, % đóng góp leads
+- ⚠️ **Điểm cần chú ý** (3–4 điểm): ad/campaign có dấu hiệu bất ổn — CPM/CPL cao bất thường so với ad cùng campaign, ACTIVE nhưng 0 spend (setup lỗi), creative cũ chưa refresh
+
+## 6. BUDGET REALLOCATION — 7 ngày tới
 Bảng: Campaign | Action (Tăng/Giảm X% / Pause) | Lý do. Tổng budget zero-sum.
 
-## 6. DEEP DIVE (chỉ khi có `key_concern` hoặc campaign cụ thể)
+## 7. DEEP DIVE (chỉ khi có `key_concern` hoặc campaign cụ thể)
 - Root cause theo diagnostic chains trên
 - Next actions:
   - ⚡ Xử lý ngay trong 48h (tối đa 3 actions)
