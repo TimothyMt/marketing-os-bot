@@ -82,6 +82,59 @@ async def pull_and_snapshot(conn: dict) -> tuple[list[dict], datetime]:
 
 
 
+# ── Backfill / repair snapshot lịch sử ───────────────────────────
+
+async def backfill_snapshots(conn: dict, days: int = 9) -> int:
+    """Pull lại N ngày gần nhất theo TỪNG NGÀY riêng (time_increment=1) và ghi đè
+    snapshot cũ — sửa data bị nhiễm bởi bug pull_and_snapshot trước đây (pull
+    date_preset="last_7d" — tổng cumulative 7 ngày — nhưng lưu/nhãn như 1 ngày).
+
+    Snapshot cho mỗi ngày trong khoảng vì vậy chứa tổng 7-ngày-tính-đến-hôm-đó
+    thay vì số liệu thực của riêng ngày đó → tổng tuần (sum nhiều snapshot nhiễm)
+    bị thổi phồng gấp nhiều lần so với thực tế (vd 20M vs thực chi 9.5M).
+
+    'yesterday' (closed day) tự sửa được do upsert ghi đè mỗi sáng, nhưng các
+    ngày xa hơn không bao giờ được pull lại — cần backfill 1 lần để sửa dứt
+    điểm. time_range + time_increment=1 trả về đúng số liệu RIÊNG của từng ngày
+    (giống "Hôm qua" trong FB Ads Manager), khớp với số user thấy khi xem theo
+    range trong Ads Manager.
+
+    Returns: số ngày đã ghi đè (overwrite).
+    """
+    from tools.crypto import decrypt_token
+    from tools.fb_marketing import get_account_insights_daily
+    from storage.fb_connections import save_snapshot
+
+    user_id = conn["user_id"]
+    token   = decrypt_token(conn["encrypted_token"])
+    account = conn["ad_account_id"]
+
+    today = datetime.now(timezone.utc).date()
+    since = today - timedelta(days=days)
+    until = today - timedelta(days=1)
+
+    rows = await get_account_insights_daily(
+        since=since.strftime("%Y-%m-%d"),
+        until=until.strftime("%Y-%m-%d"),
+        level="campaign",
+        ad_account_id=account,
+        access_token=token,
+        extra_fields=["campaign_id", "action_values"],
+    )
+
+    by_date: dict[str, list[dict]] = {}
+    for r in rows:
+        d = r.get("date_start")
+        if d:
+            by_date.setdefault(d, []).append(r)
+
+    for date_str, campaigns in by_date.items():
+        snap_date = datetime.strptime(date_str, "%Y-%m-%d").replace(tzinfo=timezone.utc)
+        await save_snapshot(user_id, snap_date, campaigns)
+
+    return len(by_date)
+
+
 # ── Delta computation ────────────────────────────────────────────
 
 def _sum_metric(rows: list[dict], key: str) -> float:

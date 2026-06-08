@@ -5,6 +5,8 @@ Job B — Alert Monitor: mỗi 4 tiếng, check thresholds
 Job C — Weekly Report: mỗi thứ Hai 8:00 AM (gửi thay vì Daily Digest)
 Job D — Token Refresh: mỗi ngày, refresh token gần hết hạn
 Job E — Snapshot Cleanup: mỗi tuần, xóa snapshots > 90 ngày
+Job F — Snapshot Backfill: chạy 1 lần lúc khởi động, sửa snapshot lịch sử
+        bị nhiễm bởi bug pull last_7d-lưu-thành-1-ngày (xem _run_snapshot_backfill)
 
 Tích hợp: gọi start_ads_scheduler(bot) từ post_init trong main.py.
 """
@@ -31,6 +33,7 @@ def _should_fire(job: str, slot_key: str) -> bool:
 async def start_ads_scheduler(bot) -> None:
     """Entry point — chạy vô tận dưới dạng asyncio task."""
     logger.info("[AdsScheduler] Starting background scheduler")
+    asyncio.create_task(_run_snapshot_backfill())
     while True:
         try:
             await _tick(bot)
@@ -171,6 +174,33 @@ async def _run_token_refresh(bot) -> None:
                 await _handle_token_revoked(bot, conn)
         except Exception as e:
             logger.warning("[AdsScheduler] token refresh failed user=%d: %s", user_id, e)
+
+
+# ── One-time: Snapshot Backfill/Repair ───────────────────────────
+
+async def _run_snapshot_backfill() -> None:
+    """Chạy 1 lần khi scheduler khởi động — sửa snapshot lịch sử bị nhiễm bởi
+    bug cũ (pull date_preset="last_7d" nhưng lưu/nhãn như 1 ngày → mỗi snapshot
+    chứa tổng cumulative 7-ngày thay vì số liệu thực của ngày đó, khiến tổng
+    tuần bị thổi phồng ~2x — vd báo 20M trong khi Ads Manager chỉ ghi nhận 9.5M).
+
+    Pull lại 9 ngày gần nhất theo TỪNG NGÀY riêng (time_increment=1) rồi ghi đè
+    (upsert) snapshot cũ bằng số liệu đúng — tự sửa dứt điểm, không cần thao tác
+    thủ công trên DB. Idempotent: chạy lại (vd bot restart) chỉ ghi đè bằng đúng
+    số liệu closed-day giống hệt, không gây sai lệch thêm.
+    """
+    from storage.fb_connections import get_all_active_connections
+    from services.ads_notifier import backfill_snapshots
+
+    logger.info("[AdsScheduler] Running one-time snapshot backfill/repair (fix contaminated last_7d snapshots)")
+    connections = await get_all_active_connections()
+    for conn in connections:
+        user_id = conn["user_id"]
+        try:
+            n = await backfill_snapshots(conn, days=9)
+            logger.info("[AdsScheduler] Snapshot backfill: repaired %d days for user=%d", n, user_id)
+        except Exception as e:
+            logger.warning("[AdsScheduler] snapshot backfill failed user=%d: %s", user_id, e)
 
 
 # ── Job E: Snapshot Cleanup ──────────────────────────────────────

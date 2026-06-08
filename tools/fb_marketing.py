@@ -9,6 +9,7 @@ Requires:
 - FB_ACCESS_TOKEN với permissions: ads_read, read_insights
 - FB_AD_ACCOUNT_ID: dạng "act_XXXXXXXXXX"
 """
+import json
 import logging
 from typing import Optional
 import httpx
@@ -110,6 +111,59 @@ async def get_account_insights(
     data = response.json()
     results = data.get("data", [])
     logger.info(f"Marketing API: account {account_id} | {date_preset} | {level} → {len(results)} rows")
+    return results
+
+
+async def get_account_insights_daily(
+    since: str,
+    until: str,
+    level: str = "campaign",
+    ad_account_id: Optional[str] = None,
+    access_token: Optional[str] = None,
+    extra_fields: Optional[list] = None,
+) -> list[dict]:
+    """Pull insights theo TỪNG NGÀY riêng biệt trong khoảng [since, until] (YYYY-MM-DD).
+
+    Khác với get_account_insights (date_preset trả về 1 tổng cumulative cho cả
+    khoảng), hàm này dùng time_range + time_increment=1 — FB trả về N rows/campaign
+    (1 row/ngày), mỗi row có date_start riêng. Dùng để backfill/sửa snapshot lịch
+    sử bị lưu sai (vd snapshot nhiễm tổng last_7d thay vì số liệu 1 ngày thực).
+    """
+    token = access_token or FB_ACCESS_TOKEN
+    account_id = ad_account_id or FB_AD_ACCOUNT_ID
+
+    if not token:
+        raise RuntimeError("FB_ACCESS_TOKEN chưa setup trong env vars")
+    if not account_id:
+        raise RuntimeError("FB_AD_ACCOUNT_ID chưa setup")
+
+    if not account_id.startswith("act_"):
+        account_id = f"act_{account_id}"
+
+    fields = DEFAULT_INSIGHT_FIELDS + (extra_fields or [])
+
+    params = {
+        "fields": ",".join(fields),
+        "time_range": json.dumps({"since": since, "until": until}),
+        "time_increment": 1,
+        "level": level,
+        "limit": 200,
+        "access_token": token,
+    }
+
+    url = f"{FB_BASE_URL}/{account_id}/insights"
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        response = await client.get(url, params=params)
+
+    if response.status_code != 200:
+        error_data = response.json()
+        error_msg = error_data.get("error", {}).get("message", response.text)
+        logger.error(f"FB Marketing API error (daily): {error_msg}")
+        raise RuntimeError(f"FB Marketing API lỗi: {error_msg}")
+
+    data = response.json()
+    results = data.get("data", [])
+    logger.info(f"Marketing API: account {account_id} | {since}..{until} (daily) | {level} → {len(results)} rows")
     return results
 
 
