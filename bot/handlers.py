@@ -8647,6 +8647,45 @@ async def cmd_ads_settings(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     await update.message.reply_text(text, parse_mode=ParseMode.MARKDOWN, reply_markup=kb)
 
 
+async def _start_ads_task_command(update: Update, task_name: str) -> None:
+    """Khởi chạy 1 ads task (ads_analytics/ads_optimizer) qua slash command —
+    cùng đường với khi bấm nút trong menu Minh (reset intake, pre-check quota,
+    rồi mở form). Dùng chung vì các message digest/alert/report đều gợi ý
+    `/ads_analytics` · `/ads_optimizer` như command — nếu không đăng ký, gõ vào
+    Telegram chỉ im lặng (filters.COMMAND chặn handle_message, không route đi đâu).
+    """
+    user_id = update.effective_user.id
+    session = await get_session(user_id)
+
+    try:
+        from tools.token_tracker import is_exhausted, get_used, get_quota, fmt
+        if is_exhausted(session):
+            await update.message.reply_text(
+                f"🔴 *Đã hết quota token!*\n\n"
+                f"Đã dùng: {fmt(get_used(session))} / {fmt(get_quota(session))}\n\n"
+                f"_Sếp liên hệ admin để nạp thêm hoặc chờ reset hàng tháng._",
+                parse_mode=ParseMode.MARKDOWN,
+            )
+            return
+    except Exception as e:
+        logger.warning("Token quota pre-check failed: %s", e)
+
+    session.selected_task = task_name
+    session.pending_intake = {}
+    await save_session(session)
+    await _send_single_shot_form(update.message, session, task_name)
+
+
+async def cmd_ads_analytics(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """/ads_analytics — mở form Phân Tích & Audit Ads (giống bấm nút trong menu Minh)."""
+    await _start_ads_task_command(update, "ads_analytics")
+
+
+async def cmd_ads_optimizer(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """/ads_optimizer — mở form Điều Chỉnh Ads (giống bấm nút trong menu Minh)."""
+    await _start_ads_task_command(update, "ads_optimizer")
+
+
 async def _handle_ads_threshold_text(update: Update, session, text: str) -> None:
     """Parse ngưỡng alert user nhập theo format 'key: value' mỗi dòng."""
     import re

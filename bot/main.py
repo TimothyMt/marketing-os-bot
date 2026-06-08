@@ -34,6 +34,8 @@ from bot.handlers import (
     cmd_disconnect_ads,
     cmd_switch_account,
     cmd_ads_settings,
+    cmd_ads_analytics,
+    cmd_ads_optimizer,
     handle_message,
     handle_callback,
     handle_photo,
@@ -72,6 +74,8 @@ def _build_app() -> Application:
     app.add_handler(CommandHandler("disconnect_ads", cmd_disconnect_ads))
     app.add_handler(CommandHandler("switch_account", cmd_switch_account))
     app.add_handler(CommandHandler("ads_settings",   cmd_ads_settings))
+    app.add_handler(CommandHandler("ads_analytics",  cmd_ads_analytics))
+    app.add_handler(CommandHandler("ads_optimizer",  cmd_ads_optimizer))
 
     app.add_handler(CommandHandler("addquota",     cmd_admin_addquota))
     app.add_handler(CommandHandler("setquota",     cmd_admin_setquota))
