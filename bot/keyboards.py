@@ -104,12 +104,6 @@ FEEDBACK_PROMPT_KEYBOARD = InlineKeyboardMarkup([
     [InlineKeyboardButton("⏭️ Bỏ qua, không feedback", callback_data="feedback_skip")],
 ])
 
-# Sprint 4: Sau competitor analysis — hỏi user có muốn so sánh business sếp không
-COMPARE_PROMPT_KEYBOARD = InlineKeyboardMarkup([
-    [InlineKeyboardButton("🆚 So sánh business của sếp với đối thủ", callback_data="run_compare")],
-    [InlineKeyboardButton("⏭️ Để sau",                                callback_data="skip_compare")],
-])
-
 # Sau khi Lịch Nội Dung xong — hỏi chạy hết hay cần sửa
 CALENDAR_TO_CONTENT_GEN_KEYBOARD = InlineKeyboardMarkup([
     [InlineKeyboardButton("⭐ Chạy từng tuần (chất lượng tốt hơn)", callback_data="run_content_gen_weekly_after_cal")],

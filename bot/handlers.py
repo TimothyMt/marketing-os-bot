@@ -34,7 +34,6 @@ from bot.keyboards import (
     RATING_KEYBOARD,
     REGEN_PROMPT_KEYBOARD,
     FEEDBACK_PROMPT_KEYBOARD,
-    COMPARE_PROMPT_KEYBOARD,
     CALENDAR_TO_CONTENT_GEN_KEYBOARD,
     FUNNEL_APPROVE_KEYBOARD,
     ADS_FORMAT_KEYBOARD,
@@ -1474,32 +1473,6 @@ async def _handle_callback_inner(update, context, query, session, data, user_id)
         await _handle_adapt_channel_callback(query, session)
         return
 
-    # ── Competitor → Compare follow-up (Sprint 4) ─────────────────
-    if data == "run_compare":
-        await query.edit_message_reply_markup(reply_markup=None)
-        await query.message.reply_text(
-            "Em đang so sánh business của sếp với landscape đối thủ...",
-            parse_mode=ParseMode.MARKDOWN,
-        )
-        try:
-            result = await run_operational_skill("competitor_comparison", session)
-            await save_session(session)
-            await _send_ops_result(query.message, session, "competitor_comparison", result)
-        except Exception as e:
-            logger.exception("Comparison failed: %s", e)
-            await query.message.reply_text(f"⚠️ Lỗi so sánh: {str(e)[:200]}")
-        return
-
-    if data == "skip_compare":
-        await query.edit_message_reply_markup(reply_markup=None)
-        # Show rating cho competitor như bình thường
-        session.pending_intake["_awaiting_rating_for"] = "competitor"
-        await save_session(session)
-        await query.message.reply_text(
-            "OK ạ. Sếp đánh giá output Phân Tích Đối Thủ vừa rồi thế nào?",
-            reply_markup=RATING_KEYBOARD,
-        )
-        return
 
     # ── Calendar → Content Gen chain ─────────────────────────────
     if data == "run_content_gen_weekly_after_cal":
@@ -4701,12 +4674,12 @@ async def _send_ops_result(message: Message, session, task_name: str, result: st
                 "⚠️ Em không gen được Excel — output AI không có pipe table chuẩn. Sếp chạy lại nhé.",
             )
 
-    # Sprint 4: Special follow-up sau competitor → hỏi user có muốn so sánh không
     if task_name == "competitor":
+        session.pending_intake["_awaiting_rating_for"] = "competitor"
+        await save_session(session)
         await message.reply_text(
-            f"✅ *Hoàn thành {task.label}!*\n\nSếp có muốn em so sánh business của sếp với đối thủ luôn không ạ?",
-            parse_mode=ParseMode.MARKDOWN,
-            reply_markup=COMPARE_PROMPT_KEYBOARD,
+            "Sếp đánh giá output Phân Tích Đối Thủ em vừa làm thế nào ạ?",
+            reply_markup=RATING_KEYBOARD,
         )
         return
 
