@@ -249,14 +249,16 @@ async def _notify_connected(bot, user_id: int, account_name: str, account_id: st
         f"✅ *Đã kết nối Facebook Ads!*\n\n"
         f"📊 Account: *{safe_name}*\n"
         f"🆔 ID: `{account_id}`\n\n"
-        f"Em sẽ báo cáo ads lúc *8:00 sáng* mỗi ngày và tóm tắt *mỗi thứ Hai* hàng tuần.\n\n"
+        f"Em sẽ báo cáo ads lúc *8:00 sáng* mỗi ngày và tóm tắt *mỗi thứ Hai* hàng tuần "
+        f"(sếp có thể đổi giờ qua `/ads_settings`).\n\n"
         f"Tiếp theo: Sếp chọn chỉ số muốn theo dõi 👇"
     )
-    # Nếu user có nhiều account → note để họ biết cách đổi
+    # Nếu user có nhiều account → note multi-account
     if len(all_accounts) > 1:
         text += (
-            f"\n\nSếp có {len(all_accounts)} Ad Account — em đang dùng account vừa chọn. "
-            f"Muốn đổi tài khoản bất kỳ lúc nào: gõ lệnh `/switch_account`."
+            f"\n\nSếp có {len(all_accounts)} Ad Account — em đang theo dõi account vừa chọn.\n"
+            f"• Muốn nhận digest cho nhiều account cùng lúc: `/ads_settings` → ➕ Thêm account\n"
+            f"• Đổi account hiện hành (live tasks): `/switch_account`"
         )
 
     keyboard = InlineKeyboardMarkup([[

@@ -42,62 +42,56 @@ RECOMMENDED_METRICS = ["spend", "roas", "cpl", "frequency"]
 
 # ── Pull & snapshot ──────────────────────────────────────────────
 
-async def pull_and_snapshot(conn: dict) -> tuple[list[dict], datetime]:
-    """Pull data của NGÀY HÔM QUA + lưu snapshot dưới đúng ngày đó.
+async def pull_and_snapshot(sub: dict) -> tuple[list[dict], datetime]:
+    """Pull data của NGÀY HÔM QUA cho 1 subscription + lưu snapshot dưới đúng ngày
+    và đúng ad_account_id đó.
+
+    `sub` là merged dict từ get_active_subscriptions_with_token():
+        {user_id, ad_account_id, encrypted_token, account_name, tracked_metrics, alert_*, ...}
 
     Returns (rows, report_date).
 
     Dùng 'yesterday' (ngày đã đóng, ổn định) — KHÔNG dùng:
-    - 'today': digest chạy 8h sáng + alert monitor chạy mỗi 4h → mỗi lần pull
-      data "hôm nay" lại khác nhau (ngày chưa hết), snapshot bị ghi đè liên tục
-      → so sánh ngày-qua-ngày lệch pha, ra số vô nghĩa.
-    - 'last_7d': cumulative rolling 7 ngày nhưng lại lưu/so sánh như 1 ngày →
-      frequency/spend/CPL bị thổi phồng ~7 lần so với thực tế 1 ngày, false-trigger
-      alert liên tục (frequency 7-ngày gần như luôn > ngưỡng 5.0 của 1-ngày).
+    - 'today': digest + alert monitor chạy nhiều lần/ngày, mỗi lần pull "hôm nay"
+      ra số khác → so sánh ngày-qua-ngày lệch pha.
+    - 'last_7d': cumulative 7 ngày nhưng lưu như 1 ngày → frequency/spend bị
+      thổi phồng ~7 lần, false-trigger alert liên tục.
     'yesterday' là data đã chốt — pull lúc nào cũng ra cùng kết quả, khớp với số
     user thấy trong FB Ads Manager khi xem "Hôm qua".
     """
     from tools.crypto import decrypt_token
     from tools.fb_marketing import get_account_insights
-    from storage.fb_connections import save_snapshot, update_last_pull
+    from storage.fb_connections import save_snapshot, upsert_subscription
 
-    user_id   = conn["user_id"]
-    token     = decrypt_token(conn["encrypted_token"])
-    account   = conn["ad_account_id"]
+    user_id       = sub["user_id"]
+    ad_account_id = sub["ad_account_id"]
+    token         = decrypt_token(sub["encrypted_token"])
 
     campaigns = await get_account_insights(
         date_preset="yesterday",
         level="campaign",
-        ad_account_id=account,
+        ad_account_id=ad_account_id,
         access_token=token,
         extra_fields=["campaign_id", "action_values"],
     )
 
     report_date = datetime.now(timezone.utc) - timedelta(days=1)
-    # save_snapshot trả về rows đã compute (roas/cpl/vtr_3s/campaign_id) — dùng
-    # shape này để delta nhất quán với snapshot đọc từ DB.
-    computed_rows = await save_snapshot(user_id, report_date, campaigns)
-    await update_last_pull(user_id)
+    computed_rows = await save_snapshot(user_id, ad_account_id, report_date, campaigns)
+    await upsert_subscription(user_id, ad_account_id, last_pull_at=datetime.now(timezone.utc).isoformat())
     return computed_rows, report_date
 
 
 
 # ── Backfill / repair snapshot lịch sử ───────────────────────────
 
-async def backfill_snapshots(conn: dict, days: int = 9) -> int:
+async def backfill_snapshots(sub: dict, days: int = 9) -> int:
     """Pull lại N ngày gần nhất theo TỪNG NGÀY riêng (time_increment=1) và ghi đè
-    snapshot cũ — sửa data bị nhiễm bởi bug pull_and_snapshot trước đây (pull
-    date_preset="last_7d" — tổng cumulative 7 ngày — nhưng lưu/nhãn như 1 ngày).
-
-    Snapshot cho mỗi ngày trong khoảng vì vậy chứa tổng 7-ngày-tính-đến-hôm-đó
-    thay vì số liệu thực của riêng ngày đó → tổng tuần (sum nhiều snapshot nhiễm)
-    bị thổi phồng gấp nhiều lần so với thực tế (vd 20M vs thực chi 9.5M).
+    snapshot cũ — sửa data bị nhiễm bởi bug pull_and_snapshot cũ (pull
+    date_preset="last_7d" — tổng cumulative — nhưng lưu/nhãn như 1 ngày).
 
     'yesterday' (closed day) tự sửa được do upsert ghi đè mỗi sáng, nhưng các
-    ngày xa hơn không bao giờ được pull lại — cần backfill 1 lần để sửa dứt
-    điểm. time_range + time_increment=1 trả về đúng số liệu RIÊNG của từng ngày
-    (giống "Hôm qua" trong FB Ads Manager), khớp với số user thấy khi xem theo
-    range trong Ads Manager.
+    ngày xa hơn không bao giờ được pull lại — cần backfill 1 lần. time_range +
+    time_increment=1 trả về đúng số liệu RIÊNG của từng ngày, khớp với Ads Manager.
 
     Returns: số ngày đã ghi đè (overwrite).
     """
@@ -105,9 +99,9 @@ async def backfill_snapshots(conn: dict, days: int = 9) -> int:
     from tools.fb_marketing import get_account_insights_daily
     from storage.fb_connections import save_snapshot
 
-    user_id = conn["user_id"]
-    token   = decrypt_token(conn["encrypted_token"])
-    account = conn["ad_account_id"]
+    user_id       = sub["user_id"]
+    ad_account_id = sub["ad_account_id"]
+    token         = decrypt_token(sub["encrypted_token"])
 
     today = datetime.now(timezone.utc).date()
     since = today - timedelta(days=days)
@@ -117,7 +111,7 @@ async def backfill_snapshots(conn: dict, days: int = 9) -> int:
         since=since.strftime("%Y-%m-%d"),
         until=until.strftime("%Y-%m-%d"),
         level="campaign",
-        ad_account_id=account,
+        ad_account_id=ad_account_id,
         access_token=token,
         extra_fields=["campaign_id", "action_values"],
     )
@@ -130,7 +124,7 @@ async def backfill_snapshots(conn: dict, days: int = 9) -> int:
 
     for date_str, campaigns in by_date.items():
         snap_date = datetime.strptime(date_str, "%Y-%m-%d").replace(tzinfo=timezone.utc)
-        await save_snapshot(user_id, snap_date, campaigns)
+        await save_snapshot(user_id, ad_account_id, snap_date, campaigns)
 
     return len(by_date)
 
@@ -166,8 +160,8 @@ def compute_delta(today_rows: list[dict], prev_rows: list[dict]) -> dict:
 
 # ── Health assessment ────────────────────────────────────────────
 
-def _account_health(campaigns: list[dict], conn: dict) -> str:
-    freq_max = conn.get("alert_frequency_max") or DEFAULT_FREQUENCY_MAX
+def _account_health(campaigns: list[dict], sub: dict) -> str:
+    freq_max = sub.get("alert_frequency_max") or DEFAULT_FREQUENCY_MAX
     roas_avg = _avg_metric(campaigns, "roas")
     freq_max_actual = max((float(c.get("frequency") or 0) for c in campaigns), default=0)
     if freq_max_actual > freq_max or roas_avg < 1.5:
@@ -182,12 +176,13 @@ def _account_health(campaigns: list[dict], conn: dict) -> str:
 def format_daily_digest(
     campaigns: list[dict],
     delta: dict,
-    conn: dict,
+    sub: dict,
     account_name: str,
     report_date: Optional[datetime] = None,
 ) -> str:
-    tracked = conn.get("tracked_metrics") or RECOMMENDED_METRICS
-    health  = _account_health(campaigns, conn)
+    """`sub` chứa tracked_metrics + alert thresholds của subscription đó."""
+    tracked = sub.get("tracked_metrics") or RECOMMENDED_METRICS
+    health  = _account_health(campaigns, sub)
     rdate   = (report_date or (datetime.now(timezone.utc) - timedelta(days=1))).strftime("%d/%m/%Y")
 
     lines = [
@@ -218,7 +213,7 @@ def format_daily_digest(
         lines.append(f"{icon} *{label}:* {val_str}{delta_str}")
 
     # Cảnh báo top 2
-    alerts = _find_alerts(campaigns, conn)
+    alerts = _find_alerts(campaigns, sub)
     if alerts:
         lines.append("")
         lines.append("⚠️ *Cần chú ý:*")
@@ -238,10 +233,10 @@ def format_daily_digest(
 def format_weekly_digest(
     this_week_rows: list[dict],
     prev_week_rows: list[dict],
-    conn: dict,
+    sub: dict,
     account_name: str,
 ) -> str:
-    tracked = conn.get("tracked_metrics") or RECOMMENDED_METRICS
+    tracked = sub.get("tracked_metrics") or RECOMMENDED_METRICS
     delta   = compute_delta(this_week_rows, prev_week_rows)
 
     from datetime import date, timedelta
@@ -288,7 +283,7 @@ QUICK_REPORT_PERIODS = {
 }
 
 
-async def fetch_quick_report(conn: dict, period: str) -> tuple[list[dict], list[dict]]:
+async def fetch_quick_report(conn_or_sub: dict, period: str) -> tuple[list[dict], list[dict]]:
     """Pull data cho Báo Cáo Nhanh — period = 'live' | 'yesterday' | '7d'.
 
     Trả về (current_rows, compare_rows) đã compute metrics (roas/cpl/...) — CHỈ
@@ -301,8 +296,8 @@ async def fetch_quick_report(conn: dict, period: str) -> tuple[list[dict], list[
     from tools.fb_marketing import get_account_insights, get_account_insights_daily
     from storage.fb_connections import compute_campaign_metrics
 
-    token   = decrypt_token(conn["encrypted_token"])
-    account = conn["ad_account_id"]
+    token   = decrypt_token(conn_or_sub["encrypted_token"])
+    account = conn_or_sub["ad_account_id"]
     today   = datetime.now(timezone.utc).date()
     extra   = ["campaign_id", "action_values"]
 
@@ -338,9 +333,11 @@ async def fetch_quick_report(conn: dict, period: str) -> tuple[list[dict], list[
 
 
 def format_quick_report(period: str, current_rows: list[dict], compare_rows: list[dict],
-                        conn: dict, account_name: str) -> str:
+                        sub: dict, account_name: str) -> str:
+    """`sub` chứa tracked_metrics; nếu user chưa subscribe account này thì
+    caller pass dict rỗng → fallback RECOMMENDED_METRICS."""
     meta    = QUICK_REPORT_PERIODS[period]
-    tracked = conn.get("tracked_metrics") or RECOMMENDED_METRICS
+    tracked = sub.get("tracked_metrics") or RECOMMENDED_METRICS
     delta   = compute_delta(current_rows, compare_rows)
 
     lines = [
@@ -409,8 +406,8 @@ def ads_table_from_metrics(
 
 # ── Alert detection ──────────────────────────────────────────────
 
-def _find_alerts(campaigns: list[dict], conn: dict) -> list[dict]:
-    freq_max   = conn.get("alert_frequency_max") or DEFAULT_FREQUENCY_MAX
+def _find_alerts(campaigns: list[dict], sub: dict) -> list[dict]:
+    freq_max   = sub.get("alert_frequency_max") or DEFAULT_FREQUENCY_MAX
     alerts = []
     for c in campaigns:
         freq = float(c.get("frequency") or 0)
@@ -432,13 +429,14 @@ def _find_alerts(campaigns: list[dict], conn: dict) -> list[dict]:
     return alerts
 
 
-async def check_alerts(campaigns: list[dict], prev_campaigns: list[dict], conn: dict) -> list[dict]:
-    """Kiểm tra ngưỡng cảnh báo so với snapshot hôm qua. Áp cooldown."""
+async def check_alerts(campaigns: list[dict], prev_campaigns: list[dict], sub: dict) -> list[dict]:
+    """Kiểm tra ngưỡng cảnh báo so với snapshot hôm qua. Áp cooldown per (user, account)."""
     from storage.fb_connections import check_and_set_cooldown
-    user_id       = conn["user_id"]
-    freq_max      = conn.get("alert_frequency_max") or DEFAULT_FREQUENCY_MAX
-    roas_drop_pct = conn.get("alert_roas_drop_pct") or DEFAULT_ROAS_DROP_PCT
-    cpm_spike_pct = conn.get("alert_cpm_spike_pct") or DEFAULT_CPM_SPIKE_PCT
+    user_id       = sub["user_id"]
+    ad_account_id = sub["ad_account_id"]
+    freq_max      = sub.get("alert_frequency_max") or DEFAULT_FREQUENCY_MAX
+    roas_drop_pct = sub.get("alert_roas_drop_pct") or DEFAULT_ROAS_DROP_PCT
+    cpm_spike_pct = sub.get("alert_cpm_spike_pct") or DEFAULT_CPM_SPIKE_PCT
 
     # Build lookup prev by campaign_id
     prev_map = {c.get("campaign_id") or c.get("id"): c for c in prev_campaigns}
@@ -451,7 +449,7 @@ async def check_alerts(campaigns: list[dict], prev_campaigns: list[dict], conn: 
 
         freq = float(c.get("frequency") or 0)
         if freq > freq_max:
-            if await check_and_set_cooldown(user_id, cid, "frequency"):
+            if await check_and_set_cooldown(user_id, ad_account_id, cid, "frequency"):
                 days_left = max(0, round(7 / max(freq - 5, 0.1), 1)) if freq > 5 else "?"
                 triggered.append({
                     "icon": "🔴", "campaign": name,
@@ -467,7 +465,7 @@ async def check_alerts(campaigns: list[dict], prev_campaigns: list[dict], conn: 
         if cpm_prev > 0 and cpm_today > 0:
             cpm_chg = (cpm_today - cpm_prev) / cpm_prev * 100
             if cpm_chg > cpm_spike_pct:
-                if await check_and_set_cooldown(user_id, cid, "cpm_spike"):
+                if await check_and_set_cooldown(user_id, ad_account_id, cid, "cpm_spike"):
                     triggered.append({
                         "icon": "🟠", "campaign": name,
                         "message": (
@@ -482,7 +480,7 @@ async def check_alerts(campaigns: list[dict], prev_campaigns: list[dict], conn: 
         if roas_prev > 0 and roas_today > 0:
             roas_chg = (roas_prev - roas_today) / roas_prev * 100
             if roas_chg > roas_drop_pct:
-                if await check_and_set_cooldown(user_id, cid, "roas_drop"):
+                if await check_and_set_cooldown(user_id, ad_account_id, cid, "roas_drop"):
                     triggered.append({
                         "icon": "🔴", "campaign": name,
                         "message": (
