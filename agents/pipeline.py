@@ -833,6 +833,9 @@ _AGENT_TO_STAGE_KEYS: dict[str, list[str]] = {
     "customer_insight_agent":        ["customer_insight"],
     "usp_definition_agent":          ["usp_definition"],
     "psychology_pricing_agent":      ["psychology_pricing"],
+    "swot_agent":                    ["swot"],
+    "synthesizer_agent":             ["synthesis"],
+    "tactical_playbook_agent":       ["tactical_playbook"],
 }
 
 

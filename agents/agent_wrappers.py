@@ -216,8 +216,20 @@ async def psychology_pricing_agent(session: Session) -> str:
 
 
 # ─────────────────────────────────────────────────────────────────
-# TIER 3 — Customer Journey (sequential: Winback needs Retention)
+# TIER 3 — SWOT Analysis (sequential: cần đủ T1+T2 results)
 # ─────────────────────────────────────────────────────────────────
+
+async def swot_agent(session: Session) -> str:
+    """🔀 Max — SWOT Analysis.
+
+    Tier 3 — tổng hợp S/W/O/T từ toàn bộ T1+T2 research pipeline.
+    Sequential (không parallel): cần đủ Market+Competitor+Customer+USP+Pricing.
+    """
+    from agents.pipeline import _run_skill
+    from agents.skills import SwotSkill
+    result = await _run_skill(SwotSkill(), session)
+    session.add_result("swot", result)
+    return result
 
 @_with_provider("openai_gpt5_mini_router")
 async def retention_strategy_agent(session: Session) -> str:
@@ -280,7 +292,7 @@ async def retention_then_winback_chain(session: Session) -> str:
 
 
 # ─────────────────────────────────────────────────────────────────
-# TIER 4 — Final aggregation (long context)
+# TIER 4 — Synthesis (long context aggregation)
 # ─────────────────────────────────────────────────────────────────
 
 @_with_provider("gemini_pro_with_haiku_polish")
@@ -410,6 +422,23 @@ async def _haiku_polish_vn(raw_text: str, session: Session) -> str:
 
 
 # ─────────────────────────────────────────────────────────────────
+# TIER 5 — Tactical Playbook (sequential: cần SWOT + Synthesis)
+# ─────────────────────────────────────────────────────────────────
+
+async def tactical_playbook_agent(session: Session) -> str:
+    """📋 Max — Tactical Playbook.
+
+    Tier 5 — viết SO/WO/WT tactics per-segment dựa trên SWOT + Synthesis.
+    Sequential: chạy sau synthesizer_agent.
+    """
+    from agents.pipeline import _run_skill
+    from agents.skills import TacticalPlaybookSkill
+    result = await _run_skill(TacticalPlaybookSkill(), session)
+    session.add_result("tactical_playbook", result)
+    return result
+
+
+# ─────────────────────────────────────────────────────────────────
 # Registry — agent_name → wrapper function (cho introspection)
 # ─────────────────────────────────────────────────────────────────
 
@@ -419,10 +448,12 @@ ALL_AGENTS = {
     "customer_insight_agent":        customer_insight_agent,
     "usp_definition_agent":          usp_definition_agent,
     "psychology_pricing_agent":      psychology_pricing_agent,
+    "swot_agent":                    swot_agent,
     "retention_strategy_agent":      retention_strategy_agent,
     "winback_vision_agent":          winback_vision_agent,
     "retention_then_winback_chain":  retention_then_winback_chain,
     "synthesizer_agent":             synthesizer_agent,
+    "tactical_playbook_agent":       tactical_playbook_agent,
 }
 
 

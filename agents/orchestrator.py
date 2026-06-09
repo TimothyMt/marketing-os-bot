@@ -254,6 +254,9 @@ def get_strategic_pipeline_tiers() -> list[TierConfig]:
     nice_to_have (degraded mode — pipeline continues):
     - T1 market/competitor: nếu fail, strategy summary có ghi "data thiếu"
     - T2 cả 2: optional polish, không block direction-picking step
+    - T3 SWOT: sequential, cần T1+T2 đủ — must_have để Tactical Playbook có data
+    - T4 Synthesis: long-context aggregation — must_have (đầu ra cuối user)
+    - T5 Tactical Playbook: sequential, cần SWOT + Synthesis
     """
     from agents.agent_wrappers import (
         market_research_agent,
@@ -261,6 +264,9 @@ def get_strategic_pipeline_tiers() -> list[TierConfig]:
         customer_insight_agent,
         usp_definition_agent,
         psychology_pricing_agent,
+        swot_agent,
+        synthesizer_agent,
+        tactical_playbook_agent,
     )
 
     return [
@@ -286,6 +292,30 @@ def get_strategic_pipeline_tiers() -> list[TierConfig]:
             nice_to_have={"usp_definition_agent", "psychology_pricing_agent"},
             timeout_per_agent=500,
             max_concurrent=2,
+        ),
+        TierConfig(
+            name="T3 SWOT",
+            agents=[swot_agent],
+            must_have={"swot_agent"},
+            nice_to_have=set(),
+            timeout_per_agent=300,
+            max_concurrent=1,
+        ),
+        TierConfig(
+            name="T4 Synthesis",
+            agents=[synthesizer_agent],
+            must_have={"synthesizer_agent"},
+            nice_to_have=set(),
+            timeout_per_agent=600,
+            max_concurrent=1,
+        ),
+        TierConfig(
+            name="T5 Tactical Playbook",
+            agents=[tactical_playbook_agent],
+            must_have=set(),
+            nice_to_have={"tactical_playbook_agent"},
+            timeout_per_agent=400,
+            max_concurrent=1,
         ),
     ]
 
