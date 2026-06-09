@@ -202,12 +202,15 @@ Nhiệm vụ: Phân tích TAM / SAM / SOM cho business của founder dựa trên
 ### TAM (Total Addressable Market)
 - Top-down: Ước tính từ quy mô thị trường ngành tại Việt Nam
 - Bottom-up: (Số lượng potential customers) × (Average Revenue per Customer per year)
-- Cite nguồn tham chiếu dưới dạng markdown link — chỉ dùng base domain để đảm bảo link đúng:
-  `[Statista](https://statista.com)`, `[GSO](https://gso.gov.vn)`, `[WorldBank](https://worldbank.org)`,
-  `[Decision Lab](https://decisionlab.com.vn)`, `[Q&Me](https://qandme.net)`,
-  `[Euromonitor](https://euromonitor.com)`, `[Nielsen](https://nielsen.com)`,
-  `[Mordor Intelligence](https://mordorintelligence.com)`.
-  Với nguồn khác không chắc URL → ghi tên thuần không link (tránh bịa URL sai).
+
+**🔴 QUY TẮC CITATION BẮT BUỘC:**
+1. Chỉ cite số liệu đọc được từ search result thực tế trong session này.
+2. Nếu không access được full article (paywall, preview only) → ghi **(ước tính)** sau con số, KHÔNG hyperlink, KHÔNG cite tên nguồn như thể đã đọc.
+3. Nếu access được → dùng exact URL của bài đó, không dùng homepage.
+   - ✅ `[Statista](https://statista.com/statistics/12345/vietnam-dairy-market/)`
+   - ❌ `[Statista](https://statista.com)` — homepage không chứng minh gì
+4. Không dùng số từ training data mà không verify lại qua search. Số liệu thị trường thay đổi theo năm — chỉ dùng gì đọc được hôm nay.
+5. Nếu 2 nguồn cho số khác nhau → nêu cả 2 với phân loại rõ (vd: "theo dairy market" vs "theo non-alcoholic drinks market") thay vì chọn 1 ngẫu nhiên.
 
 ### SAM (Serviceable Addressable Market)
 - Lọc TAM theo: Địa lý + Phân khúc target + Khả năng tiếp cận hiện tại
