@@ -106,9 +106,9 @@ TASK_PIPELINE_STEPS = {
 }
 
 TASK_STAGE_COUNT = {
-    # Research pipeline: market + competitor + customer + psychology_pricing + usp_definition
-    # Synthesis runs interactively after user picks direction — not counted here
-    "full": 5,
+    # Research pipeline (phase=research): market + competitor + customer + usp_definition + psychology_pricing + SWOT
+    # Synthesis + Tactical Playbook (phase=synthesis) chạy sau khi user trả lời 8 câu chiến lược — không đếm ở đây
+    "full": 6,
     "market": 1,
     "competitor": 1,
     "customer": 1,
@@ -2076,7 +2076,7 @@ async def _handle_callback_inner(update, context, query, session, data, user_id)
         _direction_block = _format_strategy_answers(_answers)
         if not _direction_block.strip():
             await query.message.reply_text(
-                "⚠️ Không tìm thấy câu trả lời chiến lược đã lưu. Sếp cần chạy lại 7 câu hỏi nhé.",
+                "⚠️ Không tìm thấy câu trả lời chiến lược đã lưu. Sếp cần chạy lại 8 câu hỏi nhé.",
                 parse_mode=ParseMode.MARKDOWN,
                 reply_markup=InlineKeyboardMarkup([
                     [InlineKeyboardButton("🔄 Chạy lại từ đầu", callback_data="research_analyze")],
@@ -3058,7 +3058,7 @@ async def _handle_callback_inner(update, context, query, session, data, user_id)
                 f"📋 *{task_label} chuyên sâu cần có Marketing Strategy nền.*\n\n"
                 f"Em chưa có data Strategy của sếp.\n\n"
                 f"Để output chính xác (đúng audience, đúng goals, đúng channels), "
-                f"em chạy *Nghiên Cứu & Phân Tích Thị Trường* trước nhé. (~5-7 phút, 5 bước)\n\n"
+                f"em chạy *Nghiên Cứu & Phân Tích Thị Trường* trước nhé. (~5-8 phút, 6 bước)\n\n"
                 f"_Sau khi phân tích xong, em tự động tiếp tục {task_label} cho sếp._",
                 parse_mode=ParseMode.MARKDOWN,
                 reply_markup=NEEDS_STRATEGY_KEYBOARD,
@@ -3183,10 +3183,10 @@ async def _handle_callback_inner(update, context, query, session, data, user_id)
                 )
                 return
 
-            if _has_research and _n_answers >= 7:
-                # All 7 answers saved but synthesis not done → synthesis was interrupted
+            if _has_research and _n_answers >= 8:
+                # All 8 answers saved but synthesis not done → synthesis was interrupted
                 await query.message.reply_text(
-                    "📋 *Em thấy sếp đã trả lời đủ 7/7 câu chiến lược!*\n\n"
+                    "📋 *Em thấy sếp đã trả lời đủ 8/8 câu chiến lược!*\n\n"
                     "Kế hoạch bị gián đoạn trước khi hoàn thành. Sếp bấm để em lập lại nhé.",
                     parse_mode=ParseMode.MARKDOWN,
                     reply_markup=InlineKeyboardMarkup([
@@ -4818,6 +4818,7 @@ _STRATEGY_Q_KEYS = [
     "pricing_approach",
     "usp_angle",
     "channels",
+    "timeline",
 ]
 
 _STRATEGY_Q_LABELS = {
@@ -4828,6 +4829,7 @@ _STRATEGY_Q_LABELS = {
     "pricing_approach": "Pricing",
     "usp_angle":        "USP Angle",
     "channels":         "Kênh Triển Khai",
+    "timeline":         "Timeline Triển Khai",
 }
 
 
@@ -4852,9 +4854,9 @@ async def _generate_strategy_questions(session) -> list[dict]:
     if not parts:
         return _default_strategy_questions_fallback()
 
-    system = """Bạn là marketing strategist senior. Dựa vào kết quả nghiên cứu, tạo 7 câu hỏi chiến lược để hỏi business owner — mỗi câu về 1 chiều quyết định.
+    system = """Bạn là marketing strategist senior. Dựa vào kết quả nghiên cứu, tạo 8 câu hỏi chiến lược để hỏi business owner — mỗi câu về 1 chiều quyết định.
 
-7 chiều BẮT BUỘC (đúng key, đúng thứ tự):
+8 chiều BẮT BUỘC (đúng key, đúng thứ tự):
 1. market_gap — khoảng trống thị trường nào muốn khai thác
 2. target_segment — segment/ICP nào muốn focus
 3. competitor_gap — gap đối thủ nào muốn đánh (messaging/channel/segment/product)
@@ -4862,8 +4864,11 @@ async def _generate_strategy_questions(session) -> list[dict]:
 5. pricing_approach — pricing model + vị trí (premium/mid/value)
 6. usp_angle — USP angle muốn lead (emotional/practical/social proof)
 7. channels — kênh triển khai chính
+8. timeline — khung thời gian triển khai kế hoạch (sprint nhanh / vừa phải / dài hơi)
 
 🔴 RIÊNG câu 7 (channels): options PHẢI là các KÊNH MẠNG XÃ HỘI / KÊNH NỘI DUNG mà Max có thể trực tiếp sản xuất content (Facebook, TikTok, Instagram, YouTube/Shorts, Zalo OA, Threads, LinkedIn, Google/SEO content...). TUYỆT ĐỐI KHÔNG đưa lựa chọn dạng "hợp tác đối tác", "referral program", "co-marketing", "B2B partnership" — vì đó không phải kênh Max viết nội dung được. Mỗi option nên là 1 platform hoặc combo 2 platform (vd: "TikTok + Facebook", "Zalo OA + Facebook group", "YouTube Shorts + TikTok").
+
+🔴 RIÊNG câu 8 (timeline): options là các MỐC THỜI GIAN cụ thể, phù hợp với stage business + resource (vd: "Sprint 90 ngày — kết quả nhanh", "6 tháng — build foundation + scale", "12 tháng — long-game brand building"). Tối đa 3-4 options.
 
 Với mỗi chiều:
 - "question": câu hỏi ngắn (1 câu)
@@ -4880,15 +4885,14 @@ Output JSON array (chỉ JSON, không markdown):
             task_type=TaskType.INTAKE_JSON,
             system=system,
             user=user,
-            max_tokens=1500,
+            max_tokens=1800,
         )
         raw = result["output"]
         match = _re.search(r'\[.*\]', raw, _re.DOTALL)
         if match:
             questions = _json.loads(match.group())
-            if isinstance(questions, list) and len(questions) >= 5:
-                # Ensure all 7 keys present, fill missing with fallback
-                existing_keys = {q.get("key") for q in questions}
+            if isinstance(questions, list) and len(questions) >= 6:
+                # Ensure all 8 keys present, fill missing with fallback
                 fallback = {q["key"]: q for q in _default_strategy_questions_fallback()}
                 result_map = {q["key"]: q for q in questions if q.get("key") in _STRATEGY_Q_KEYS}
                 return [result_map.get(k, fallback[k]) for k in _STRATEGY_Q_KEYS]
@@ -4907,6 +4911,7 @@ def _default_strategy_questions_fallback() -> list[dict]:
         {"key": "pricing_approach", "question": "Approach pricing như thế nào?",                  "context": "Dựa vào pricing strategy.",           "options": ["Premium pricing — cao hơn đối thủ", "Competitive pricing — ngang thị trường", "Value pricing — thấp hơn nhưng rõ giá trị", "Bundle / package pricing"]},
         {"key": "usp_angle",        "question": "USP angle nào muốn lead trong marketing?",       "context": "Dựa vào USP definition.",             "options": ["Emotional angle — cảm xúc, câu chuyện", "Practical angle — lợi ích cụ thể, số liệu", "Social proof angle — review, kết quả khách", "Authority angle — expertise, chứng chỉ"]},
         {"key": "channels",         "question": "Kênh mạng xã hội nào muốn triển khai content chính?",               "context": "Kênh Max có thể trực tiếp sản xuất nội dung.", "options": ["TikTok + Facebook", "Instagram + Facebook", "YouTube Shorts + TikTok", "Zalo OA + Facebook group"]},
+        {"key": "timeline",         "question": "Timeline triển khai kế hoạch sếp muốn?",                            "context": "Quyết định pace của roadmap + KPI checkpoints.", "options": ["Sprint 90 ngày — kết quả nhanh", "6 tháng — foundation + scale", "12 tháng — long-game brand"]},
     ]
 
 
@@ -4916,7 +4921,7 @@ async def _start_strategic_consultation(message: Message, session) -> None:
 
     addr = _addr(session)
     await message.reply_text(
-        "🔍 *Em đang phân tích kết quả nghiên cứu để hỏi sếp 7 câu chiến lược...*",
+        "🔍 *Em đang phân tích kết quả nghiên cứu để hỏi sếp 8 câu chiến lược...*",
         parse_mode=ParseMode.MARKDOWN,
     )
 
@@ -4927,7 +4932,7 @@ async def _start_strategic_consultation(message: Message, session) -> None:
 
     await message.reply_text(
         f"✅ *Nghiên cứu hoàn tất!*\n\n"
-        f"Để kế hoạch chiến lược thực sự fit với sếp, Max cần hỏi {addr} *7 câu* về hướng đi.\n\n"
+        f"Để kế hoạch chiến lược thực sự fit với sếp, Max cần hỏi {addr} *8 câu* về hướng đi.\n\n"
         f"💡 _Mỗi câu nên chọn **1 hướng** thôi — chiến lược càng tập trung, "
         f"dồn lực 1 mũi thì ra kết quả nhanh và rõ hơn là dàn trải. "
         f"Nếu sếp thật sự muốn kết hợp nhiều, bấm \"✏️ Tôi có ý khác\" và gõ tất cả vào ạ._\n\n"
@@ -5011,15 +5016,19 @@ def _format_strategy_answers(answers: dict) -> str:
 
 
 async def _run_strategy_plan(message: Message, session, direction: str) -> None:
-    """Run synthesis with chosen direction → store as synthesis → show confirm keyboard."""
-    import asyncio as _asyncio
-    from agents.pipeline import run_strategy_synthesis
+    """Run phase=synthesis (T4 Synthesis + T5 Tactical Playbook) với direction từ 8 câu chiến lược.
+
+    User đã trả lời 8 câu → direction text → inject vào synthesis context →
+    T4 Synthesis dựng kế hoạch → T5 Tactical Playbook đào sâu thành tactics.
+    Cả 2 stage stream về user dưới dạng card riêng.
+    """
+    from agents.pipeline import run_multi_agent_targeted
     from bot.html_report import parse_agent_output
     from tools.token_tracker import get_latest_skill_entry
 
     addr = _addr(session)
     await message.reply_text(
-        f"🚀 *Max đang xây kế hoạch chiến lược theo hướng:*\n_{direction}_\n\n_~2-3 phút..._",
+        f"🚀 *Max đang xây kế hoạch chiến lược + tactical playbook theo hướng:*\n_{direction}_\n\n_~3-5 phút (2 bước)..._",
         parse_mode=ParseMode.MARKDOWN,
     )
     await context_bot_typing(message)
@@ -5027,32 +5036,44 @@ async def _run_strategy_plan(message: Message, session, direction: str) -> None:
     session.pending_intake["_strategy_direction"] = direction
     await save_session(session)
 
+    async def _synth_progress(msg: str):
+        try:
+            await message.reply_text(msg, parse_mode=ParseMode.MARKDOWN)
+        except Exception:
+            await message.reply_text(msg, parse_mode=None)
+
+    pipeline_aborted = False
     try:
-        result = await _asyncio.wait_for(run_strategy_synthesis(session), timeout=300)
-    except _asyncio.TimeoutError:
-        session.pending_intake.pop("_strategy_direction", None)
-        await save_session(session)
-        await message.reply_text(f"⚠️ Xây kế hoạch chiến lược timeout. Sếp thử lại sau nhé.\n\n{SUPPORT_NOTE}")
-        return
+        async for stage_key, result in run_multi_agent_targeted(
+            session, progress_callback=_synth_progress, phase="synthesis"
+        ):
+            if stage_key == "pipeline_abort":
+                pipeline_aborted = True
+                await message.reply_text(result, parse_mode=ParseMode.MARKDOWN)
+                continue
+
+            parsed = parse_agent_output(result)
+            token_entry = get_latest_skill_entry(session, stage_key)
+            card_text = _format_card(stage_key, parsed, token_entry=token_entry)
+            await send_long_message(message, card_text, parse_mode=ParseMode.MARKDOWN, reply_markup=None)
+            await save_session(session)
     except Exception as e:
         session.pending_intake.pop("_strategy_direction", None)
         await save_session(session)
-        await message.reply_text(f"⚠️ Lỗi: {str(e)[:200]}")
+        await message.reply_text(f"⚠️ Lỗi khi xây kế hoạch: {str(e)[:200]}")
         return
+    finally:
+        session.pending_intake.pop("_strategy_direction", None)
+        await save_session(session)
 
-    session.pending_intake.pop("_strategy_direction", None)
-    await save_session(session)
-
-    parsed = parse_agent_output(result)
-    token_entry = get_latest_skill_entry(session, "synthesis")
-    card_text = _format_card("synthesis", parsed, token_entry=token_entry)
-    await send_long_message(message, card_text, parse_mode=ParseMode.MARKDOWN, reply_markup=None)
+    if pipeline_aborted:
+        return
 
     session.pending_intake["_awaiting_rating_for"] = "full"
     await save_session(session)
 
     await message.reply_text(
-        f"✅ *Kế hoạch đề xuất đã xong!*\n\n"
+        f"✅ *Kế hoạch + Tactical Playbook đã xong!*\n\n"
         f"─────────────────────\n"
         f"📋 *{addr.capitalize()} xem qua giúp em:* kế hoạch trên ổn chưa, "
         f"hay cần điều chỉnh gì không ạ?\n\n"
@@ -5187,8 +5208,14 @@ async def _run_pipeline_sequentially(message: Message, session):
         if task == "full":
             logger.info("Multi-Agent disabled (USE_MULTI_AGENT=false) — using legacy path")
 
+    # Task "full" với multi-agent → chỉ chạy phase research (T1-T3)
+    # Phase synthesis (T4-T5) chạy sau khi user trả lời 8 câu chiến lược
+    runner_kwargs = {"progress_callback": progress_cb}
+    if task == "full" and pipeline_runner is run_multi_agent_targeted:
+        runner_kwargs["phase"] = "research"
+
     pipeline_aborted = False
-    async for stage_key, result in pipeline_runner(session, progress_callback=progress_cb):
+    async for stage_key, result in pipeline_runner(session, **runner_kwargs):
         if stage_key == "pipeline_abort":
             pipeline_aborted = True
             parsed_stages.append((stage_key, parse_agent_output(result)))

@@ -235,7 +235,7 @@ async def _safe_run(
 # STRATEGIC_PIPELINE_TIERS — 4-tier definition (S8.4)
 # ─────────────────────────────────────────────────────────────────
 
-def get_strategic_pipeline_tiers() -> list[TierConfig]:
+def get_strategic_pipeline_tiers(phase: Optional[str] = None) -> list[TierConfig]:
     """Build pipeline tiers tự động từ PIPELINE_DEF — single source of truth.
 
     Để thêm stage mới: chỉ cần append StageConfig vào PIPELINE_DEF trong pipeline.py
@@ -243,13 +243,21 @@ def get_strategic_pipeline_tiers() -> list[TierConfig]:
 
     Grouping: stages cùng tier number → chạy parallel trong cùng TierConfig.
     Thứ tự tier: tăng dần (tier=1 trước, tier=2 sau, ...).
+
+    phase filter:
+      - None             → tất cả stages (legacy / standalone tasks)
+      - "research"       → chỉ T1-T3 (auto-run, dừng để hỏi 7+1 câu)
+      - "synthesis"      → chỉ T4-T5 (chạy sau khi user chốt hướng)
     """
     from agents.pipeline import PIPELINE_DEF
     from agents.agent_wrappers import ALL_AGENTS
     from itertools import groupby
 
     tiers: list[TierConfig] = []
-    sorted_def = sorted(PIPELINE_DEF, key=lambda d: d.tier)
+    filtered_def = (
+        [d for d in PIPELINE_DEF if d.phase == phase] if phase else list(PIPELINE_DEF)
+    )
+    sorted_def = sorted(filtered_def, key=lambda d: d.tier)
 
     for tier_num, group_iter in groupby(sorted_def, key=lambda d: d.tier):
         entries = list(group_iter)

@@ -761,17 +761,18 @@ class StageConfig:
     tier_name:  str  = ""
     must_have:  bool = False
     timeout:    int  = 500
+    phase:      str  = "research"   # "research" (T1-T3, auto) | "synthesis" (T4-T5, sau khi user chốt hướng)
 
 
 PIPELINE_DEF: list[StageConfig] = [
-    StageConfig(PipelineStage.MARKET_RESEARCH,   run_market_research,       "market_research",   tier=1, tier_name="T1 Foundation", wrapper="market_research_agent",   must_have=False, timeout=500),
-    StageConfig(PipelineStage.COMPETITOR,        run_competitor_analysis,   "competitor",         tier=1, wrapper="competitor_agent",        must_have=False, timeout=500),
-    StageConfig(PipelineStage.CUSTOMER_INSIGHT,  run_customer_insight,      "customer_insight",   tier=1, wrapper="customer_insight_agent",  must_have=False, timeout=500),
-    StageConfig(PipelineStage.USP_DEFINITION,    run_usp_definition,        "usp_definition",     tier=2, tier_name="T2 Strategy",    wrapper="usp_definition_agent",    must_have=False, timeout=500),
-    StageConfig(PipelineStage.PSYCHOLOGY_PRICING,run_psychology_and_pricing,"psychology_pricing", tier=2, wrapper="psychology_pricing_agent", must_have=False, timeout=500),
-    StageConfig(PipelineStage.SWOT,              run_swot_analysis,         "swot",               tier=3, tier_name="T3 SWOT",        wrapper="swot_agent",              must_have=True,  timeout=300),
-    StageConfig(PipelineStage.SYNTHESIS,         run_strategy_synthesis,    "synthesis",          tier=4, tier_name="T4 Synthesis",   wrapper="synthesizer_agent",       must_have=True,  timeout=600),
-    StageConfig(PipelineStage.TACTICAL_PLAYBOOK, run_tactical_playbook,     "tactical_playbook",  tier=5, tier_name="T5 Tactical",    wrapper="tactical_playbook_agent", must_have=False, timeout=400),
+    StageConfig(PipelineStage.MARKET_RESEARCH,   run_market_research,       "market_research",   tier=1, tier_name="T1 Foundation", wrapper="market_research_agent",   must_have=False, timeout=500, phase="research"),
+    StageConfig(PipelineStage.COMPETITOR,        run_competitor_analysis,   "competitor",         tier=1, wrapper="competitor_agent",        must_have=False, timeout=500, phase="research"),
+    StageConfig(PipelineStage.CUSTOMER_INSIGHT,  run_customer_insight,      "customer_insight",   tier=1, wrapper="customer_insight_agent",  must_have=False, timeout=500, phase="research"),
+    StageConfig(PipelineStage.USP_DEFINITION,    run_usp_definition,        "usp_definition",     tier=2, tier_name="T2 Strategy",    wrapper="usp_definition_agent",    must_have=False, timeout=500, phase="research"),
+    StageConfig(PipelineStage.PSYCHOLOGY_PRICING,run_psychology_and_pricing,"psychology_pricing", tier=2, wrapper="psychology_pricing_agent", must_have=False, timeout=500, phase="research"),
+    StageConfig(PipelineStage.SWOT,              run_swot_analysis,         "swot",               tier=3, tier_name="T3 SWOT",        wrapper="swot_agent",              must_have=True,  timeout=300, phase="research"),
+    StageConfig(PipelineStage.SYNTHESIS,         run_strategy_synthesis,    "synthesis",          tier=4, tier_name="T4 Synthesis",   wrapper="synthesizer_agent",       must_have=True,  timeout=600, phase="synthesis"),
+    StageConfig(PipelineStage.TACTICAL_PLAYBOOK, run_tactical_playbook,     "tactical_playbook",  tier=5, tier_name="T5 Tactical",    wrapper="tactical_playbook_agent", must_have=False, timeout=400, phase="synthesis"),
 ]
 
 # Auto-derived — KHÔNG sửa trực tiếp, sửa PIPELINE_DEF ở trên
@@ -873,6 +874,7 @@ _AGENT_TO_STAGE_KEYS: dict[str, list[str]] = {
 async def run_multi_agent_targeted(
     session: Session,
     progress_callback=None,
+    phase: Optional[str] = None,
 ) -> AsyncGenerator[tuple[str, str], None]:
     """Multi-Agent Pipeline adapter — matches handler's streaming interface.
 
@@ -884,6 +886,11 @@ async def run_multi_agent_targeted(
     Used khi USE_MULTI_AGENT_PIPELINE=True và task=full.
     Single skill tasks (market/competitor/.../strategy) vẫn dùng
     run_targeted_pipeline (existing path).
+
+    phase parameter:
+      - None         → run tất cả tiers (default — backward compat)
+      - "research"   → chỉ T1-T3, dừng để hỏi 8 câu chiến lược
+      - "synthesis"  → chỉ T4-T5, chạy sau khi user chốt hướng
     """
     from agents.orchestrator import (
         get_strategic_pipeline_tiers,
@@ -891,8 +898,10 @@ async def run_multi_agent_targeted(
         PipelineAbortError,
     )
 
-    tiers = get_strategic_pipeline_tiers()
-    session.stage = PipelineStage.MARKET_RESEARCH  # Mark pipeline started
+    tiers = get_strategic_pipeline_tiers(phase=phase)
+    # Mark stage chỉ khi bắt đầu research phase (synthesis không reset)
+    if phase != "synthesis":
+        session.stage = PipelineStage.MARKET_RESEARCH
 
     for tier_idx, tier in enumerate(tiers, start=1):
         if progress_callback:
@@ -932,5 +941,7 @@ async def run_multi_agent_targeted(
                     output = result.output
                 yield stage_key, output
 
-    session.stage = PipelineStage.COMPLETE
-    asyncio.ensure_future(_auto_save_history(session))  # S8: fire-and-forget
+    # Chỉ mark COMPLETE khi xong phase synthesis (hoặc full pipeline)
+    if phase != "research":
+        session.stage = PipelineStage.COMPLETE
+        asyncio.ensure_future(_auto_save_history(session))  # S8: fire-and-forget
