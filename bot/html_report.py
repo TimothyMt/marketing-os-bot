@@ -484,17 +484,27 @@ def _md_to_html(text: str) -> str:
 
 def parse_agent_output(text: str) -> dict:
     """Extract structured sections from agent output.
-    Returns {insight, summary, benchmarks, detail} — all strings (markdown).
+    Returns {insight, summary, benchmarks, detail, summary_label} — all strings (markdown).
 
     Named sections (insight/summary/benchmarks) get special card boxes.
     Everything else — including numbered strategy sections like
     '## 1. Executive Summary', '## 2. USP', etc. — accumulates as detail.
+
+    SWOT format auto-detected by 💪/⚠️/🌟/⚡ headers:
+      - S/W/O/T quadrant sections → detail (rendered as h2 blocks)
+      - 🔀 MA TRẬN CHIẾN LƯỢC → summary card (relabeled "📋 Ma Trận Chiến Lược")
     """
-    result = {"insight": "", "summary": "", "benchmarks": "", "detail": ""}
+    result = {"insight": "", "summary": "", "benchmarks": "", "detail": "", "summary_label": ""}
 
     # Split into ## sections; prepend \n so the first header is also caught
     chunks = re.split(r'(?=\n##[ \t])', "\n" + text)
     detail_parts = []
+
+    # Pre-scan: detect SWOT format by looking for quadrant emoji in any ## header
+    is_swot = any(
+        re.search(r'##[ \t]+(?:💪|⚠|🌟|⚡)', chunk)
+        for chunk in chunks
+    )
 
     for chunk in chunks:
         chunk = chunk.strip()
@@ -510,6 +520,17 @@ def parse_agent_output(text: str) -> dict:
 
         header = m.group(1).strip()
         content = m.group(2).strip()
+
+        if is_swot:
+            # SWOT quadrant sections → detail block; strategy matrix → summary card
+            if re.search(r'💪|⚠|🌟|⚡', header):
+                detail_parts.append(f"## {header}\n\n{content}")
+            elif re.search(r'🔀', header) or re.match(r'MA\s*TR[ÂA]N', header, re.IGNORECASE):
+                result["summary"] = content
+                result["summary_label"] = "📋 Ma Trận Chiến Lược"
+            else:
+                detail_parts.append(f"## {header}\n\n{content}")
+            continue
 
         # Classify by emoji first (reliable), then by keyword
         if re.search(r'[💡🔑⭐✨]', header) or re.match(r'Insight\b', header, re.IGNORECASE):
@@ -535,7 +556,7 @@ def parse_agent_output(text: str) -> dict:
         result["detail"] = "\n\n".join(detail_parts)
 
     # Final fallback: nothing parsed at all → entire text is detail
-    if not any(result.values()):
+    if not any(v for k, v in result.items() if k != "summary_label"):
         result["detail"] = text.strip()
 
     return result
@@ -553,7 +574,8 @@ def render_stage_html(stage_key: str, parsed: dict, idx: int) -> str:
     if parsed.get("detail"):
         parts.append(f'<div class="content">{_md_to_html(parsed["detail"])}</div>')
     if parsed.get("summary"):
-        parts.append('<div class="summary"><div class="summary-label">📌 Tóm tắt</div>'
+        summary_label = parsed.get("summary_label") or "📌 Tóm tắt"
+        parts.append(f'<div class="summary"><div class="summary-label">{summary_label}</div>'
                      f'{_md_to_html(parsed["summary"])}</div>')
     if parsed.get("benchmarks"):
         parts.append('<div class="benchmarks"><div class="benchmarks-label">📊 Benchmarks</div>'
