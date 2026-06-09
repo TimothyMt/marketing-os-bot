@@ -53,7 +53,6 @@ from bot.keyboards import (
     BRAND_VOICE_PROMPT_KEYBOARD,
     BV_DRAFT_APPROVE_KEYBOARD,
     XLSX_EDIT_KEYBOARD,
-    RESEARCH_GATE_KEYBOARD,
     USP_ANALYZE_KEYBOARD,
     LINH_BV_EXISTS_KEYBOARD,
     LINH_BV_NEW_KEYBOARD,
@@ -583,7 +582,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "_awaiting_campaign_setup",
         "_awaiting_campaign_needs",
         "_awaiting_offer_prefs",
-        "_awaiting_research_paste",
         "_awaiting_usp_text",
         "_awaiting_strategy_q_custom",
         "_bv_edit_mode",
@@ -754,26 +752,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Post A→Z: User fill 4 trường quyết định (budget, team, start_date, discount)
     if session.pending_intake.get("_awaiting_campaign_finalize"):
         await _handle_campaign_finalize_text(update, context, session, text)
-        return
-
-    # Research Gate: user paste bản nghiên cứu thị trường có sẵn
-    if session.pending_intake.get("_awaiting_research_paste"):
-        session.pending_intake.pop("_awaiting_research_paste", None)
-        session.add_result("synthesis", text)
-        session.stage = PipelineStage.COMPLETE
-        await save_session(session)
-        addr = _addr(session)
-        await update.message.reply_text(
-            f"✅ *Em đã đọc và lưu bản nghiên cứu thị trường của {addr}!*\n\n"
-            f"Giờ sếp có thể dùng toàn bộ workflow — em sẽ dùng bản nghiên cứu này làm nền:\n\n"
-            f"• 📋 *Brief Campaign* — brief cụ thể theo data của sếp\n"
-            f"• 📅 *Lịch Nội Dung* — lịch bám sát strategy\n"
-            f"• 🌐 *Landing Page* — copy aligned với positioning\n"
-            f"• ✍️ *Toàn bộ Operational Skills*\n\n"
-            f"_Sếp muốn bắt đầu từ đâu?_",
-            parse_mode=ParseMode.MARKDOWN,
-            reply_markup=MAIN_MENU_KEYBOARD,
-        )
         return
 
     # Strategic consultation: user gõ custom answer cho 1 câu hỏi chiến lược
@@ -2061,18 +2039,6 @@ async def _handle_callback_inner(update, context, query, session, data, user_id)
         )
         return
 
-    if data == "research_paste":
-        await query.edit_message_reply_markup(reply_markup=None)
-        session.pending_intake["_awaiting_research_paste"] = "1"
-        await save_session(session)
-        await query.message.reply_text(
-            "📋 *Paste bản nghiên cứu thị trường của sếp vào đây ạ.*\n\n"
-            "_Có thể là Google Docs text, báo cáo, file notes — format tự do._\n\n"
-            "_Em đọc xong sẽ dùng làm nền cho toàn bộ workflow._",
-            parse_mode=ParseMode.MARKDOWN,
-        )
-        return
-
     if data == "research_analyze":
         await query.edit_message_reply_markup(reply_markup=None)
         await _send_single_shot_form(query.message, session, "full")
@@ -3237,17 +3203,8 @@ async def _handle_callback_inner(update, context, query, session, data, user_id)
                 )
                 return
 
-            # No research results → normal Research Gate flow
-            await query.message.reply_text(
-                "🔬 *Nghiên Cứu & Phân Tích Thị Trường*\n\n"
-                "Sếp đã có bản nghiên cứu thị trường chưa?\n\n"
-                "📋 *Có rồi* → Paste vào đây, em dùng làm nền cho toàn bộ workflow "
-                "_(brief campaign, lịch content, landing page...)_\n\n"
-                "🔬 *Chưa có* → Em và sếp cùng phân tích từ đầu "
-                "_(~5-7 phút, 8 bước: Market → Đối thủ → Customer → Pricing → USP → Retention → Strategy)_",
-                parse_mode=ParseMode.MARKDOWN,
-                reply_markup=RESEARCH_GATE_KEYBOARD,
-            )
+            # No research results → start pipeline intake directly
+            await _send_single_shot_form(query.message, session, "full")
             return
 
         # ── Strategy-standalone: check existing synthesis / context ─
