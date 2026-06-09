@@ -357,6 +357,52 @@ async def _call_gemini_pro(
     }
 
 
+def _patch_homepage_links(text: str, chunks: list) -> str:
+    """Replace homepage-only markdown links with specific article URLs from grounding chunks.
+
+    Gemini often writes [Statista](https://statista.com) (homepage) instead of
+    the actual article URL. grounding_chunks has the real URLs — use them to
+    patch any link where the path is empty or just "/".
+    """
+    import re
+    from urllib.parse import urlparse
+
+    # Build domain → most specific URL map from grounding chunks
+    domain_to_url: dict[str, str] = {}
+    for chunk in chunks:
+        web = getattr(chunk, "web", None)
+        if not web:
+            continue
+        uri = getattr(web, "uri", "") or ""
+        if not uri:
+            continue
+        try:
+            netloc = urlparse(uri).netloc.lower().lstrip("www.")
+            # Keep the longest (most specific) URL per domain
+            if netloc not in domain_to_url or len(uri) > len(domain_to_url[netloc]):
+                domain_to_url[netloc] = uri
+        except Exception:
+            pass
+
+    if not domain_to_url:
+        return text
+
+    def _replace(m: re.Match) -> str:
+        link_text, url = m.group(1), m.group(2)
+        try:
+            parsed = urlparse(url)
+            if parsed.path in ("", "/"):
+                netloc = parsed.netloc.lower().lstrip("www.")
+                specific = domain_to_url.get(netloc)
+                if specific:
+                    return f"[{link_text}]({specific})"
+        except Exception:
+            pass
+        return m.group(0)
+
+    return re.sub(r'\[([^\]]+)\]\(([^)]+)\)', _replace, text)
+
+
 async def _call_gemini_pro_grounded(
     system: str, user: str, max_tokens: int = 6000, **kwargs
 ) -> dict:
@@ -420,13 +466,17 @@ async def _call_gemini_pro_grounded(
         if grounding_meta:
             chunks = getattr(grounding_meta, "grounding_chunks", []) or []
             if chunks:
+                # Patch homepage-only inline links before building citation list
+                output_text = _patch_homepage_links(output_text, chunks)
+
                 citations = []
                 for i, chunk in enumerate(chunks[:10], 1):  # cap 10 sources
                     web = getattr(chunk, "web", None)
                     if web:
                         title = getattr(web, "title", "") or "Source"
                         uri = getattr(web, "uri", "") or ""
-                        citations.append(f"[{i}] {title}: {uri}")
+                        if uri:
+                            citations.append(f"[{i}] [{title}]({uri})")
                 if citations:
                     citations_text = "\n\n---\n\n**Nguồn tham khảo (Google Search):**\n" + "\n".join(citations)
     except (AttributeError, IndexError):
