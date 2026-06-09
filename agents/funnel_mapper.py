@@ -49,14 +49,31 @@ def parse_funnel_map(text: str) -> Optional[list]:
 # ─────────────────────────────────────────────────────────────────
 
 async def generate_funnel_map(session: Session, campaign: dict) -> list:
-    """Generate ToFu/MoFu/BoFu mapping per channel. 1 LLM call (Sonnet)."""
+    """Generate 3-stage funnel mapping per channel theo archetype. 1 LLM call (Sonnet)."""
     from tools.llm_router import call as router_call, TaskType, AllProvidersFailedError
     from agents.campaign_intake_prompts import FUNNEL_MAPPER_SYSTEM, build_funnel_mapper_user
     from agents.campaign_scope_library import format_scope_for_prompt
+    from frameworks.industry_context import format_archetype_block, resolve_archetype
 
     industry       = session.profile.industry or ""
     industry_scope = format_scope_for_prompt(industry) if industry else ""
-    user_msg       = build_funnel_mapper_user(campaign=campaign, industry_scope=industry_scope)
+
+    # Brief text dùng để match override signals: gộp product_service + audience + campaign notes
+    p = session.profile
+    archetype_brief_text = " ".join(filter(None, [
+        p.product_service or "",
+        p.target_customer or "",
+        campaign.get("audience", "") or "",
+        campaign.get("extra_notes", "") or "",
+        campaign.get("objective_detail", "") or "",
+    ]))
+    archetype_block = format_archetype_block(industry, archetype_brief_text) if industry else ""
+
+    user_msg = build_funnel_mapper_user(
+        campaign=campaign,
+        industry_scope=industry_scope,
+        archetype_block=archetype_block,
+    )
 
     try:
         result = await router_call(
@@ -82,48 +99,119 @@ async def generate_funnel_map(session: Session, campaign: dict) -> list:
             _ch = [c.strip() for c in _re.split(r"[+,/]| và ", _raw_ch) if c.strip()]
         else:
             _ch = _raw_ch
+
+    # Fallback đọc archetype để chọn template đúng
+    archetype_res = resolve_archetype(industry, archetype_brief_text) if industry else {}
     return _fallback_funnel_map(
         channels  = _ch or ["Facebook", "TikTok"],
         objective = campaign.get("objective", "mix"),
+        archetype = archetype_res.get("primary", "") or "demand_gen",
     )
 
 
-def _fallback_funnel_map(channels: list, objective: str) -> list:
-    """Generic fallback khi LLM fail."""
-    ratio_map = {
+# Archetype-specific fallback templates — stage definitions per archetype
+_FALLBACK_TEMPLATES = {
+    "trust_building": {
+        "default_ratio": "60/30/10",
+        "stage_labels": {"tofu": "Industry", "mofu": "Personal", "bofu": "Offer"},
+        "tofu": {
+            "goal":           "Educate ngành — xây authority chuyên môn",
+            "formats":        ["Long-form post", "Carousel chuyên môn", "Industry breakdown"],
+            "content_angles": ["Phân tích ngành", "Góc nhìn người trong nghề"],
+            "cta":            "Lưu lại / Theo dõi để đọc tiếp",
+            "volume":         "3/tuần",
+        },
+        "mofu": {
+            "goal":           "Personal POV — chia sẻ quan điểm founder/lead",
+            "formats":        ["Personal essay", "Case story", "POV video"],
+            "content_angles": ["Quan điểm cá nhân", "Cách nhìn vấn đề"],
+            "cta":            "Comment / Inbox trao đổi",
+            "volume":         "2/tuần",
+        },
+        "bofu": {
+            "goal":           "Convert người đã tin — offer chuyên môn",
+            "formats":        ["Case study chi tiết", "CTA tư vấn 1-1"],
+            "content_angles": ["Kết quả cụ thể", "Cam kết deliverable"],
+            "cta":            "Book tư vấn / Inbox / Đăng ký",
+            "volume":         "1/tuần",
+        },
+    },
+    "demand_gen": {
+        "default_ratio": "50/30/20",
+        "stage_labels": {"tofu": "Desire", "mofu": "Lifestyle+Proof", "bofu": "Convert"},
+        "tofu": {
+            "goal":           "Khơi gợi desire chưa rõ — lifestyle/aspiration",
+            "formats":        ["Short video", "Image post lifestyle"],
+            "content_angles": ["Aspiration", "Desire trigger"],
+            "cta":            "Follow / Xem thêm",
+            "volume":         "3/tuần",
+        },
+        "mofu": {
+            "goal":           "Củng cố desire bằng UGC + social proof",
+            "formats":        ["UGC clip", "Behind-the-scenes", "KOC review"],
+            "content_angles": ["Social proof", "Trải nghiệm thực"],
+            "cta":            "Comment / Lưu lại",
+            "volume":         "2/tuần",
+        },
+        "bofu": {
+            "goal":           "Chốt người đã muốn — combo / urgency có lý do",
+            "formats":        ["Combo reveal", "Limited offer"],
+            "content_angles": ["Mùa vụ", "Combo giá trị"],
+            "cta":            "Mua ngay / Inbox đặt",
+            "volume":         "1/tuần",
+        },
+    },
+    "impulse": {
+        "default_ratio": "30/20/50",
+        "stage_labels": {"tofu": "Hook", "mofu": "Retarget+Proof", "bofu": "Offer"},
+        "tofu": {
+            "goal":           "Scroll-stop hook — khơi cảm xúc / curiosity",
+            "formats":        ["Hook ads", "Short video 1-3s hook"],
+            "content_angles": ["Curiosity", "Cảm xúc tức thì"],
+            "cta":            "Tìm hiểu / Xem ngay",
+            "volume":         "3/tuần",
+        },
+        "mofu": {
+            "goal":           "Retargeting + proof định lượng",
+            "formats":        ["Retarget ads", "Review compilation"],
+            "content_angles": ["Số bán", "Review rating"],
+            "cta":            "Xem đánh giá / Tham khảo",
+            "volume":         "2/tuần",
+        },
+        "bofu": {
+            "goal":           "Flash sale / deal urgency",
+            "formats":        ["Offer reveal", "Live sale", "Flash deal"],
+            "content_angles": ["Urgency", "Discount %"],
+            "cta":            "Mua ngay / Chốt đơn",
+            "volume":         "2/tuần",
+        },
+    },
+}
+
+
+def _fallback_funnel_map(channels: list, objective: str, archetype: str = "demand_gen") -> list:
+    """Generic fallback khi LLM fail — dùng template đúng archetype."""
+    objective_ratio = {
         "awareness":  "60/30/10",
         "branding":   "50/40/10",
         "conversion": "30/30/40",
-        "mix":        "50/30/20",
     }
-    ratio = ratio_map.get(objective, "50/30/20")
+    template = _FALLBACK_TEMPLATES.get(archetype) or _FALLBACK_TEMPLATES["demand_gen"]
+    # Objective override archetype default nếu có
+    ratio = objective_ratio.get(objective, template["default_ratio"])
+
     result = []
     for ch in channels:
         result.append({
-            "channel": ch,
-            "ratio": ratio,
-            "tofu": {
-                "goal":           "Tiếp cận tệp mới chưa biết brand",
-                "formats":        ["Short video", "Image post"],
-                "content_angles": ["Giáo dục", "Giải trí"],
-                "cta":            "Follow / Xem thêm",
-                "volume":         "3/tuần",
-            },
-            "mofu": {
-                "goal":           "Build trust với người đã biết brand",
-                "formats":        ["Testimonial", "Behind-the-scenes"],
-                "content_angles": ["Social proof", "Chuyên môn"],
-                "cta":            "Comment / Lưu lại",
-                "volume":         "2/tuần",
-            },
-            "bofu": {
-                "goal":           "Convert người đang cân nhắc",
-                "formats":        ["Offer reveal", "CTA trực tiếp"],
-                "content_angles": ["Urgency", "Value proof"],
-                "cta":            "Mua ngay / Inbox / Book",
-                "volume":         "1/tuần",
-            },
-            "calendar_note": "Bám tỷ lệ ToFu/MoFu/BoFu theo objective campaign",
+            "channel":         ch,
+            "archetype":       archetype,
+            "archetype_blend": None,
+            "stage_labels":    dict(template["stage_labels"]),
+            "ratio":           ratio,
+            "tofu":            dict(template["tofu"]),
+            "mofu":            dict(template["mofu"]),
+            "bofu":            dict(template["bofu"]),
+            "calendar_note":   f"Fallback template ({archetype}) — bám tỷ lệ {ratio} + stage_labels archetype",
         })
     return result
 
@@ -132,25 +220,37 @@ def _fallback_funnel_map(channels: list, objective: str) -> list:
 # Card renderer
 # ─────────────────────────────────────────────────────────────────
 
+_STAGE_EMOJI = {"tofu": "🔵", "mofu": "🟡", "bofu": "🟢"}
+_DEFAULT_STAGE_LABELS = {"tofu": "ToFu", "mofu": "MoFu", "bofu": "BoFu"}
+
+
+def _stage_label(ch_map: dict, stage: str) -> str:
+    """Lấy stage label từ ch_map (theo archetype), fallback ToFu/MoFu/BoFu."""
+    labels = ch_map.get("stage_labels") or {}
+    return labels.get(stage) or _DEFAULT_STAGE_LABELS[stage]
+
+
 def render_funnel_map_card(funnel_map: list) -> str:
     """Format funnel map → Telegram card. Pure."""
     if not funnel_map:
         return "_(Không có funnel map)_"
 
-    STAGE_EMOJI = {"tofu": "🔵", "mofu": "🟡", "bofu": "🟢"}
-    STAGE_LABEL = {"tofu": "ToFu", "mofu": "MoFu", "bofu": "BoFu"}
-
     lines = ["🗺 *Funnel Map — chiến lược từng kênh*", ""]
 
     for ch_map in funnel_map:
-        ch    = ch_map.get("channel", "")
-        ratio = ch_map.get("ratio", "")
-        lines.append(f"📡 *{ch}* _(tỷ lệ {ratio})_")
+        ch        = ch_map.get("channel", "")
+        ratio     = ch_map.get("ratio", "")
+        archetype = ch_map.get("archetype", "")
+        header    = f"📡 *{ch}* _(tỷ lệ {ratio}"
+        if archetype:
+            header += f" · {archetype}"
+        header += ")_"
+        lines.append(header)
 
         for stage in ("tofu", "mofu", "bofu"):
             s       = ch_map.get(stage) or {}
-            emoji   = STAGE_EMOJI[stage]
-            label   = STAGE_LABEL[stage]
+            emoji   = _STAGE_EMOJI[stage]
+            label   = _stage_label(ch_map, stage)
             formats = ", ".join(s.get("formats") or [])
             vol     = s.get("volume", "")
             lines.append(f"  {emoji} *{label}* ({vol}): {s.get('goal', '')}")
@@ -173,9 +273,11 @@ def render_funnel_map_summary(funnel_map: list) -> str:
 
     lines = ["🗺 *Funnel Map — tóm tắt theo kênh*", ""]
     for ch_map in funnel_map:
-        ch    = ch_map.get("channel", "")
-        ratio = ch_map.get("ratio", "")
-        lines.append(f"📡 *{ch}* — _ToFu/MoFu/BoFu {ratio}_")
+        ch        = ch_map.get("channel", "")
+        ratio     = ch_map.get("ratio", "")
+        labels    = ch_map.get("stage_labels") or _DEFAULT_STAGE_LABELS
+        stage_str = "/".join(labels.get(s, _DEFAULT_STAGE_LABELS[s]) for s in ("tofu", "mofu", "bofu"))
+        lines.append(f"📡 *{ch}* — _{stage_str} {ratio}_")
     lines.append("")
     lines.append("_📄 Chi tiết format · content angle · CTA · volume từng kênh → xem file HTML đính kèm._")
     return "\n".join(lines)
@@ -186,17 +288,24 @@ def build_funnel_map_markdown(funnel_map: list) -> str:
     if not funnel_map:
         return "_(Không có funnel map)_"
 
-    STAGE_LABEL = {"tofu": "🔵 ToFu", "mofu": "🟡 MoFu", "bofu": "🟢 BoFu"}
     parts = []
     for ch_map in funnel_map:
-        ch    = ch_map.get("channel", "")
-        ratio = ch_map.get("ratio", "")
-        parts.append(f"### 📡 {ch} — tỷ lệ ToFu/MoFu/BoFu {ratio}")
+        ch        = ch_map.get("channel", "")
+        ratio     = ch_map.get("ratio", "")
+        archetype = ch_map.get("archetype", "")
+        labels    = ch_map.get("stage_labels") or _DEFAULT_STAGE_LABELS
+        stage_str = "/".join(labels.get(s, _DEFAULT_STAGE_LABELS[s]) for s in ("tofu", "mofu", "bofu"))
+        header    = f"### 📡 {ch} — tỷ lệ {stage_str} {ratio}"
+        if archetype:
+            header += f" _(archetype: {archetype})_"
+        parts.append(header)
         for stage in ("tofu", "mofu", "bofu"):
             s = ch_map.get(stage) or {}
             formats = ", ".join(s.get("formats") or [])
             angles  = ", ".join(s.get("content_angles") or [])
-            parts.append(f"**{STAGE_LABEL[stage]}** ({s.get('volume', '')}) — {s.get('goal', '')}")
+            emoji   = _STAGE_EMOJI[stage]
+            label   = labels.get(stage, _DEFAULT_STAGE_LABELS[stage])
+            parts.append(f"**{emoji} {label}** ({s.get('volume', '')}) — {s.get('goal', '')}")
             parts.append(f"- Format: {formats}")
             parts.append(f"- Content angles: {angles}")
             parts.append(f"- CTA: {s.get('cta', '')}")
@@ -223,6 +332,9 @@ def funnel_map_to_calendar_input(funnel_map: list, campaign: dict) -> dict:
         channel_plans.append({
             "channel": ch,
             "ratio":   ch_map.get("ratio", "50/30/20"),
+            "archetype":       ch_map.get("archetype", ""),
+            "archetype_blend": ch_map.get("archetype_blend"),
+            "stage_labels":    ch_map.get("stage_labels") or {},
             "weekly_volume": {
                 stage: (ch_map.get(stage) or {}).get("volume", "2/tuần")
                 for stage in ("tofu", "mofu", "bofu")
@@ -271,7 +383,8 @@ def build_funnel_map_excel(funnel_map: list, campaign_name: str = "") -> bytes:
     from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
     from openpyxl.utils import get_column_letter
 
-    STAGE_LABELS = {"tofu": "ToFu 🔵", "mofu": "MoFu 🟡", "bofu": "BoFu 🟢"}
+    STAGE_DEFAULT = {"tofu": "ToFu 🔵", "mofu": "MoFu 🟡", "bofu": "BoFu 🟢"}
+    STAGE_EMOJI   = {"tofu": "🔵", "mofu": "🟡", "bofu": "🟢"}
     STAGE_FILLS  = {
         "tofu": PatternFill("solid", fgColor="BDD7EE"),
         "mofu": PatternFill("solid", fgColor="FFE699"),
@@ -313,18 +426,21 @@ def build_funnel_map_excel(funnel_map: list, campaign_name: str = "") -> bytes:
     # ── Data rows ────────────────────────────────────────────────
     current_row = 3
     for ch_map in funnel_map:
-        ch    = ch_map.get("channel", "")
-        ratio = ch_map.get("ratio", "")
+        ch          = ch_map.get("channel", "")
+        ratio       = ch_map.get("ratio", "")
+        labels_map  = ch_map.get("stage_labels") or {}
         stage_rows_start = current_row
 
         for stage in ("tofu", "mofu", "bofu"):
             s = ch_map.get(stage) or {}
             formats = "\n".join(f"• {f}" for f in (s.get("formats") or []))
             angles  = "\n".join(f"• {a}" for a in (s.get("content_angles") or []))
+            stage_label = labels_map.get(stage)
+            stage_cell  = f"{stage_label} {STAGE_EMOJI[stage]}" if stage_label else STAGE_DEFAULT[stage]
             row_data = [
                 ch,
                 ratio,
-                STAGE_LABELS[stage],
+                stage_cell,
                 s.get("goal", ""),
                 formats,
                 angles,
