@@ -731,8 +731,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await _handle_campaign_setup_text(update, context, session, text)
         return
 
-    # Ads Scheduler: user đang nhập ngưỡng alert
-    if session.pending_intake.get("_awaiting_ads_thresholds"):
+    # Ads Scheduler: user đang nhập ngưỡng alert cho 1 subscription
+    if session.pending_intake.get("_awaiting_ads_thresholds_subid"):
         await _handle_ads_threshold_text(update, session, text)
         return
 
@@ -1337,7 +1337,7 @@ async def _handle_callback_inner(update, context, query, session, data, user_id)
     if data.startswith("ads_report:"):
         period = data.split(":", 1)[1]
         await query.edit_message_reply_markup(reply_markup=None)
-        from storage.fb_connections import get_connection
+        from storage.fb_connections import get_connection, get_subscription
         from services.ads_notifier import fetch_quick_report, format_quick_report, send_message_safe
         conn = await get_connection(user_id)
         if not conn:
@@ -1347,10 +1347,15 @@ async def _handle_callback_inner(update, context, query, session, data, user_id)
             )
             return
         account_name = (conn.get("account_name") or "Ads Account").replace("*", "").replace("_", "-").replace("`", "'").replace("[", "(").replace("]", ")")
+        # Tracked metrics lấy từ subscription của active account (nếu có) —
+        # fallback default trong format_quick_report nếu chưa subscribe account này.
+        active_id = conn.get("ad_account_id", "")
+        sub = await get_subscription(user_id, active_id) if active_id else None
+        settings_dict = sub or {"tracked_metrics": None}
         await query.message.reply_text("📊 Em đang pull số liệu...", parse_mode=ParseMode.MARKDOWN)
         try:
             current_rows, compare_rows = await fetch_quick_report(conn, period)
-            text = format_quick_report(period, current_rows, compare_rows, conn, account_name)
+            text = format_quick_report(period, current_rows, compare_rows, settings_dict, account_name)
             await send_message_safe(context.bot, user_id, text)
         except Exception as e:
             logger.warning("[AdsReport] quick report failed user=%d period=%s: %s", user_id, period, e)
@@ -1372,48 +1377,121 @@ async def _handle_callback_inner(update, context, query, session, data, user_id)
         await _send_single_shot_form(query.message, session, "ads_optimizer")
         return
 
-    if data == "ads_toggle_notify":
-        from storage.fb_connections import get_connection, update_notification_settings
-        conn = await get_connection(user_id)
-        if conn:
-            new_state = not conn.get("notification_enabled", True)
-            await update_notification_settings(user_id, notification_enabled=new_state)
-            state_text = "🟢 Đã bật" if new_state else "🔴 Đã tắt"
+    # ── /ads_settings v2 — multi-account subscriptions ────────────
+    if data == "ads_subs_list":
+        from storage.fb_connections import list_subscriptions, get_available_accounts
+        subs = await list_subscriptions(user_id)
+        accounts = await get_available_accounts(user_id)
+        try:
             await query.edit_message_text(
-                f"{state_text} báo cáo ads hàng ngày.\n\nDùng `/ads_settings` để chỉnh thêm.",
+                _render_subs_list_text(subs),
                 parse_mode=ParseMode.MARKDOWN,
+                reply_markup=_build_subs_list_keyboard(subs, accounts),
+            )
+        except Exception:
+            await query.message.reply_text(
+                _render_subs_list_text(subs),
+                parse_mode=ParseMode.MARKDOWN,
+                reply_markup=_build_subs_list_keyboard(subs, accounts),
             )
         return
 
-    if data.startswith("ads_toggle_metric:"):
-        metric = data.split(":", 1)[1]
-        from storage.fb_connections import get_connection, update_notification_settings
-        from services.ads_notifier import AVAILABLE_METRICS
-        conn = await get_connection(user_id)
-        if conn and metric in AVAILABLE_METRICS:
-            tracked = list(conn.get("tracked_metrics") or ["spend", "roas", "cpl", "frequency"])
-            if metric in tracked:
-                tracked.remove(metric)
-            else:
-                tracked.append(metric)
-            await update_notification_settings(user_id, tracked_metrics=tracked)
-            # Re-render keyboard để tick cập nhật ngay
-            try:
-                await query.edit_message_reply_markup(reply_markup=_build_metric_keyboard(tracked))
-            except Exception:
-                pass
+    if data.startswith("ads_sub:"):
+        ad_account_id = data.split(":", 1)[1]
+        from storage.fb_connections import get_subscription
+        sub = await get_subscription(user_id, ad_account_id)
+        if not sub:
+            await query.answer("Subscription không tồn tại.", show_alert=True)
+            return
+        await query.edit_message_text(
+            _render_sub_drill_text(sub),
+            parse_mode=ParseMode.MARKDOWN,
+            reply_markup=_build_sub_drill_keyboard(sub),
+        )
         return
 
-    if data == "ads_set_thresholds":
-        from storage.fb_connections import get_connection
-        conn = await get_connection(user_id)
-        freq = conn.get("alert_frequency_max")  if conn else None
-        roas = conn.get("alert_roas_drop_pct")  if conn else None
-        cpm  = conn.get("alert_cpm_spike_pct")  if conn else None
-        has_current = any(v is not None for v in (freq, roas, cpm))
+    if data.startswith("ads_sub_toggle:"):
+        ad_account_id = data.split(":", 1)[1]
+        from storage.fb_connections import get_subscription, upsert_subscription
+        sub = await get_subscription(user_id, ad_account_id)
+        if not sub:
+            await query.answer("Subscription không tồn tại.", show_alert=True)
+            return
+        new_state = not sub.get("notification_enabled", True)
+        await upsert_subscription(user_id, ad_account_id, notification_enabled=new_state)
+        sub["notification_enabled"] = new_state
+        await query.edit_message_text(
+            _render_sub_drill_text(sub),
+            parse_mode=ParseMode.MARKDOWN,
+            reply_markup=_build_sub_drill_keyboard(sub),
+        )
+        return
 
-        # Nhắc lại giá trị đang dùng (nếu có) làm mẫu sẵn để khách dễ chỉnh,
-        # không thì mới show ví dụ/benchmark mặc định.
+    if data.startswith("ads_sub_time:"):
+        ad_account_id = data.split(":", 1)[1]
+        from storage.fb_connections import get_subscription
+        sub = await get_subscription(user_id, ad_account_id)
+        if not sub:
+            await query.answer("Subscription không tồn tại.", show_alert=True)
+            return
+        await query.edit_message_text(
+            f"⏰ *Giờ nhận báo cáo*\n\n"
+            f"Sếp muốn nhận digest lúc mấy giờ (giờ VN)?",
+            parse_mode=ParseMode.MARKDOWN,
+            reply_markup=_build_time_picker(ad_account_id, sub.get("notify_time") or "08:00"),
+        )
+        return
+
+    if data.startswith("ads_sub_settime:"):
+        _, ad_account_id, hhmm = data.split(":", 2)
+        if hhmm not in ADS_NOTIFY_TIME_PRESETS:
+            await query.answer("Giờ không hợp lệ.", show_alert=True)
+            return
+        from storage.fb_connections import upsert_subscription, get_subscription
+        await upsert_subscription(user_id, ad_account_id, notify_time=hhmm)
+        sub = await get_subscription(user_id, ad_account_id)
+        await query.edit_message_text(
+            _render_sub_drill_text(sub),
+            parse_mode=ParseMode.MARKDOWN,
+            reply_markup=_build_sub_drill_keyboard(sub),
+        )
+        return
+
+    if data.startswith("ads_sub_metric:"):
+        _, ad_account_id, metric = data.split(":", 2)
+        from storage.fb_connections import get_subscription, upsert_subscription
+        from services.ads_notifier import AVAILABLE_METRICS, RECOMMENDED_METRICS
+        if metric not in AVAILABLE_METRICS:
+            await query.answer("Chỉ số không hợp lệ.", show_alert=True)
+            return
+        sub = await get_subscription(user_id, ad_account_id)
+        if not sub:
+            await query.answer("Subscription không tồn tại.", show_alert=True)
+            return
+        tracked = list(sub.get("tracked_metrics") or list(RECOMMENDED_METRICS))
+        if metric in tracked:
+            tracked.remove(metric)
+        else:
+            tracked.append(metric)
+        await upsert_subscription(user_id, ad_account_id, tracked_metrics=tracked)
+        sub["tracked_metrics"] = tracked
+        try:
+            await query.edit_message_reply_markup(reply_markup=_build_sub_drill_keyboard(sub))
+        except Exception:
+            pass
+        return
+
+    if data.startswith("ads_sub_thr:"):
+        ad_account_id = data.split(":", 1)[1]
+        from storage.fb_connections import get_subscription
+        sub = await get_subscription(user_id, ad_account_id)
+        if not sub:
+            await query.answer("Subscription không tồn tại.", show_alert=True)
+            return
+        freq = sub.get("alert_frequency_max")
+        roas = sub.get("alert_roas_drop_pct")
+        cpm  = sub.get("alert_cpm_spike_pct")
+        has_current = any(v is not None for v in (freq, roas, cpm))
         ex_freq = freq if freq is not None else 5.0
         ex_roas = int(roas) if roas is not None else 20
         ex_cpm  = int(cpm)  if cpm  is not None else 30
@@ -1421,7 +1499,7 @@ async def _handle_callback_inner(update, context, query, session, data, user_id)
             else "Gửi cho em 3 dòng theo format:"
 
         await query.edit_message_text(
-            "⚠️ *Đặt ngưỡng cảnh báo*\n\n"
+            f"⚠️ *Đặt ngưỡng cảnh báo — {_safe_acct_name(sub.get('account_name') or ad_account_id)}*\n\n"
             f"{intro}\n"
             f"`frequency: {ex_freq}`\n"
             f"`roas_drop: {ex_roas}`\n"
@@ -1429,22 +1507,121 @@ async def _handle_callback_inner(update, context, query, session, data, user_id)
             "Bỏ trống dòng nào = Max tự dùng benchmark ngành.",
             parse_mode=ParseMode.MARKDOWN,
         )
-        session.pending_intake["_awaiting_ads_thresholds"] = True
+        session.pending_intake["_awaiting_ads_thresholds_subid"] = ad_account_id
         from storage import save_session as _sv
         await _sv(session)
         return
 
-    if data == "ads_setup_metrics":
-        from services.ads_notifier import RECOMMENDED_METRICS
-        from storage.fb_connections import get_connection
-        conn = await get_connection(user_id)
-        tracked = (conn or {}).get("tracked_metrics") or RECOMMENDED_METRICS
+    if data.startswith("ads_sub_del:"):
+        ad_account_id = data.split(":", 1)[1]
+        from storage.fb_connections import get_subscription
+        sub = await get_subscription(user_id, ad_account_id)
+        if not sub:
+            await query.answer("Subscription không tồn tại.", show_alert=True)
+            return
+        from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+        name = _safe_acct_name(sub.get("account_name") or ad_account_id)
         await query.edit_message_text(
-            "📊 *Chọn chỉ số theo dõi hàng ngày:*\n\n"
-            "Nhấn để bật/tắt. ⭐ Recommended = 4 chỉ số thiết yếu nhất.\n\n"
-            "_Ngưỡng alert: bỏ trống = Max tự theo benchmark ngành._",
+            f"🗑 *Xác nhận bỏ theo dõi*\n\n"
+            f"Account: *{name}*\n\n"
+            "Sếp sẽ không nhận digest hàng ngày cho account này nữa. "
+            "Có thể thêm lại bất kỳ lúc nào qua `/ads_settings`.",
             parse_mode=ParseMode.MARKDOWN,
-            reply_markup=_build_metric_keyboard(tracked, with_done=True),
+            reply_markup=InlineKeyboardMarkup([[
+                InlineKeyboardButton("✅ Xác nhận bỏ", callback_data=f"ads_sub_del_yes:{ad_account_id}"),
+                InlineKeyboardButton("⬅️ Hủy",        callback_data=f"ads_sub:{ad_account_id}"),
+            ]]),
+        )
+        return
+
+    if data.startswith("ads_sub_del_yes:"):
+        ad_account_id = data.split(":", 1)[1]
+        from storage.fb_connections import delete_subscription, list_subscriptions, get_available_accounts
+        await delete_subscription(user_id, ad_account_id)
+        subs = await list_subscriptions(user_id)
+        accounts = await get_available_accounts(user_id)
+        await query.edit_message_text(
+            _render_subs_list_text(subs),
+            parse_mode=ParseMode.MARKDOWN,
+            reply_markup=_build_subs_list_keyboard(subs, accounts),
+        )
+        return
+
+    if data == "ads_subs_add":
+        from storage.fb_connections import list_subscriptions, get_available_accounts
+        from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+
+        accounts = await get_available_accounts(user_id)
+        subs = await list_subscriptions(user_id)
+        subscribed = {s["ad_account_id"] for s in subs}
+        unsubscribed = [a for a in accounts if _norm_acct_id(a.get("id", "")) not in subscribed]
+
+        if not unsubscribed:
+            await query.answer("Sếp đã subscribe hết các account rồi.", show_alert=True)
+            return
+
+        rows = []
+        for a in unsubscribed[:15]:
+            aid_norm = _norm_acct_id(a.get("id", ""))
+            label = _safe_acct_name(a.get("name") or aid_norm)
+            rows.append([InlineKeyboardButton(f"➕ {label}", callback_data=f"ads_subs_add_pick:{aid_norm}")])
+        rows.append([InlineKeyboardButton("⬅️ Hủy", callback_data="ads_subs_list")])
+
+        await query.edit_message_text(
+            "➕ *Thêm account theo dõi*\n\nChọn account muốn nhận digest hàng ngày:",
+            parse_mode=ParseMode.MARKDOWN,
+            reply_markup=InlineKeyboardMarkup(rows),
+        )
+        return
+
+    if data.startswith("ads_subs_add_pick:"):
+        ad_account_id = data.split(":", 1)[1]
+        from storage.fb_connections import (
+            get_available_accounts, upsert_subscription, get_subscription,
+        )
+        accounts = await get_available_accounts(user_id)
+        chosen = next(
+            (a for a in accounts if _norm_acct_id(a.get("id", "")) == ad_account_id),
+            None,
+        )
+        if not chosen:
+            await query.answer("Account không tìm thấy.", show_alert=True)
+            return
+        name = chosen.get("name") or ad_account_id
+        await upsert_subscription(
+            user_id, ad_account_id,
+            account_name=name,
+            notification_enabled=True,
+            notify_time="08:00",
+            tracked_metrics=["spend", "roas", "cpl", "frequency"],
+        )
+        sub = await get_subscription(user_id, ad_account_id)
+        await query.edit_message_text(
+            f"✅ Đã thêm *{_safe_acct_name(name)}*\n\n" + _render_sub_drill_text(sub),
+            parse_mode=ParseMode.MARKDOWN,
+            reply_markup=_build_sub_drill_keyboard(sub),
+        )
+        return
+
+    # ── Legacy callbacks từ OAuth flow (services/fb_oauth.py _notify_connected) ──
+    # Sau OAuth lần đầu, user thấy 2 nút "Chọn chỉ số" / "Dùng mặc định".
+    # Subscription cho account vừa pick đã được tạo tự động trong save_connection,
+    # nên 2 nút này chỉ cần mở drill-in (hoặc xác nhận default).
+    if data == "ads_setup_metrics":
+        from storage.fb_connections import get_connection, get_subscription
+        conn = await get_connection(user_id)
+        if conn:
+            sub = await get_subscription(user_id, conn.get("ad_account_id", ""))
+            if sub:
+                await query.edit_message_text(
+                    _render_sub_drill_text(sub),
+                    parse_mode=ParseMode.MARKDOWN,
+                    reply_markup=_build_sub_drill_keyboard(sub),
+                )
+                return
+        await query.edit_message_text(
+            "Chưa có subscription. Gõ `/ads_settings` để cài đặt.",
+            parse_mode=ParseMode.MARKDOWN,
         )
         return
 
@@ -1454,7 +1631,7 @@ async def _handle_callback_inner(update, context, query, session, data, user_id)
             "📊 Theo dõi: Spend · ROAS · CPL · Frequency\n"
             "⚠️ Ngưỡng alert: Max tự theo benchmark ngành\n"
             "🕗 Báo cáo: 8:00 sáng mỗi ngày, Thứ Hai = weekly report\n\n"
-            "Dùng `/ads_settings` bất kỳ lúc nào để chỉnh.",
+            "Dùng `/ads_settings` bất kỳ lúc nào để chỉnh — kể cả thêm account khác.",
             parse_mode=ParseMode.MARKDOWN,
         )
         return
@@ -8583,8 +8760,18 @@ async def _handle_basic_business_text(update, context, session, text: str):
 # FB ADS SCHEDULER — /connect_ads · /disconnect_ads · /ads_settings
 # ─────────────────────────────────────────────────────────────────
 
-def _build_metric_keyboard(tracked: list, with_done: bool = False, extra_rows: list = None):
-    """Build inline keyboard chọn metric — dùng chung cho settings + setup + toggle re-render."""
+# Preset giờ digest user có thể chọn (VN-only, tránh free-form HH:MM)
+ADS_NOTIFY_TIME_PRESETS = ["06:00", "07:00", "08:00", "09:00", "10:00", "12:00"]
+
+
+def _safe_acct_name(name: str) -> str:
+    """Sanitize account name cho Markdown — tránh phá entity."""
+    return str(name).replace("*", "").replace("_", "-").replace("`", "'").replace("[", "(").replace("]", ")")
+
+
+def _build_metric_keyboard_for_sub(ad_account_id: str, tracked: list):
+    """Inline keyboard chọn metric, gắn callback theo ad_account_id của sub.
+    Mỗi nút metric: callback `ads_sub_metric:<id>:<key>`."""
     from services.ads_notifier import METRIC_LABELS
     from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 
@@ -8595,7 +8782,10 @@ def _build_metric_keyboard(tracked: list, with_done: bool = False, extra_rows: l
     def _btn(key):
         icon, label, _ = METRIC_LABELS[key]
         tick = "✅" if key in tracked else "☐"
-        return InlineKeyboardButton(f"{tick} {icon} {label}", callback_data=f"ads_toggle_metric:{key}")
+        return InlineKeyboardButton(
+            f"{tick} {icon} {label}",
+            callback_data=f"ads_sub_metric:{ad_account_id}:{key}",
+        )
 
     rows = [
         [InlineKeyboardButton("── ⭐ Khuyến nghị ──", callback_data="noop")],
@@ -8605,13 +8795,128 @@ def _build_metric_keyboard(tracked: list, with_done: bool = False, extra_rows: l
         [InlineKeyboardButton("── 💡 Chuyên sâu ──", callback_data="noop")],
         [_btn(k) for k in deep],
     ]
-    if with_done:
-        rows.append([InlineKeyboardButton("✅ Xong — ngưỡng alert dùng mặc định", callback_data="ads_setup_default")])
-    else:
-        rows.append([InlineKeyboardButton("⚠️ Đặt ngưỡng alert", callback_data="ads_set_thresholds")])
-    if extra_rows:
-        rows.extend(extra_rows)
     return InlineKeyboardMarkup(rows)
+
+
+def _render_sub_drill_text(sub: dict) -> str:
+    """Text body cho drill-in 1 sub."""
+    from services.ads_notifier import METRIC_LABELS, RECOMMENDED_METRICS
+
+    name      = _safe_acct_name(sub.get("account_name") or sub.get("ad_account_id"))
+    enabled   = sub.get("notification_enabled", True)
+    notify_t  = sub.get("notify_time") or "08:00"
+    tracked   = sub.get("tracked_metrics") or RECOMMENDED_METRICS
+    freq_max  = sub.get("alert_frequency_max")
+    roas_drop = sub.get("alert_roas_drop_pct")
+    cpm_spike = sub.get("alert_cpm_spike_pct")
+
+    status_icon = "🟢" if enabled else "🔴"
+    tracked_labels = " · ".join(METRIC_LABELS[m][1] for m in tracked if m in METRIC_LABELS)
+
+    return (
+        f"⚙️ *{name}*\n\n"
+        f"{status_icon} Báo cáo: {'Đang bật' if enabled else 'Đang tắt'}\n"
+        f"⏰ Giờ nhận: {notify_t} (Thứ Hai = weekly report)\n"
+        f"📊 Theo dõi: {tracked_labels or '_chưa chọn_'}\n\n"
+        f"*Ngưỡng cảnh báo:*\n"
+        f"• Frequency > {freq_max if freq_max else 'benchmark ngành (5.0)'}\n"
+        f"• ROAS giảm > {f'{roas_drop:.0f}%' if roas_drop else 'benchmark ngành (20%)'}\n"
+        f"• CPM tăng > {f'{cpm_spike:.0f}%' if cpm_spike else 'benchmark ngành (30%)'}"
+    )
+
+
+def _build_sub_drill_keyboard(sub: dict):
+    """Inline keyboard cho drill-in 1 sub: toggle / time / metrics / thresholds / remove / back."""
+    from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+    from services.ads_notifier import RECOMMENDED_METRICS
+
+    ad_account_id = sub["ad_account_id"]
+    enabled       = sub.get("notification_enabled", True)
+    tracked       = sub.get("tracked_metrics") or RECOMMENDED_METRICS
+
+    # Metrics grid embedded
+    metric_kb = _build_metric_keyboard_for_sub(ad_account_id, tracked).inline_keyboard
+
+    rows = [
+        [
+            InlineKeyboardButton(
+                "🔴 Tắt báo cáo" if enabled else "🟢 Bật báo cáo",
+                callback_data=f"ads_sub_toggle:{ad_account_id}",
+            ),
+            InlineKeyboardButton("⏰ Đổi giờ", callback_data=f"ads_sub_time:{ad_account_id}"),
+        ],
+        [InlineKeyboardButton("── 📊 Chỉ số theo dõi ──", callback_data="noop")],
+    ]
+    rows.extend(metric_kb)
+    rows.append([InlineKeyboardButton("⚠️ Đặt ngưỡng alert", callback_data=f"ads_sub_thr:{ad_account_id}")])
+    rows.append([InlineKeyboardButton("🗑 Bỏ theo dõi account này", callback_data=f"ads_sub_del:{ad_account_id}")])
+    rows.append([InlineKeyboardButton("⬅️ Về danh sách", callback_data="ads_subs_list")])
+    return InlineKeyboardMarkup(rows)
+
+
+def _build_time_picker(ad_account_id: str, current: str):
+    """6 nút preset giờ + nút cancel."""
+    from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+    btns = []
+    for t in ADS_NOTIFY_TIME_PRESETS:
+        tick = "✅ " if t == current else ""
+        btns.append(InlineKeyboardButton(f"{tick}{t}", callback_data=f"ads_sub_settime:{ad_account_id}:{t}"))
+    # 2 hàng × 3 nút
+    rows = [btns[0:3], btns[3:6]]
+    rows.append([InlineKeyboardButton("⬅️ Hủy", callback_data=f"ads_sub:{ad_account_id}")])
+    return InlineKeyboardMarkup(rows)
+
+
+def _render_subs_list_text(subs: list[dict]) -> str:
+    """Text body cho màn list subscriptions."""
+    if not subs:
+        return (
+            "⚙️ *Cài đặt báo cáo Ads*\n\n"
+            "Sếp chưa theo dõi ad account nào. Bấm *Thêm account* để bật digest hàng ngày."
+        )
+    lines = ["⚙️ *Cài đặt báo cáo Ads*", ""]
+    for s in subs:
+        name = _safe_acct_name(s.get("account_name") or s.get("ad_account_id"))
+        enabled = s.get("notification_enabled", True)
+        notify_t = s.get("notify_time") or "08:00"
+        if enabled:
+            lines.append(f"📂 *{name}* — 🟢 {notify_t}")
+        else:
+            lines.append(f"📂 *{name}* — 🔴 OFF")
+    lines.append("")
+    lines.append("_Bấm vào account để chỉnh chi tiết._")
+    return "\n".join(lines)
+
+
+def _build_subs_list_keyboard(subs: list[dict], available_accounts: list[dict]):
+    """Mỗi sub 1 row → drill-in. Cuối cùng: nút Thêm account (nếu còn account chưa sub)."""
+    from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+
+    rows = []
+    for s in subs:
+        name = _safe_acct_name(s.get("account_name") or s.get("ad_account_id"))
+        enabled = s.get("notification_enabled", True)
+        notify_t = s.get("notify_time") or "08:00"
+        label = f"{'🟢' if enabled else '🔴'} {name} · {notify_t if enabled else 'OFF'}"
+        rows.append([InlineKeyboardButton(label, callback_data=f"ads_sub:{s['ad_account_id']}")])
+
+    # Tính số account còn lại có thể thêm
+    subscribed_ids = {s["ad_account_id"] for s in subs}
+    unsubscribed = [
+        a for a in available_accounts
+        if _norm_acct_id(a.get("id", "")) not in subscribed_ids
+    ]
+    if unsubscribed:
+        rows.append([InlineKeyboardButton(
+            f"➕ Thêm account theo dõi ({len(unsubscribed)} còn lại)",
+            callback_data="ads_subs_add",
+        )])
+    return InlineKeyboardMarkup(rows)
+
+
+def _norm_acct_id(aid: str) -> str:
+    """Đảm bảo có prefix 'act_' — FB API đôi khi trả về cả 2 dạng."""
+    return aid if aid.startswith("act_") else f"act_{aid}"
 
 
 async def cmd_connect_ads(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -8640,14 +8945,15 @@ async def cmd_connect_ads(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         )
         return
 
-    # Kiểm tra đã kết nối chưa
+    # Kiểm tra đã kết nối chưa (token có encrypted_token tức là có kết nối hợp lệ)
     from storage.fb_connections import get_connection
     existing = await get_connection(user_id)
-    if existing and existing.get("notification_enabled"):
+    if existing and existing.get("encrypted_token"):
         name = (existing.get("account_name") or existing.get("ad_account_id") or "?").replace("*", "").replace("_", "-")
         await update.message.reply_text(
             f"✅ *Đã kết nối:* {name}\n\n"
             "Có nhiều Ad Account muốn xem? Dùng `/switch_account` để đổi — không cần kết nối lại.\n"
+            "Muốn thêm account vào danh sách nhận digest? Dùng `/ads_settings` → ➕ Thêm account.\n"
             "Muốn đổi sang tài khoản FB khác hẳn? Dùng `/disconnect_ads` trước.",
             parse_mode=ParseMode.MARKDOWN,
         )
@@ -8735,16 +9041,13 @@ async def cmd_disconnect_ads(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
 
 async def cmd_ads_settings(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """/ads_settings — xem + chỉnh cài đặt báo cáo ads.
+    """/ads_settings — quản lý subscription digest cho từng ad account.
 
-    Cho phép user:
-    - Bật/tắt notification
-    - Chọn chỉ số theo dõi (multi-select inline keyboard)
-    - Đặt ngưỡng alert (Frequency / ROAS drop / CPM spike)
+    1 user có thể subscribe nhiều ad account, mỗi cái có giờ nhận + chỉ số +
+    ngưỡng alert riêng. Màn hình này list các sub và cho phép thêm account mới.
     """
     user_id = update.effective_user.id
-    from storage.fb_connections import get_connection
-    from services.ads_notifier import METRIC_LABELS, RECOMMENDED_METRICS
+    from storage.fb_connections import get_connection, list_subscriptions, get_available_accounts
 
     conn = await get_connection(user_id)
     if not conn:
@@ -8754,34 +9057,11 @@ async def cmd_ads_settings(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         )
         return
 
-    name      = conn.get("account_name") or conn.get("ad_account_id")
-    enabled   = conn.get("notification_enabled", True)
-    tracked   = conn.get("tracked_metrics") or RECOMMENDED_METRICS
-    freq_max  = conn.get("alert_frequency_max")
-    roas_drop = conn.get("alert_roas_drop_pct")
-    cpm_spike = conn.get("alert_cpm_spike_pct")
+    subs = await list_subscriptions(user_id)
+    accounts = await get_available_accounts(user_id)
 
-    status_icon = "🟢" if enabled else "🔴"
-    tracked_labels = " · ".join(METRIC_LABELS[m][1] for m in tracked if m in METRIC_LABELS)
-
-    text = (
-        f"⚙️ *Cài đặt Ads Scheduler — {name}*\n\n"
-        f"{status_icon} Báo cáo: {'Đang bật' if enabled else 'Đang tắt'} (8:00 sáng hàng ngày)\n"
-        f"📊 Theo dõi: {tracked_labels}\n\n"
-        f"*Ngưỡng cảnh báo:*\n"
-        f"• Frequency > {freq_max if freq_max else 'benchmark ngành (5.0)'}\n"
-        f"• ROAS giảm > {f'{roas_drop:.0f}%' if roas_drop else 'benchmark ngành (20%)'}\n"
-        f"• CPM tăng > {f'{cpm_spike:.0f}%' if cpm_spike else 'benchmark ngành (30%)'}\n\n"
-        f"{'🔴 Bấm chỉ số để bật/tắt. /ads_settings lại để bật báo cáo.' if not enabled else '📊 Bấm chỉ số để bật/tắt theo dõi.'}"
-    )
-
-    from telegram import InlineKeyboardButton
-    kb = _build_metric_keyboard(tracked, extra_rows=[[
-        InlineKeyboardButton(
-            "🔴 Tắt báo cáo" if enabled else "🟢 Bật báo cáo",
-            callback_data="ads_toggle_notify",
-        ),
-    ]])
+    text = _render_subs_list_text(subs)
+    kb   = _build_subs_list_keyboard(subs, accounts)
     await update.message.reply_text(text, parse_mode=ParseMode.MARKDOWN, reply_markup=kb)
 
 
@@ -8825,13 +9105,21 @@ async def cmd_ads_optimizer(update: Update, context: ContextTypes.DEFAULT_TYPE) 
 
 
 async def _handle_ads_threshold_text(update: Update, session, text: str) -> None:
-    """Parse ngưỡng alert user nhập theo format 'key: value' mỗi dòng."""
+    """Parse ngưỡng alert user nhập theo format 'key: value' mỗi dòng.
+    Ghi vào subscription được track trong session.pending_intake["_awaiting_ads_thresholds_subid"]."""
     import re
-    from storage.fb_connections import update_notification_settings
+    from storage.fb_connections import upsert_subscription
     from storage import save_session as _sv
 
-    session.pending_intake.pop("_awaiting_ads_thresholds", None)
+    ad_account_id = session.pending_intake.pop("_awaiting_ads_thresholds_subid", None)
     await _sv(session)
+
+    if not ad_account_id:
+        await update.message.reply_text(
+            "Phiên đặt ngưỡng đã hết hạn. Vào lại `/ads_settings` rồi chọn account để chỉnh ngưỡng nhé.",
+            parse_mode=ParseMode.MARKDOWN,
+        )
+        return
 
     user_id = update.effective_user.id
     updates = {}
@@ -8849,13 +9137,14 @@ async def _handle_ads_threshold_text(update: Update, session, text: str) -> None
                 updates["alert_cpm_spike_pct"] = val
 
     if updates:
-        await update_notification_settings(user_id, **updates)
+        await upsert_subscription(user_id, ad_account_id, **updates)
         summary = []
         if "alert_frequency_max"  in updates: summary.append(f"Frequency > {updates['alert_frequency_max']}")
         if "alert_roas_drop_pct" in updates: summary.append(f"ROAS giảm > {updates['alert_roas_drop_pct']:.0f}%")
         if "alert_cpm_spike_pct" in updates: summary.append(f"CPM tăng > {updates['alert_cpm_spike_pct']:.0f}%")
         await update.message.reply_text(
-            f"✅ *Ngưỡng alert đã lưu:*\n" + "\n".join(f"• {s}" for s in summary),
+            f"✅ *Ngưỡng alert đã lưu:*\n" + "\n".join(f"• {s}" for s in summary)
+            + "\n\n_Gõ `/ads_settings` để xem lại._",
             parse_mode=ParseMode.MARKDOWN,
         )
     else:
