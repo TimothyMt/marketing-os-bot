@@ -5259,6 +5259,10 @@ async def _run_pipeline_sequentially(message: Message, session):
                 industry=session.profile.industry or "",
                 stage=session.profile.stage or "",
                 parsed_stages=valid_stages,
+                archetype_signal_text=" ".join(filter(None, [
+                    session.profile.product_service or "",
+                    session.profile.target_customer or "",
+                ])),
             )
         except Exception as e:
             logger.exception("Failed to BUILD HTML report: %s", e)

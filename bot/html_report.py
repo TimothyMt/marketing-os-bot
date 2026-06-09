@@ -292,6 +292,54 @@ body {
   .pos-q-desc { font-size: 11px; }
   .insight-grid { grid-template-columns: 1fr; }
   .barchart-label { width: 86px; font-size: 11px; }
+  .archetype-banner { padding: 16px; }
+  .archetype-banner h3 { font-size: 16px; }
+}
+
+/* Archetype banner — giải thích archetype mua hàng cho user */
+.archetype-banner {
+  background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%);
+  border-left: 4px solid #f59e0b;
+  border-radius: 10px;
+  padding: 20px 24px;
+  margin: 16px 0 24px;
+  font-size: 14px;
+  line-height: 1.6;
+  color: #1f2937;
+}
+.archetype-banner .archetype-head {
+  display: flex; align-items: center; gap: 10px; margin-bottom: 10px;
+}
+.archetype-banner .archetype-head h3 {
+  margin: 0; font-size: 18px; font-weight: 600; color: #92400e;
+}
+.archetype-banner .archetype-head .icon { font-size: 24px; }
+.archetype-banner .archetype-meaning { margin: 8px 0 12px; }
+.archetype-banner .archetype-why {
+  background: rgba(255,255,255,0.6); padding: 10px 14px; border-radius: 6px;
+  margin: 10px 0; font-size: 13px;
+}
+.archetype-banner .archetype-flip {
+  background: rgba(220, 38, 38, 0.08); border-left: 3px solid #dc2626;
+  padding: 10px 14px; border-radius: 4px; margin: 10px 0; font-size: 13px;
+}
+.archetype-banner details {
+  margin-top: 10px; font-size: 13px; cursor: pointer;
+}
+.archetype-banner details summary {
+  font-weight: 500; color: #78350f; padding: 4px 0;
+}
+.archetype-banner details ul {
+  margin: 8px 0 0 20px; padding: 0;
+}
+.archetype-banner details li { margin: 4px 0; }
+.archetype-banner .archetype-impact {
+  margin-top: 12px; padding-top: 12px; border-top: 1px dashed #d97706;
+  font-size: 13px; color: #1f2937;
+}
+
+@media print {
+  .archetype-banner { background: #fef3c7; }
 }
 """
 
@@ -422,6 +470,8 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     </div>
     <div class="powered">Powered by Max — AI CMO · Marketing OS</div>
   </div>
+
+  {archetype_banner_html}
 
   <div class="tabs">
     {tabs_html}
@@ -676,6 +726,7 @@ def build_ads_dashboard_report(
         radio_inputs=radio,
         tabs_html=tab_label,
         sections_html=section_html,
+        archetype_banner_html="",
         css=CSS,
         tab_rules=_generate_tab_css(1),
         pos_map_script=POS_MAP_SCRIPT,
@@ -761,9 +812,105 @@ def build_single_skill_report(
         radio_inputs=radio,
         tabs_html=tab_label,
         sections_html=section_html,
+        archetype_banner_html="",
         css=CSS,
         tab_rules=_generate_tab_css(1),
         pos_map_script=POS_MAP_SCRIPT,
+    )
+
+
+# ─────────────────────────────────────────────────────────────────
+# Archetype banner — giải thích archetype mua hàng để user hiểu plan
+# ─────────────────────────────────────────────────────────────────
+
+_ARCHETYPE_MEANING = {
+    "trust_building": {
+        "label":   "Trust-building",
+        "meaning": "Khách BIẾT mình có vấn đề, nhưng chu kỳ ra quyết định DÀI — cần xây <strong>authority + chuyên môn</strong> trước khi pitch. Brand đẹp chưa chắc ra lead — chuyên môn sâu mới ra.",
+        "impact":  "Plan này tối ưu cho trust-building: content_pillars ưu tiên <em>Industry expertise</em> + <em>Personal POV</em>, funnel 60/30/10 (Industry/Personal/Offer), kênh ưu tiên long-form (LinkedIn, blog, podcast, YouTube long).",
+    },
+    "demand_gen": {
+        "label":   "Demand-generation",
+        "meaning": "Khách <strong>chưa biết</strong> mình cần — content phải <strong>khơi gợi desire</strong> trước khi pitch. Brand mạnh thì đẩy được giá cao.",
+        "impact":  "Plan này tối ưu cho demand-gen: content_pillars ưu tiên <em>Lifestyle/Aspiration</em> + <em>Desire trigger</em>, funnel 50/30/20 (Desire/Lifestyle+Proof/Convert), kênh ưu tiên video-first organic (TikTok, Reels, Shorts).",
+    },
+    "impulse": {
+        "label":   "Impulse purchase",
+        "meaning": "Khách mua <strong>nhanh theo cảm xúc</strong>, ít cân nhắc. Ads tốt = ra đơn, không cần brand mạnh.",
+        "impact":  "Plan này tối ưu cho impulse: content_pillars ưu tiên <em>Hook</em> + <em>Social proof</em> + <em>Offer</em>, funnel 30/20/50 (Hook/Retarget+Proof/Offer), kênh ưu tiên paid ads + retarget + livestream (Meta Ads, TikTok Ads/Shop, Shopee).",
+    },
+}
+
+
+def _render_archetype_banner(industry: str, signal_text: str = "") -> str:
+    """Render banner giải thích archetype mua hàng cho user.
+
+    Đọc archetype từ industry_context + áp signal flip. Trả về "" nếu
+    industry không có declaration (banner skip — backward compat).
+    """
+    try:
+        from frameworks.industry_context import resolve_archetype, ARCHETYPE_LABEL
+    except ImportError:
+        return ""
+
+    res = resolve_archetype(industry or "", signal_text or "")
+    primary = res.get("primary", "")
+    if not primary or primary not in _ARCHETYPE_MEANING:
+        return ""
+
+    meta      = _ARCHETYPE_MEANING[primary]
+    label     = meta["label"]
+    meaning   = meta["meaning"]
+    impact    = meta["impact"]
+    flipped   = res.get("flipped", False)
+    secondary = res.get("secondary", "")
+    blend     = res.get("blend", "")
+    matched   = res.get("matched_signals") or []
+
+    # Lý do chọn — pure vs blend default vs flipped
+    if flipped:
+        signals_str = ", ".join(f"<em>{s}</em>" for s in matched)
+        sec_label   = _ARCHETYPE_MEANING.get(secondary, {}).get("label", secondary)
+        why_html = (
+            f'<div class="archetype-flip">⚡ Đã điều chỉnh archetype từ default sang '
+            f'<strong>{label}</strong> vì brief có signal: {signals_str}. '
+            f'Secondary giữ là {sec_label} (blend {blend}).</div>'
+        )
+    elif secondary and blend:
+        sec_label = _ARCHETYPE_MEANING.get(secondary, {}).get("label", secondary)
+        why_html = (
+            f'<div class="archetype-why">📍 Vì sao plan này áp dụng: ngành '
+            f'<strong>{industry}</strong> mặc định <strong>{label}</strong> + secondary '
+            f'<strong>{sec_label}</strong> (blend {blend}). Brief chưa có signal đặc thù → giữ default.</div>'
+        )
+    else:
+        why_html = (
+            f'<div class="archetype-why">📍 Vì sao plan này áp dụng: ngành '
+            f'<strong>{industry}</strong> thuộc nhóm <strong>{label}</strong> (pure).</div>'
+        )
+
+    # 2 archetype còn lại để so sánh
+    others = [k for k in _ARCHETYPE_MEANING if k != primary]
+    compare_items = "".join(
+        f'<li><strong>{_ARCHETYPE_MEANING[k]["label"]}</strong>: '
+        f'{_ARCHETYPE_MEANING[k]["meaning"]}</li>'
+        for k in others
+    )
+
+    return (
+        '<div class="archetype-banner">'
+        '<div class="archetype-head">'
+        '<span class="icon">🎯</span>'
+        f'<h3>Archetype mua hàng: {label}</h3>'
+        '</div>'
+        f'<div class="archetype-meaning">{meaning}</div>'
+        f'{why_html}'
+        '<details class="archetype-compare">'
+        '<summary>So với 2 archetype khác</summary>'
+        f'<ul>{compare_items}</ul>'
+        '</details>'
+        f'<div class="archetype-impact">{impact}</div>'
+        '</div>'
     )
 
 
@@ -772,6 +919,7 @@ def build_report(
     industry: str,
     stage: str,
     parsed_stages: list[tuple[str, dict]],
+    archetype_signal_text: str = "",
 ) -> str:
     """Render full HTML report with CSS-only tab navigation (radio buttons, no JS)."""
     n = len(parsed_stages)
@@ -823,6 +971,7 @@ def build_report(
         radio_inputs=radio_inputs,
         tabs_html=tabs_html,
         sections_html=sections_html,
+        archetype_banner_html=_render_archetype_banner(industry, archetype_signal_text),
         css=CSS,
         tab_rules=_generate_tab_css(n),
         pos_map_script=POS_MAP_SCRIPT,
