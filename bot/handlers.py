@@ -3570,22 +3570,32 @@ async def _show_profile_reuse_confirm(message: Message, session, task_name: str)
     fw = KPI_LIBRARY.get(profile.industry or "")
     industry_name = fw.display_name if fw else (profile.industry or "Chưa xác định")
 
-    # Build profile recap — chỉ hiện fields liên quan
+    # Build profile recap — hiện tất cả fields đã thu thập
     profile_lines = []
     profile_lines.append(f"🏢 *Business*: {_escape_md(profile.business_name or 'Business của bạn')}")
     profile_lines.append(f"📦 *Sản phẩm/DV*: {_escape_md(profile.product_service or '—')}")
     profile_lines.append(f"👥 *Khách hàng*: {_escape_md(profile.target_customer or '—')}")
     profile_lines.append(f"📊 *Ngành*: {_escape_md(industry_name)}")
+    if profile.stage:
+        profile_lines.append(f"🚀 *Giai đoạn*: {_escape_md(profile.stage)}")
     if profile.location:
         profile_lines.append(f"📍 *Địa bàn*: {_escape_md(profile.location)}")
     if profile.monthly_revenue:
         profile_lines.append(f"💰 *Doanh thu*: {_escape_md(profile.monthly_revenue)}")
+    if profile.monthly_marketing_budget:
+        profile_lines.append(f"📣 *Ngân sách marketing*: {_escape_md(profile.monthly_marketing_budget)}")
+    if profile.team_size:
+        profile_lines.append(f"👤 *Quy mô team*: {_escape_md(profile.team_size)}")
+    if profile.current_channels:
+        profile_lines.append(f"📡 *Kênh hiện tại*: {_escape_md(profile.current_channels)}")
     if profile.primary_goal:
         profile_lines.append(f"🎯 *Mục tiêu*: {_escape_md(profile.primary_goal)}")
     if profile.main_challenge:
         profile_lines.append(f"⚡ *Thách thức*: {_escape_md(profile.main_challenge)}")
-    if profile.competitors and task_name == "competitor":
+    if profile.competitors:
         profile_lines.append(f"🕵️ *Đối thủ*: {_escape_md(profile.competitors)}")
+    if profile.usp:
+        profile_lines.append(f"✨ *USP*: {_escape_md(profile.usp)}")
 
     confirm_msg = (
         f"{emoji} *{label}*\n\n"
