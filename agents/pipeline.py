@@ -729,16 +729,53 @@ async def run_strategic_single_skill(task_name: str, session: Session) -> str:
 # PIPELINE RUNNER — orchestrates all stages
 # ─────────────────────────────────────────────────────────────────
 
-PIPELINE_SEQUENCE = [
-    (PipelineStage.MARKET_RESEARCH, run_market_research, "market_research"),
-    (PipelineStage.COMPETITOR, run_competitor_analysis, "competitor"),
-    (PipelineStage.CUSTOMER_INSIGHT, run_customer_insight, "customer_insight"),
-    (PipelineStage.PSYCHOLOGY_PRICING, run_psychology_and_pricing, "psychology_pricing"),
-    (PipelineStage.USP_DEFINITION, run_usp_definition, "usp_definition"),
-    (PipelineStage.SWOT, run_swot_analysis, "swot"),
-    # Synthesis is now interactive — user picks direction first, then strategy_plan runs.
-    # See handlers._run_strategy_plan for the post-pipeline synthesis flow.
+# ─────────────────────────────────────────────────────────────────
+# CANONICAL PIPELINE DEFINITION — single source of truth
+#
+# Thêm stage mới: chỉ cần append 1 dòng StageConfig vào PIPELINE_DEF.
+# PIPELINE_SEQUENCE, _AGENT_TO_STAGE_KEYS, và orchestrator tiers đều
+# tự động được derive — không cần sửa thêm chỗ nào khác.
+#
+# Fields:
+#   stage       — PipelineStage enum value
+#   runner      — legacy _run_skill runner (run_targeted_pipeline path)
+#   result_key  — key lưu vào session.results + HTML tab key
+#   tier        — nhóm thực thi (same tier = parallel trong orchestrator)
+#   tier_name   — tên hiển thị cho tier (chỉ cần set ở entry đầu tiên mỗi tier)
+#   wrapper     — tên hàm trong agent_wrappers.ALL_AGENTS (multi-agent path)
+#   must_have   — True = abort pipeline nếu fail; False = log + continue
+#   timeout     — giây timeout per agent trong orchestrator
+# ─────────────────────────────────────────────────────────────────
+
+from dataclasses import dataclass, field as dc_field
+from typing import Callable as _Callable
+
+
+@dataclass
+class StageConfig:
+    stage:      PipelineStage
+    runner:     _Callable
+    result_key: str
+    tier:       int
+    wrapper:    str
+    tier_name:  str  = ""
+    must_have:  bool = False
+    timeout:    int  = 500
+
+
+PIPELINE_DEF: list[StageConfig] = [
+    StageConfig(PipelineStage.MARKET_RESEARCH,   run_market_research,       "market_research",   tier=1, tier_name="T1 Foundation", wrapper="market_research_agent",   must_have=False, timeout=500),
+    StageConfig(PipelineStage.COMPETITOR,        run_competitor_analysis,   "competitor",         tier=1, wrapper="competitor_agent",        must_have=False, timeout=500),
+    StageConfig(PipelineStage.CUSTOMER_INSIGHT,  run_customer_insight,      "customer_insight",   tier=1, wrapper="customer_insight_agent",  must_have=False, timeout=500),
+    StageConfig(PipelineStage.USP_DEFINITION,    run_usp_definition,        "usp_definition",     tier=2, tier_name="T2 Strategy",    wrapper="usp_definition_agent",    must_have=False, timeout=500),
+    StageConfig(PipelineStage.PSYCHOLOGY_PRICING,run_psychology_and_pricing,"psychology_pricing", tier=2, wrapper="psychology_pricing_agent", must_have=False, timeout=500),
+    StageConfig(PipelineStage.SWOT,              run_swot_analysis,         "swot",               tier=3, tier_name="T3 SWOT",        wrapper="swot_agent",              must_have=True,  timeout=300),
+    StageConfig(PipelineStage.SYNTHESIS,         run_strategy_synthesis,    "synthesis",          tier=4, tier_name="T4 Synthesis",   wrapper="synthesizer_agent",       must_have=True,  timeout=600),
+    StageConfig(PipelineStage.TACTICAL_PLAYBOOK, run_tactical_playbook,     "tactical_playbook",  tier=5, tier_name="T5 Tactical",    wrapper="tactical_playbook_agent", must_have=False, timeout=400),
 ]
+
+# Auto-derived — KHÔNG sửa trực tiếp, sửa PIPELINE_DEF ở trên
+PIPELINE_SEQUENCE = [(d.stage, d.runner, d.result_key) for d in PIPELINE_DEF]
 
 
 async def run_full_pipeline(  # kept for backwards compatibility — use run_targeted_pipeline
@@ -827,15 +864,9 @@ async def run_targeted_pipeline(
 
 # Mapping agent_name → stage_keys cho HTML report rendering
 # Chain agents (T3) produces nhiều stage results trong session.results
+# Auto-derived từ PIPELINE_DEF — KHÔNG sửa trực tiếp
 _AGENT_TO_STAGE_KEYS: dict[str, list[str]] = {
-    "market_research_agent":         ["market_research"],
-    "competitor_agent":              ["competitor"],
-    "customer_insight_agent":        ["customer_insight"],
-    "usp_definition_agent":          ["usp_definition"],
-    "psychology_pricing_agent":      ["psychology_pricing"],
-    "swot_agent":                    ["swot"],
-    "synthesizer_agent":             ["synthesis"],
-    "tactical_playbook_agent":       ["tactical_playbook"],
+    d.wrapper: [d.result_key] for d in PIPELINE_DEF
 }
 
 

@@ -236,88 +236,44 @@ async def _safe_run(
 # ─────────────────────────────────────────────────────────────────
 
 def get_strategic_pipeline_tiers() -> list[TierConfig]:
-    """Build 4-tier strategic pipeline definition.
+    """Build pipeline tiers tự động từ PIPELINE_DEF — single source of truth.
 
-    Lazy import agent_wrappers để tránh circular import (wrappers → orchestrator
-    không có, nhưng wrappers → pipeline → ... loop có thể xảy ra).
+    Để thêm stage mới: chỉ cần append StageConfig vào PIPELINE_DEF trong pipeline.py
+    + thêm wrapper vào agent_wrappers.py. Hàm này tự build tiers mà không cần sửa.
 
-    Tier design:
-    - T1 Foundation: Market + Competitor + Customer (independent, parallel)
-    - T2 Strategy: USP + Psychology+Pricing (parallel, depend on T1)
-    - T3 Journey: Retention → Winback (sequential, Winback needs Retention)
-    - T4 Final: Synthesis (long context aggregation)
-
-    must_have rules (CRITICAL — abort pipeline if fail):
-    - T1: customer_insight_agent (downstream cần Customer ICP)
-    - T4: synthesizer_agent (đầu ra cuối cùng cho user)
-
-    nice_to_have (degraded mode — pipeline continues):
-    - T1 market/competitor: nếu fail, strategy summary có ghi "data thiếu"
-    - T2 cả 2: optional polish, không block direction-picking step
-    - T3 SWOT: sequential, cần T1+T2 đủ — must_have để Tactical Playbook có data
-    - T4 Synthesis: long-context aggregation — must_have (đầu ra cuối user)
-    - T5 Tactical Playbook: sequential, cần SWOT + Synthesis
+    Grouping: stages cùng tier number → chạy parallel trong cùng TierConfig.
+    Thứ tự tier: tăng dần (tier=1 trước, tier=2 sau, ...).
     """
-    from agents.agent_wrappers import (
-        market_research_agent,
-        competitor_agent,
-        customer_insight_agent,
-        usp_definition_agent,
-        psychology_pricing_agent,
-        swot_agent,
-        synthesizer_agent,
-        tactical_playbook_agent,
-    )
+    from agents.pipeline import PIPELINE_DEF
+    from agents.agent_wrappers import ALL_AGENTS
+    from itertools import groupby
 
-    return [
-        TierConfig(
-            name="T1 Foundation",
-            agents=[
-                market_research_agent,
-                competitor_agent,
-                customer_insight_agent,
-            ],
-            must_have=set(),  # Partial results better than abort — direction-picking works without all 3
-            nice_to_have={"market_research_agent", "competitor_agent", "customer_insight_agent"},
-            timeout_per_agent=500,
-            max_concurrent=3,
-        ),
-        TierConfig(
-            name="T2 Strategy",
-            agents=[
-                usp_definition_agent,
-                psychology_pricing_agent,
-            ],
-            must_have=set(),
-            nice_to_have={"usp_definition_agent", "psychology_pricing_agent"},
-            timeout_per_agent=500,
-            max_concurrent=2,
-        ),
-        TierConfig(
-            name="T3 SWOT",
-            agents=[swot_agent],
-            must_have={"swot_agent"},
-            nice_to_have=set(),
-            timeout_per_agent=300,
-            max_concurrent=1,
-        ),
-        TierConfig(
-            name="T4 Synthesis",
-            agents=[synthesizer_agent],
-            must_have={"synthesizer_agent"},
-            nice_to_have=set(),
-            timeout_per_agent=600,
-            max_concurrent=1,
-        ),
-        TierConfig(
-            name="T5 Tactical Playbook",
-            agents=[tactical_playbook_agent],
-            must_have=set(),
-            nice_to_have={"tactical_playbook_agent"},
-            timeout_per_agent=400,
-            max_concurrent=1,
-        ),
-    ]
+    tiers: list[TierConfig] = []
+    sorted_def = sorted(PIPELINE_DEF, key=lambda d: d.tier)
+
+    for tier_num, group_iter in groupby(sorted_def, key=lambda d: d.tier):
+        entries = list(group_iter)
+
+        agents = [ALL_AGENTS[d.wrapper] for d in entries if d.wrapper in ALL_AGENTS]
+        if not agents:
+            logger.warning("Tier %s: no agents found in ALL_AGENTS — skipped", tier_num)
+            continue
+
+        must_have  = {d.wrapper for d in entries if d.must_have}
+        nice_to_have = {d.wrapper for d in entries if not d.must_have}
+        max_timeout  = max(d.timeout for d in entries)
+        tier_name = next((d.tier_name for d in entries if d.tier_name), f"T{tier_num}")
+
+        tiers.append(TierConfig(
+            name=tier_name,
+            agents=agents,
+            must_have=must_have,
+            nice_to_have=nice_to_have,
+            timeout_per_agent=max_timeout,
+            max_concurrent=min(len(agents), 3),
+        ))
+
+    return tiers
 
 
 # ─────────────────────────────────────────────────────────────────

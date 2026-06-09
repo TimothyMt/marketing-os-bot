@@ -39,6 +39,7 @@ class PipelineStage(str, Enum):
     PSYCHOLOGY_PRICING = "psychology_pricing"
     USP_DEFINITION = "usp_definition"
     SWOT = "swot"
+    TACTICAL_PLAYBOOK = "tactical_playbook"
     RETENTION_STRATEGY = "retention_strategy"
     WINBACK_VISION = "winback_vision"          # Sprint 3 — NEW
     SOCIAL_LISTENING = "social_listening"
