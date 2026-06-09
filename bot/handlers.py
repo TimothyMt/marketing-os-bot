@@ -3152,6 +3152,23 @@ async def _handle_callback_inner(update, context, query, session, data, user_id)
             except Exception:
                 _n_answers = 0
 
+            # Pipeline bị kill giữa chừng (server restart/deploy) — stage đã set
+            # nhưng chưa có kết quả nào được lưu
+            if (
+                session.stage == PipelineStage.MARKET_RESEARCH
+                and not _has_research
+                and not _has_synthesis
+            ):
+                await query.message.reply_text(
+                    "⚡ *Bot vừa được cập nhật — pipeline trước bị gián đoạn.*\n\n"
+                    "Em chưa kịp lưu kết quả nào. Sếp bấm để chạy lại từ đầu nhé!",
+                    parse_mode=ParseMode.MARKDOWN,
+                    reply_markup=InlineKeyboardMarkup([
+                        [InlineKeyboardButton("🔄 Chạy lại ngay", callback_data="research_analyze")],
+                    ]),
+                )
+                return
+
             if _has_synthesis:
                 # Synthesis exists — interrupted before campaign selection
                 await query.message.reply_text(
