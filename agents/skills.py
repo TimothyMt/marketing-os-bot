@@ -342,6 +342,21 @@ class SwotSkill(AgentSkill):
     max_tokens = 6000
     context_strategy = ContextStrategy.FULL_PIPELINE  # Cần đủ 5 research results
 
+    def build_context(self, session: Session) -> str:
+        return session.build_pipeline_context()
+
+    def build_user_msg(self, session: Session) -> str:
+        p = session.profile
+        return f"""Tổng hợp SWOT cho business này từ toàn bộ research đã có trong context (Market, Competitor, Customer, Psychology+Pricing, USP).
+
+**Business:**
+- Ngành: {p.industry or 'chưa xác định'}
+- Sản phẩm/dịch vụ: {p.product_service or 'chưa xác định'}
+- Khách hàng: {p.target_customer or 'chưa xác định'}
+- Địa bàn: {p.location or 'Việt Nam'}
+
+Mỗi điểm S/W/O/T phải bám dẫn chứng cụ thể từ research, rồi dựng ma trận SO/WO/ST/WT làm nền cho Synthesis và Tactical Playbook."""
+
 
 class TacticalPlaybookSkill(AgentSkill):
     """Viết SO/WO/WT tactics per-segment — chạy sau Synthesis, dựa trên SWOT + Synthesis."""
@@ -349,6 +364,40 @@ class TacticalPlaybookSkill(AgentSkill):
     system_prompt = TACTICAL_PLAYBOOK_SYSTEM
     max_tokens = 8000
     context_strategy = ContextStrategy.FULL_PIPELINE  # Đọc SWOT + Synthesis từ context
+
+    def build_context(self, session: Session) -> str:
+        return session.build_pipeline_context()
+
+    def build_user_msg(self, session: Session) -> str:
+        p = session.profile
+
+        # Archetype block — cùng resolver với CMO Strategy (v2) để tactics/kênh/copy
+        # bám đúng archetype mua hàng (pipeline synthesis chưa inject sẵn archetype).
+        archetype_section = ""
+        try:
+            from frameworks.industry_context import format_archetype_block
+            if p.industry:
+                archetype_brief_text = " ".join(filter(None, [
+                    p.product_service or "",
+                    p.target_customer or "",
+                ]))
+                block = format_archetype_block(p.industry, archetype_brief_text)
+                if block:
+                    archetype_section = (
+                        f"\n\n# ARCHETYPE MUA HÀNG (bám khi chọn kênh / copy / tactics)\n{block}"
+                    )
+        except Exception:
+            archetype_section = ""
+
+        return f"""Viết Tactical Playbook cho business này, dựa trên bảng SWOT và Kế Hoạch Đề Xuất (Synthesis) đã có trong context.
+
+**Business:**
+- Ngành: {p.industry or 'chưa xác định'}
+- Sản phẩm/dịch vụ: {p.product_service or 'chưa xác định'}
+- Khách hàng: {p.target_customer or 'chưa xác định'}
+- Địa bàn: {p.location or 'Việt Nam'}{archetype_section}
+
+Bám wedge của Synthesis, đào sâu SO/WO/WT thành tactics thực thi (copy mẫu, kênh, tham số, KPI) cho từng tệp khách hàng chính — kênh và copy phải khớp archetype hiệu lực ở trên."""
 
 
 # Registry — used by pipeline.py to look up skill by stage_key
