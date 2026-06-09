@@ -3301,7 +3301,30 @@ async def _handle_callback_inner(update, context, query, session, data, user_id)
         # ── Strategic skills ─────────────────────────────────────
         # Refine mode: nếu đã có bản phân tích mảng này VÀ đã chạy xong full A→Z,
         # cho sếp gõ yêu cầu chỉnh sửa tự do — cập nhật trên bản cũ thay vì làm lại từ đầu.
-        REFINABLE_STRATEGIC = {"market", "competitor", "customer", "pricing"}
+        # Tactical Playbook: chỉ chạy được khi có đủ SWOT + Synthesis
+        if task_type == "tactical_playbook":
+            if not session.has_result("synthesis"):
+                await query.answer("⚠️ Cần chạy xong phân tích tổng thể (full A→Z) trước nhé sếp!", show_alert=True)
+                return
+            if not session.has_result("swot"):
+                await query.answer("⚠️ Cần có SWOT trước — sếp chạy SWOT một lần rồi mình làm Playbook nhé!", show_alert=True)
+                return
+
+        # SWOT refine-mode: nếu đã có SWOT thì cho tinh chỉnh
+        if task_type == "swot" and session.has_result("swot"):
+            from agents.pipeline import STRATEGIC_RESULT_KEYS
+            await query.edit_message_reply_markup(reply_markup=None)
+            session.pending_intake = {"_awaiting_refine_for": "swot"}
+            await save_session(session)
+            await query.message.reply_text(
+                "🔧 *SWOT — Tinh chỉnh trên bản đã có*\n\n"
+                "Sếp gõ yêu cầu cụ thể, em sẽ cập nhật trên bản SWOT cũ:\n\n"
+                "_Ví dụ: \"thêm mối đe dọa từ nền tảng X\", \"điểm yếu về distribution cần chi tiết hơn\"_",
+                parse_mode=ParseMode.MARKDOWN,
+            )
+            return
+
+        REFINABLE_STRATEGIC = {"market", "competitor", "customer", "pricing", "swot", "tactical_playbook"}
         if task_type in REFINABLE_STRATEGIC:
             from agents.pipeline import STRATEGIC_RESULT_KEYS
             result_key = STRATEGIC_RESULT_KEYS[task_type]

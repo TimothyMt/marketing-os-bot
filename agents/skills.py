@@ -19,7 +19,9 @@ from agents.prompts import (
     SOCIAL_LISTENING_SYSTEM,
     STRATEGY_SYNTHESIZER_SYSTEM,
     USP_DEFINITION_SYSTEM,
+    SWOT_SYSTEM,
 )
+from agents.strategy_prompts import TACTICAL_PLAYBOOK_SYSTEM
 from frameworks.kpi_library import get_framework_as_text
 from frameworks.save_framework import generate_save_analysis
 from frameworks.smart_framework import format_smart_prompt
@@ -333,13 +335,31 @@ Yêu cầu:
 - Budget allocation đề xuất"""
 
 
+class SwotSkill(AgentSkill):
+    """Tổng hợp S/W/O/T từ toàn bộ research pipeline — chạy sau USP, trước Synthesis."""
+    name = "swot"
+    system_prompt = SWOT_SYSTEM
+    max_tokens = 6000
+    context_strategy = ContextStrategy.FULL_PIPELINE  # Cần đủ 5 research results
+
+
+class TacticalPlaybookSkill(AgentSkill):
+    """Viết SO/WO/WT tactics per-segment — chạy sau Synthesis, dựa trên SWOT + Synthesis."""
+    name = "tactical_playbook"
+    system_prompt = TACTICAL_PLAYBOOK_SYSTEM
+    max_tokens = 8000
+    context_strategy = ContextStrategy.FULL_PIPELINE  # Đọc SWOT + Synthesis từ context
+
+
 # Registry — used by pipeline.py to look up skill by stage_key
 SKILL_REGISTRY: dict[str, type[AgentSkill]] = {
     "market_research":    MarketResearchSkill,
     "competitor":         CompetitorSkill,
     "customer_insight":   CustomerInsightSkill,
     "psychology_pricing": PsychologyPricingSkill,
-    "usp_definition":     UspDefinitionSkill,   # Sprint 2 — NEW
+    "usp_definition":     UspDefinitionSkill,
+    "swot":               SwotSkill,
     "social_listening":   SocialListeningSkill,
     "synthesis":          StrategySynthesisSkill,
+    "tactical_playbook":  TacticalPlaybookSkill,
 }

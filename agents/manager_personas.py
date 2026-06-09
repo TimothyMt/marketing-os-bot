@@ -48,12 +48,14 @@ PERSONAS: list[ManagerPersona] = [
         is_orchestrator=True,
         domain_summary="Ra chiến lược tổng, nghiên cứu thị trường/đối thủ/khách hàng/giá — rồi giao việc cho team thực thi",
         owns_skills=[
-            "full",        # Trọn bộ A→Z (pipeline chiến lược chính)
-            "strategy",    # Lập kế hoạch tổng (SAVE + SMART + 90-day)
-            "market",      # Nghiên cứu thị trường (TAM/SAM/SOM)
-            "competitor",  # Phân tích đối thủ (8 chiều)
-            "customer",    # Insight khách hàng (ICP + JTBD)
-            "pricing",     # Chiến lược giá
+            "full",              # Trọn bộ A→Z (pipeline chiến lược chính)
+            "swot",              # Ma trận SWOT + SO/WO/ST/WT
+            "strategy",          # Kế hoạch đề xuất (SAVE + SMART + 90-day)
+            "tactical_playbook", # SO/WO/WT tactics per-segment
+            "market",            # Nghiên cứu thị trường (TAM/SAM/SOM)
+            "competitor",        # Phân tích đối thủ (8 chiều)
+            "customer",          # Insight khách hàng (ICP + JTBD)
+            "pricing",           # Chiến lược giá
         ],
         trigger_keywords=[
             "chiến lược", "strategy", "kế hoạch", "kế hoạch tổng", "roadmap",

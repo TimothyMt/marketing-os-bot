@@ -50,6 +50,8 @@ from agents.skills import (
     UspDefinitionSkill,
     SocialListeningSkill,
     StrategySynthesisSkill,
+    SwotSkill,
+    TacticalPlaybookSkill,
 )
 from agents.critic import run_critic
 from agents.output_formats import get_format_instruction, get_lang_instruction
@@ -643,6 +645,18 @@ async def run_usp_definition(session: Session) -> str:
     return result
 
 
+async def run_swot_analysis(session: Session) -> str:
+    result = await _run_skill(SwotSkill(), session)
+    session.add_result("swot", result)
+    return result
+
+
+async def run_tactical_playbook(session: Session) -> str:
+    result = await _run_skill(TacticalPlaybookSkill(), session)
+    session.add_result("tactical_playbook", result)
+    return result
+
+
 async def run_strategy_synthesis(session: Session) -> str:
     result = await _run_skill(StrategySynthesisSkill(), session)
     session.add_result("synthesis", result)
@@ -677,20 +691,24 @@ async def run_operational_skill(skill_name: str, session: Session) -> str:
 
 # Map task name → result key trong session.results
 STRATEGIC_RESULT_KEYS = {
-    "market":     "market_research",
-    "competitor": "competitor",
-    "customer":   "customer_insight",
-    "pricing":    "psychology_pricing",
-    "strategy":   "synthesis",
+    "market":            "market_research",
+    "competitor":        "competitor",
+    "customer":          "customer_insight",
+    "pricing":           "psychology_pricing",
+    "swot":              "swot",
+    "strategy":          "synthesis",
+    "tactical_playbook": "tactical_playbook",
 }
 
 # Map task name → AgentSkill class
 STRATEGIC_SKILL_CLASSES = {
-    "market":     MarketResearchSkill,
-    "competitor": CompetitorSkill,
-    "customer":   CustomerInsightSkill,
-    "pricing":    PsychologyPricingSkill,
-    "strategy":   StrategySynthesisSkill,
+    "market":            MarketResearchSkill,
+    "competitor":        CompetitorSkill,
+    "customer":          CustomerInsightSkill,
+    "pricing":           PsychologyPricingSkill,
+    "swot":              SwotSkill,
+    "strategy":          StrategySynthesisSkill,
+    "tactical_playbook": TacticalPlaybookSkill,
 }
 
 
@@ -717,6 +735,7 @@ PIPELINE_SEQUENCE = [
     (PipelineStage.CUSTOMER_INSIGHT, run_customer_insight, "customer_insight"),
     (PipelineStage.PSYCHOLOGY_PRICING, run_psychology_and_pricing, "psychology_pricing"),
     (PipelineStage.USP_DEFINITION, run_usp_definition, "usp_definition"),
+    (PipelineStage.SWOT, run_swot_analysis, "swot"),
     # Synthesis is now interactive — user picks direction first, then strategy_plan runs.
     # See handlers._run_strategy_plan for the post-pipeline synthesis flow.
 ]

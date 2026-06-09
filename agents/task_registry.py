@@ -160,6 +160,26 @@ STRATEGIC_TASKS: dict[str, TaskConfig] = {
             "monthly_revenue", "primary_goal", "main_challenge",
         ],
     ),
+    "swot": TaskConfig(
+        name="swot",
+        label="Phân Tích SWOT",
+        button_emoji="🔀",
+        category="strategic",
+        description="Ma trận S/W/O/T + chiến lược SO/WO/ST/WT",
+        skill_class_name="SwotSkill",
+        pipeline_stages=["swot"],
+        intake_required_fields=["industry", "product_service", "target_customer"],
+    ),
+    "tactical_playbook": TaskConfig(
+        name="tactical_playbook",
+        label="Tactical Playbook",
+        button_emoji="📋",
+        category="strategic",
+        description="SO/WO/WT tactics per-segment — copy mẫu, kênh, KPI cụ thể",
+        skill_class_name="TacticalPlaybookSkill",
+        pipeline_stages=["tactical_playbook"],
+        intake_required_fields=["industry", "product_service", "target_customer"],
+    ),
 }
 
 

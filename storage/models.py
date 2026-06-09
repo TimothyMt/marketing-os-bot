@@ -37,8 +37,9 @@ class PipelineStage(str, Enum):
     COMPETITOR = "competitor"
     CUSTOMER_INSIGHT = "customer_insight"
     PSYCHOLOGY_PRICING = "psychology_pricing"
-    USP_DEFINITION = "usp_definition"          # Sprint 2 — NEW
-    RETENTION_STRATEGY = "retention_strategy"  # Sprint 3 — NEW (Full Pipeline integration)
+    USP_DEFINITION = "usp_definition"
+    SWOT = "swot"
+    RETENTION_STRATEGY = "retention_strategy"
     WINBACK_VISION = "winback_vision"          # Sprint 3 — NEW
     SOCIAL_LISTENING = "social_listening"
     SYNTHESIS = "synthesis"
@@ -389,8 +390,9 @@ class Session:
             "competitor":         "## Kết quả Phân tích Đối thủ",
             "customer_insight":   "## Kết quả Customer Insight",
             "psychology_pricing": "## Kết quả Marketing Psychology & Pricing",
-            "usp_definition":     "## Kết quả USP Definition",          # Sprint 2
-            "retention_strategy": "## Kết quả Retention Strategy",       # Sprint 3
+            "usp_definition":     "## Kết quả USP Definition",
+            "swot":               "## Kết quả SWOT Analysis",
+            "retention_strategy": "## Kết quả Retention Strategy",
             "winback_campaign":   "## Kết quả Winback Vision",            # Sprint 3
             "social_listening":   "## Kết quả Social Listening Setup",
             "synthesis":          "## Kết quả Marketing Strategy",
