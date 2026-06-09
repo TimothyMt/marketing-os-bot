@@ -753,7 +753,8 @@ def build_single_skill_report(
         if parsed.get("detail"):
             parts.append(f'<div class="content">{_md_to_html(parsed["detail"])}</div>')
         if parsed.get("summary"):
-            parts.append('<div class="summary"><div class="summary-label">📌 Tóm tắt</div>'
+            summary_label = parsed.get("summary_label") or "📌 Tóm tắt"
+            parts.append(f'<div class="summary"><div class="summary-label">{summary_label}</div>'
                          f'{_md_to_html(parsed["summary"])}</div>')
         if parsed.get("benchmarks"):
             parts.append('<div class="benchmarks"><div class="benchmarks-label">📊 Benchmarks</div>'
