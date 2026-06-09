@@ -20,14 +20,16 @@ STAGE_META = {
     "psychology_pricing": {"title": "Marketing Psychology & Pricing", "icon": "💡", "color": "pricing"},
     "social_listening":   {"title": "Social Listening System",     "icon": "📡", "color": "market"},
     "usp_definition":     {"title": "USP Definition",                "icon": "🎯", "color": "strategy"},
+    "swot":               {"title": "Phân Tích SWOT",                "icon": "🔀", "color": "swot"},
     "retention_strategy": {"title": "Retention Strategy",            "icon": "🔄", "color": "customer"},
     "winback_campaign":   {"title": "Winback Vision",                "icon": "🔁", "color": "customer"},
     "synthesis":          {"title": "Kế Hoạch Đề Xuất",            "icon": "🚀", "color": "strategy"},
-    # Strategic single-shot task aliases (Phase 3 — task names used in handler dispatch)
+    # Strategic single-shot task aliases
     "market":             {"title": "Nghiên cứu Thị trường",       "icon": "📊", "color": "market"},
     "customer":           {"title": "Customer Insight & ICP",      "icon": "👥", "color": "customer"},
     "pricing":            {"title": "Marketing Psychology & Pricing", "icon": "💡", "color": "pricing"},
     "strategy":           {"title": "Kế Hoạch Đề Xuất",            "icon": "🎯", "color": "strategy"},
+    "tactical_playbook":  {"title": "Tactical Playbook",             "icon": "📋", "color": "swot"},
     # Operational skills
     "campaign_brief":      {"title": "Viết Brief Campaign",         "icon": "📋", "color": "strategy"},
     "content_calendar":    {"title": "Lịch Nội Dung",               "icon": "📅", "color": "market"},
@@ -95,6 +97,7 @@ body {
 .section.customer  { border-color: #10b981; }
 .section.pricing   { border-color: #ec4899; }
 .section.strategy  { border-color: #8b5cf6; }
+.section.swot      { border-color: #0ea5e9; }
 
 .section-header {
   display: flex; align-items: center; gap: 12px;
