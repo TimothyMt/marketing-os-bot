@@ -25,6 +25,20 @@ Bạn nhận: (a) thông tin business, (b) Diagnostic Brief từ team nghiên c�
 4. **Số thực tế.** SMART goals điền số cụ thể từ doanh thu/ngân sách founder cho, KHÔNG để placeholder.
 5. **Content bám định vị.** 2-3 trụ nội dung ladder lên positioning, không rời rạc.
 
+# ARCHETYPE-AWARE CONTENT PILLARS + WEDGE — quan trọng
+Bối cảnh ngành sẽ inject "Archetype mua hàng" (impulse / demand_gen / trust_building, có thể blend).
+Content_pillars + wedge channel phải bám theo archetype hiệu lực:
+
+- **trust_building**: pillars ƯU TIÊN có ≥1 trụ "Industry expertise" (chuyên môn sâu, phân tích ngành, góc nhìn người trong nghề) + ≥1 trụ "Personal POV" (quan điểm cá nhân, cách nhìn vấn đề của founder/lead). Wedge channel ưu tiên long-form / chuyên môn (LinkedIn, blog, podcast, YouTube long, Facebook long-form). Offer content chỉ đẩy sau khi authority đủ — đừng push-sales sớm.
+
+- **impulse**: pillars ƯU TIÊN Hook (scroll-stop), Social proof định lượng (số bán, review), Offer (deal/sale/urgency). Wedge channel ưu tiên paid ads + retarget + livestream (Meta Ads, TikTok Ads, TikTok Shop, Shopee). Pillars phải short, gắn CTA rõ.
+
+- **demand_gen**: pillars ƯU TIÊN Lifestyle/Aspiration (khơi gợi nhu cầu chưa biết mình có), Desire trigger (món ngon / outfit đẹp / trải nghiệm), Social proof (UGC, KOC). Wedge channel ưu tiên video-first organic (TikTok, Reels, Shorts). Cần khơi gợi nhu cầu trước khi pitch.
+
+- **blend (A primary + B secondary tỷ lệ X/Y)**: pillars có CẢ hai hướng, phân bổ theo blend ratio. Ví dụ trust 70 + impulse 30 = 2 trụ chuyên môn/POV + 1 trụ hook/offer. Ratio quyết định trọng số, không phải pillar count cứng.
+
+Khi flip xảy ra (đã ghi rõ trong archetype block) → bám archetype SAU FLIP, không phải default.
+
 # OUTPUT — DUY NHẤT một block JSON (không kèm chữ nào khác):
 
 ```json
@@ -58,6 +72,11 @@ Bạn nhận: (a) thông tin business, (b) Diagnostic Brief từ team nghiên c�
   "kill_criteria": [
     {"condition": "Nếu [metric] < [ngưỡng] sau [thời gian]", "action": "thì sếp cân nhắc [pivot/đổi hướng]"}
   ],
+  "archetype_used": {
+    "primary": "trust_building | demand_gen | impulse",
+    "secondary": "(nếu blend, không có thì để rỗng)",
+    "blend": "(vd 70/30, pure thì để rỗng)"
+  },
   "summary": "4-6 câu tóm tắt LỜI KHUYÊN: nên làm gì trước, nên tạm gác gì, theo dõi dấu hiệu nào để biết khi nào đổi hướng. Giọng em-sếp, đóng khung 'đây là đề xuất, quyết định cuối là của sếp'."
 }
 ```
@@ -145,6 +164,7 @@ def build_strategy_user(
     industry_brief: str,
     save_text: str,
     smart_text: str,
+    archetype_block: str = "",
 ) -> str:
     """Gộp toàn bộ input cho CMO."""
     return "\n".join([
@@ -157,6 +177,9 @@ def build_strategy_user(
         "# BỐI CẢNH NGÀNH + KPI LIBRARY",
         industry_brief or "(không có)",
         "",
+        "# ARCHETYPE MUA HÀNG (đã resolve theo business context)",
+        archetype_block or "(không có — dùng pillars theo nguyên tắc chung)",
+        "",
         "# FRAMEWORK SAVE (định vị)",
         save_text or "(dùng nguyên tắc SAVE chung)",
         "",
@@ -164,7 +187,7 @@ def build_strategy_user(
         smart_text or "(dùng nguyên tắc SMART chung)",
         "",
         "---",
-        "Dựng Marketing Plan theo đúng format JSON ở system prompt. Ưu tiên, đừng dàn trải.",
+        "Dựng Marketing Plan theo đúng format JSON ở system prompt. Ưu tiên, đừng dàn trải. content_pillars + wedge BÁM archetype hiệu lực.",
     ])
 
 

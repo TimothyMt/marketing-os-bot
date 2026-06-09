@@ -55,7 +55,7 @@ async def generate_strategy(session: Session, brief: dict) -> dict:
     Returns dict các field strategy + content/model_used/tokens_used.
     """
     from tools.llm_router import call as router_call, TaskType, AllProvidersFailedError
-    from frameworks.industry_context import get_full_industry_brief
+    from frameworks.industry_context import get_full_industry_brief, format_archetype_block
     from frameworks.save_framework import generate_save_analysis
     from frameworks.smart_framework import format_smart_prompt
     from agents.strategy_prompts import CMO_STRATEGY_SYSTEM, build_strategy_user, brief_to_block
@@ -74,12 +74,20 @@ async def generate_strategy(session: Session, brief: dict) -> dict:
     goals = [p.primary_goal] if p.primary_goal else []
     smart_text = format_smart_prompt(industry, stage, goals)
 
+    # Brief text dùng để match override signals — gộp các field free-text
+    archetype_brief_text = " ".join(filter(None, [
+        p.product_service or "",
+        p.target_customer or "",
+    ]))
+    archetype_block = format_archetype_block(industry, archetype_brief_text) if industry else ""
+
     user_msg = build_strategy_user(
         profile_ctx=p.to_context_string(),
         brief_block=brief_to_block(brief),
         industry_brief=industry_brief,
         save_text=save_text,
         smart_text=smart_text,
+        archetype_block=archetype_block,
     )
 
     raw = ""
