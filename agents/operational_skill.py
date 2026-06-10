@@ -86,6 +86,9 @@ class OperationalSkill(AgentSkill):
             advisory = session.get_latest_result("advisory") or session.get_latest_result("synthesis")
             if advisory:
                 parts.append(f"## Marketing Strategy (đã duyệt)\n{advisory}")
+                playbook = session.get_latest_result("tactical_playbook")
+                if playbook:
+                    parts.append(f"## Tactical Playbook (SO/WO/WT tactics đã duyệt)\n{playbook[:5000]}")
             else:
                 # Synthesis chưa có — include available sub-strategic results so ops
                 # skills aren't flying blind (enriches context without re-asking user)
@@ -105,6 +108,9 @@ class OperationalSkill(AgentSkill):
             advisory = session.get_latest_result("advisory") or session.get_latest_result("synthesis")
             if advisory:
                 parts.append(f"## Marketing Strategy nền\n{advisory}")
+            playbook = session.get_latest_result("tactical_playbook")
+            if playbook:
+                parts.append(f"## Tactical Playbook (SO/WO/WT tactics)\n{playbook[:5000]}")
             campaign_brief = session.get_latest_result("campaign_brief")
             if campaign_brief:
                 parts.append(f"## Campaign Brief hiện tại\n{campaign_brief}")
@@ -184,6 +190,16 @@ class OperationalSkill(AgentSkill):
                 "\n\n---\n\n"
                 "**MARKETING STRATEGY ĐÃ CÓ TỪ TRƯỚC (dùng làm base, đừng yêu cầu user cung cấp lại):**\n\n"
                 f"{synthesis[:6000]}"
+            )
+
+        # Inject Tactical Playbook (T5) — kênh/copy/tham số deliverable phải bám tactics này
+        playbook = session.get_latest_result("tactical_playbook")
+        if playbook:
+            msg += (
+                "\n\n---\n\n"
+                "**TACTICAL PLAYBOOK ĐÃ CÓ (SO/WO/WT tactics per-segment — kênh, copy mẫu, "
+                "tham số trong deliverable phải nhất quán với playbook này):**\n\n"
+                f"{playbook[:5000]}"
             )
 
         # Sprint 4: Inject Campaign Scope Library cho campaign_brief

@@ -397,6 +397,7 @@ class Session:
             "winback_campaign":   "## Kết quả Winback Vision",            # Sprint 3
             "social_listening":   "## Kết quả Social Listening Setup",
             "synthesis":          "## Kết quả Marketing Strategy",
+            "tactical_playbook":  "## Kết quả Tactical Playbook (SO/WO/WT tactics)",
         }
         for key, label in stage_labels.items():
             content = self.get_latest_result(key)

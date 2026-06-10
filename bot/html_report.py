@@ -884,7 +884,7 @@ _INDUSTRY_VI = {
 }
 
 # Section keys luôn nhận banner (cấu trúc bám archetype) — Phần A allowlist
-_ARCHETYPE_RELEVANT_KEYS = {"strategy", "synthesis", "campaign_plan", "campaign_brief"}
+_ARCHETYPE_RELEVANT_KEYS = {"strategy", "synthesis", "tactical_playbook", "campaign_plan", "campaign_brief"}
 
 # Keyword bắt mention archetype organic ở section khác — Phần A detect động
 # CHÚ Ý: KHÔNG dùng bare "impulse" (false positive với "impulse buy" trong pricing/SWOT)

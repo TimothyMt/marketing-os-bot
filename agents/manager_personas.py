@@ -643,12 +643,15 @@ async def run_persona_turn(
 
     p = session.profile
     advisory    = session.get_latest_result("advisory") or session.get_latest_result("synthesis") or ""
+    playbook    = session.get_latest_result("tactical_playbook") or ""
     campaign    = session.get_latest_result("campaign_brief") or ""
     profile_ctx = p.to_context_string()
 
     context_parts = ["# THÔNG TIN BUSINESS", profile_ctx]
     if advisory:
         context_parts += ["", "# STRATEGY (đã duyệt)", advisory[:1500]]
+    if playbook:
+        context_parts += ["", "# TACTICAL PLAYBOOK (tactics đã chốt — tư vấn phải nhất quán)", playbook[:1200]]
     if campaign:
         context_parts += ["", "# CAMPAIGN BRIEF", campaign[:1000]]
 

@@ -297,6 +297,7 @@ def _build_ideation_context(session: Session) -> str:
         ("market_research",   "## Kết quả Nghiên cứu Thị trường"),
         ("customer_insight",  "## Kết quả Customer Insight"),
         ("synthesis",         "## Marketing Strategy (Synthesis)"),
+        ("tactical_playbook", "## Tactical Playbook (SO/WO/WT tactics)"),
         ("psychology_pricing","## Pricing & Psychology"),
         ("usp_definition",    "## USP"),
     ]:
@@ -337,11 +338,11 @@ def _extract_json(text: str) -> Optional[dict]:
 
 EXTRACT_CAMPAIGNS_SYSTEM = """Bạn là Max — CMO AI. Kế hoạch chiến lược 90 ngày vừa được xác nhận.
 
-NHIỆM VỤ: Đọc Kế hoạch chiến lược (synthesis) + 7 hướng chiến lược sếp đã chọn → TRÍCH XUẤT 2-3 campaign cụ thể đã được roadmap đề cập hoặc hàm ý, align hoàn toàn với hướng sếp đã chọn.
+NHIỆM VỤ: Đọc Kế hoạch chiến lược (synthesis) + 8 hướng chiến lược sếp đã chọn → TRÍCH XUẤT 2-3 campaign cụ thể đã được roadmap đề cập hoặc hàm ý, align hoàn toàn với hướng sếp đã chọn.
 
 NGUYÊN TẮC:
 - KHÔNG tạo campaign mới từ không khí — phải dựa trên roadmap/synthesis
-- Mỗi campaign phải reflect đúng segment, USP angle, channel sếp đã chọn trong 7 câu
+- Mỗi campaign phải reflect đúng segment, USP angle, channel, timeline sếp đã chọn trong 8 câu
 - Tên campaign tiếng Việt, hook-y, ngắn (4-7 từ)
 - KHÔNG đề xuất budget / % giảm cụ thể (sếp quyết ở bước sau)
 
@@ -372,9 +373,9 @@ QUY TẮC:
 async def extract_campaigns_from_synthesis(session: Session) -> Optional[list[dict]]:
     """Extract 2-3 campaigns directly from synthesis roadmap + strategy_answers.
 
-    Bridge step: after strategy_confirm, reads 90-day roadmap + 7 strategic choices,
-    returns campaigns already aligned with those choices — no re-asking needed.
-    Returns list[dict] or None on failure.
+    Bridge step: after strategy_confirm, reads 90-day roadmap + 8 strategic choices
+    + tactical playbook, returns campaigns already aligned with those choices —
+    no re-asking needed. Returns list[dict] or None on failure.
     """
     from tools.llm_router import call as router_call, TaskType, AllProvidersFailedError
 
@@ -391,6 +392,7 @@ async def extract_campaigns_from_synthesis(session: Session) -> Optional[list[di
         "pricing_approach": "Pricing",
         "usp_angle":        "USP Angle",
         "channels":         "Kênh Triển Khai",
+        "timeline":         "Timeline Triển Khai",
     }
     answer_lines = [
         f"- {label}: {answers[key]}"
@@ -398,14 +400,23 @@ async def extract_campaigns_from_synthesis(session: Session) -> Optional[list[di
         if answers.get(key)
     ]
     strategy_block = (
-        "## 7 Hướng chiến lược sếp đã chọn:\n" + "\n".join(answer_lines) + "\n\n"
+        "## 8 Hướng chiến lược sếp đã chọn:\n" + "\n".join(answer_lines) + "\n\n"
         if answer_lines else ""
+    )
+
+    # T5 Tactical Playbook — campaign trích ra phải nhất quán với tactics đã đề xuất
+    playbook = (session.get_latest_result("tactical_playbook") or "").strip()
+    playbook_block = (
+        f"## Tactical Playbook (SO/WO/WT tactics):\n{playbook[:2500]}\n\n"
+        if playbook else ""
     )
 
     user_msg = (
         f"## Kế hoạch chiến lược (Synthesis):\n{synthesis[:3000]}\n\n"
+        f"{playbook_block}"
         f"{strategy_block}"
-        "---\n\nTrích 2-3 campaign cụ thể từ roadmap trên, align với hướng sếp đã chọn."
+        "---\n\nTrích 2-3 campaign cụ thể từ roadmap trên, align với hướng sếp đã chọn "
+        "và nhất quán với tactics trong Tactical Playbook (nếu có)."
     )
 
     try:

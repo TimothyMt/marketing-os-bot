@@ -4916,7 +4916,7 @@ def _default_strategy_questions_fallback() -> list[dict]:
 
 
 async def _start_strategic_consultation(message: Message, session) -> None:
-    """After research pipeline — ask 7 strategic questions one by one."""
+    """After research pipeline — ask 8 strategic questions one by one."""
     import json as _json
 
     addr = _addr(session)
@@ -5069,6 +5069,44 @@ async def _run_strategy_plan(message: Message, session, direction: str) -> None:
     if pipeline_aborted:
         return
 
+    # Build báo cáo HTML đầy đủ A→Z (8 tab: research T1-T3 + synthesis T4 + playbook T5)
+    # — research report trước đó chỉ có 6 tab vì pipeline dừng sau phase research.
+    try:
+        from bot.html_report import build_report, generate_archetype_banner_html
+        from agents.pipeline import PIPELINE_DEF
+
+        full_stages: list[tuple[str, dict]] = []
+        for stage_def in PIPELINE_DEF:
+            content = session.get_latest_result(stage_def.result_key)
+            if content and not content.strip().startswith("⚠️"):
+                full_stages.append((stage_def.result_key, parse_agent_output(content)))
+
+        if full_stages:
+            signal_text = " ".join(filter(None, [
+                session.profile.product_service or "",
+                session.profile.target_customer or "",
+            ]))
+            archetype_banner_html = await generate_archetype_banner_html(
+                business_name=session.profile.business_name or "Business",
+                industry=session.profile.industry or "",
+                signal_text=signal_text,
+                parsed_stages=full_stages,
+            )
+            html_str = build_report(
+                business_name=session.profile.business_name or "Business",
+                industry=session.profile.industry or "",
+                stage=session.profile.stage or "",
+                parsed_stages=full_stages,
+                archetype_signal_text=signal_text,
+                archetype_banner_html=archetype_banner_html,
+            )
+            await _send_html_report(
+                message, html_str, session,
+                caption="📊 *Báo cáo đầy đủ A→Z* — research + SWOT + kế hoạch + tactical playbook trong 1 file.",
+            )
+    except Exception as e:
+        logger.warning("Full HTML report after synthesis failed (cards đã gửi đủ): %s", e)
+
     session.pending_intake["_awaiting_rating_for"] = "full"
     await save_session(session)
 
@@ -5085,7 +5123,7 @@ async def _run_strategy_plan(message: Message, session, direction: str) -> None:
 
 
 async def _show_extracted_campaigns(message: Message, session):
-    """After strategy_confirm: extract 2-3 campaigns from synthesis roadmap + 7 strategy answers.
+    """After strategy_confirm: extract 2-3 campaigns from synthesis roadmap + 8 strategy answers.
     Present as direct-pick buttons — no redundant needs re-questioning."""
     from agents.campaign_ideation import extract_campaigns_from_synthesis
     import json as _json

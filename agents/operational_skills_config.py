@@ -703,6 +703,10 @@ class AdsCopySkill(AgentSkill):
         campaign_brief = session.get_latest_result("campaign_brief")
         if campaign_brief:
             parts.append(f"## Campaign Brief context\n{campaign_brief}")
+        # Tactical Playbook (T5) — copy mẫu / hook / kênh trong ads phải khớp tactics
+        playbook = session.get_latest_result("tactical_playbook")
+        if playbook:
+            parts.append(f"## Tactical Playbook (bám copy mẫu + kênh + hook style)\n{playbook[:4000]}")
         return "\n\n---\n\n".join(parts)
 
     def build_user_msg(self, session: Session) -> str:
@@ -755,6 +759,10 @@ class VideoScriptsSkill(AgentSkill):
         campaign_brief = session.get_latest_result("campaign_brief")
         if campaign_brief:
             parts.append(f"## Campaign Brief context\n{campaign_brief}")
+        # Tactical Playbook (T5) — hook / format / kênh video phải khớp tactics
+        playbook = session.get_latest_result("tactical_playbook")
+        if playbook:
+            parts.append(f"## Tactical Playbook (bám hook + format + kênh)\n{playbook[:4000]}")
         return "\n\n---\n\n".join(parts)
 
     def build_user_msg(self, session: Session) -> str:
