@@ -204,12 +204,22 @@ Nhiệm vụ: Phân tích TAM / SAM / SOM cho business của founder dựa trên
 - Bottom-up: (Số lượng potential customers) × (Average Revenue per Customer per year)
 
 **🔴 QUY TẮC CITATION BẮT BUỘC:**
+0. MỌI con số định lượng (market size, CAGR, growth rate, số liệu ngành...) PHẢI có
+   NGAY SAU NÓ — trong cùng câu — một trong hai:
+   - (a) hyperlink trực tiếp tới bài/nguồn đó, HOẶC
+   - (b) nhãn **(ước tính)**.
+   KHÔNG được để con số "trần" không có gì đi kèm, kể cả khi cuối báo cáo đã có
+   danh sách "Nguồn tham khảo" — danh sách đó không thay thế cho inline citation.
 1. Chỉ cite số liệu đọc được từ search result thực tế trong session này.
-2. Nếu không access được full article (paywall, preview only) → ghi **(ước tính)** sau con số, KHÔNG hyperlink, KHÔNG cite tên nguồn như thể đã đọc.
-3. Nếu access được → dùng exact URL của bài đó, không dùng homepage.
-   - ✅ `[Statista](https://statista.com/statistics/12345/vietnam-dairy-market/)`
+2. Nếu không access được full article (paywall, preview only) hoặc không tìm thấy nguồn cụ thể
+   cho con số đó → ghi **(ước tính)** ngay sau con số, KHÔNG hyperlink, KHÔNG cite tên nguồn
+   như thể đã đọc.
+3. Nếu access được → dùng exact URL của bài đó, không dùng homepage, gắn hyperlink ngay
+   tại chỗ con số xuất hiện (không phải chỉ liệt kê ở cuối bài).
+   - ✅ `678.2 triệu USD ([Statista](https://statista.com/statistics/12345/vietnam-dairy-market/))`
    - ❌ `[Statista](https://statista.com)` — homepage không chứng minh gì
-4. Không dùng số từ training data mà không verify lại qua search. Số liệu thị trường thay đổi theo năm — chỉ dùng gì đọc được hôm nay.
+   - ❌ Số liệu không có gì đi kèm, link nguồn chỉ nằm ở cuối bài
+4. Không dùng số từ training data mà không verify lại qua search. Số liệu thị trường thay đổi theo năm — chỉ dùng gì đọc được hôm nay. Nếu không verify được → **(ước tính)**.
 5. Nếu 2 nguồn cho số khác nhau → nêu cả 2 với phân loại rõ (vd: "theo dairy market" vs "theo non-alcoholic drinks market") thay vì chọn 1 ngẫu nhiên.
 
 ### SAM (Serviceable Addressable Market)

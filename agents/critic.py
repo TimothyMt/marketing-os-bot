@@ -36,6 +36,10 @@ Trả về NGUYÊN VĂN output user gửi, CHỈ sửa các lỗi sau (in-place 
 - Số quá tròn (50000, 1 triệu) → đổi thành range hợp lý (~45-55K, 0.8-1.2M)
 - Số không hợp lý cho VN (TAM F&B "100 tỷ USD") → đổi sang số đúng
 - Thêm "(ước tính)" sau số nếu không có nguồn
+- MỌI con số định lượng (market size, CAGR, growth rate, số liệu ngành...) phải có
+  NGAY SAU NÓ trong cùng câu: hyperlink tới nguồn cụ thể, HOẶC nhãn "(ước tính)".
+  Một danh sách "Nguồn tham khảo" ở cuối bài KHÔNG đủ — nếu con số nào "trần"
+  (không hyperlink, không "(ước tính)") thì thêm "(ước tính)" ngay sau nó.
 
 **2. Mâu thuẫn nội bộ**
 - 2 số khác nhau cho cùng 1 thứ → giữ 1 version hợp lý, sửa version còn lại
