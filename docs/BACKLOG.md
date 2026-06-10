@@ -37,4 +37,45 @@ Các ý tưởng / tính năng / vấn đề đã bàn nhưng chưa triển khai
 - `bot/handlers.py:4704` — follow-up button hiện tại (sau khi chạy competitor)
 - `bot/keyboards.py:107` — `COMPARE_PROMPT_KEYBOARD`
 
+> ⚠️ Update 2026-06-10: `competitor_comparison` đã TẠM TẮT (gỡ TaskConfig khỏi registry,
+> bỏ khỏi owns_skills của Minh). Prompt + factory vẫn còn. Khi làm mục này thì thêm lại
+> TaskConfig theo hướng trên.
+
+---
+
+## 2. Đã chốt với sếp — làm theo thứ tự (2026-06-10)
+
+### 2.1. Xoá dead code `run_ads_after_cal`
+Handler `bot/handlers.py` (`if data == "run_ads_after_cal"`) không có button nào emit
+callback này — Calendar → Ads tắt thẳng không qua Nam chưa bao giờ chạy được. Xoá block.
+
+### 2.2. Build skill `brand_positioning` cho Linh (Brand Manager)
+Flow đã chốt:
+- **Input** (tự đọc từ session, KHÔNG bắt user nhập lại):
+  - `usp_definition` (T2) — USP đã chốt + options + reasoning
+  - `synthesis` (T4) — `positioning.statement` + 4 trục SAVE
+  - `customer_insight` — segments để chia key message
+  - Brand Voice DB (nếu có) — tone phải khớp
+- **Output — Messaging House** (1 file HTML):
+  1. Positioning statement (refine từ T4, không làm lại từ đầu)
+  2. Tagline 3-5 option (mài từ USP)
+  3. Value prop ladder (functional → emotional → self-expressive)
+  4. Key messages per segment (1 thông điệp chính + 2-3 supporting + proof point)
+  5. Do's / Don'ts khi viết (cầu nối sang brand_voice)
+- **Revise loop (sếp yêu cầu):** sau khi gửi output → hỏi "Sếp muốn sửa gì không?"
+  → nhận feedback → LLM update → **ghi bản đã chốt vào session tổng**
+  (lưu `brand_positioning` result; các skill sau ưu tiên đọc bản này thay vì
+  `synthesis.positioning` gốc)
+- Gắn vào `owns_skills` của Linh + gate: chưa có T2/T4 thì gợi ý chạy
+  "Nghiên Cứu & Phân Tích Thị Trường" trước (pattern STRATEGY_GATED)
+- Messaging house sau đó inject vào context của Nam/Trang/post_voice_check
+  (giống pattern tactical_playbook)
+
+### 2.3. Cải tiến `ads_generator` (3 gap đã phát hiện — chưa chốt ưu tiên)
+1. `ads_format` (Video/Ảnh chọn ở bước 2) KHÔNG được truyền vào prompt —
+   copy gen ra giống nhau bất kể format
+2. `build_context` chưa inject `usp_definition` — headline ads lẽ ra phải bám USP
+3. Platform cứng trong prompt (Meta/TikTok/Google/Zalo) — chưa đọc wedge
+   channels từ synthesis để chỉ gen cho đúng kênh mũi nhọn
+
 ---
