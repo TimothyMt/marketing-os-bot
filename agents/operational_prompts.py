@@ -149,16 +149,22 @@ Mỗi tuần phải có ÍT NHẤT 3/5 nhóm hook để tránh lặp pattern:
 - **Góc nhìn chuyên gia**: POV chuyên gia/insider
 - **Đồng cảm**: kể trải nghiệm khán giả
 
-**Output cần có (trong phần Deliverable hoàn chỉnh):**
+**🆕 ARCHETYPE — nếu context có block "ARCHETYPE" (trust_building / demand_gen / impulse):**
+- Story Arc + Funnel focus từng tuần PHẢI bám semantic phễu của archetype
+  (vd trust_building → TOFU nặng, nhiều Industry/Personal content trước khi đẩy Offer;
+  impulse → đẩy Offer/Convert sớm hơn, retarget dày).
+- Pillar mix đã được TÍNH SẴN và inject ở cuối user message — dùng đúng số đó.
+
+**Output cần có — 5 SECTION CORE (làm SÂU từng section, KHÔNG làm mỏng để thêm section thừa):**
 
 ### 1. Tổng quan kỳ
 - Theme/concept của kỳ (1 dòng)
 - **Thời lượng: ghi rõ số tuần/ngày đúng theo intake** (vd "1 tuần — 7 ngày", "4 tuần — tháng 1/2026")
 - Tổng số bài, tỷ lệ Pillar mix, tỷ lệ 4 nhóm khách, format chính theo kênh
 
-### 2. 🆕 Story Arc (BẮT BUỘC — scale theo đúng số tuần thực tế)
+### 2. Story Arc (BẮT BUỘC — scale theo đúng số tuần thực tế)
 Lịch nội dung KHÔNG phải list bài rời rạc — phải là 1 NARRATIVE ARC dẫn dắt từ awareness → chốt.
-**Nếu kỳ = 1 tuần** → gói arc awareness→so sánh→proof→chốt trong 7 ngày (mỗi 1-2 ngày 1 beat). **Nếu = 4 tuần** → dùng bảng 4 tuần dưới:
+**Nếu kỳ = 1 tuần** → gói arc awareness→so sánh→proof→chốt trong 7 ngày (mỗi 1-2 ngày 1 beat). **Nếu = 4 tuần** → dùng bảng 4 tuần dưới (điều chỉnh funnel focus theo archetype nếu có):
 
 | Tuần | Theme | Funnel focus | Mục tiêu tuần | Audience chính |
 |---|---|---|---|---|
@@ -171,22 +177,26 @@ Mỗi tuần cần build context cho tuần sau.
 
 ### 3. Pillar breakdown
 
-Bảng 4 pillars (LUÔN có 1 dòng trống TRƯỚC bảng để render đúng):
+Bảng 4 pillars (LUÔN có 1 dòng trống TRƯỚC bảng để render đúng — dùng % từ PILLAR MIX TÍNH ĐỘNG):
 
 | Pillar | % | Số bài/kỳ | 3 angle chính | Framework ưu tiên |
 |---|---|---|---|---|
-| Educate | 35% | X | [angle 1; angle 2; angle 3] | PAS / Star-Story |
-| Trust | 30% | X | [angle 1; angle 2; angle 3] | BAB / AIDA |
-| Engage | 20% | X | [angle 1; angle 2; angle 3] | Star-Story / AIDA |
-| Convert | 15% | X | [angle 1; angle 2; angle 3] | FAB / PAS |
+| Educate | X% | X | [angle 1; angle 2; angle 3] | PAS / Star-Story |
+| Trust | X% | X | [angle 1; angle 2; angle 3] | BAB / AIDA |
+| Engage | X% | X | [angle 1; angle 2; angle 3] | Star-Story / AIDA |
+| Convert | X% | X | [angle 1; angle 2; angle 3] | FAB / PAS |
 
 → "Framework ưu tiên" = gợi ý cho content writer khi viết bài — không bắt buộc cứng, writer có thể adjust theo bài cụ thể.
 
-### 4. Weekly grid chi tiết — tách riêng theo kênh
+### 4. Weekly grid chi tiết — tách riêng theo kênh (kèm format guide mỗi kênh)
 
 🔴 **BẮT BUỘC: Tạo 1 sub-section `####` riêng cho MỖI kênh trong field `channels`. KHÔNG gộp tất cả kênh vào 1 bảng duy nhất.**
 
 _Lý do: content writer chỉ cần đọc section kênh của mình; script writer video không phải lọc qua bài text._
+
+Mở đầu MỖI section kênh: 2-4 dòng **format guide theo ngành** cho kênh đó
+(tên format → ai làm → thời lượng → tần suất/tuần — vd F&B TikTok: "before/after chế biến — founder — 45s — 2/tuần").
+KHÔNG liệt kê UGC/EGC/FGC cứng nhắc — suy tuyến content từ ngành trước, ai thực hiện tính sau.
 
 **Kênh text/ảnh (Facebook / Zalo OA / Instagram / LinkedIn):**
 Tiêu đề section: `#### 📘 [Tên Kênh] — X bài/kỳ`
@@ -202,73 +212,21 @@ Bảng — thêm cột "Kịch bản mở đầu" (1-2 câu hook đầu của vi
 
 → Cột "Format": ghi format + ai thực hiện (vd "Short video — founder", "Carousel — brand", "Repost TikTok — nhân viên up").
 → Mỗi bài có hook angle rõ thuộc nhóm nào trong 5 nhóm psychological.
-→ "Kịch bản mở đầu" (kênh video): 1-2 câu ngắn — vd "Bạn có biết 80% spa mới thất bại vì lý do này?" hoặc "3 lỗi F&B hay mắc — lỗi 1 tốn em 50 triệu." Đủ để creator bắt đầu quay, không cần chi tiết hơn ở đây.
+→ "Kịch bản mở đầu" (kênh video): 1-2 câu ngắn — vd "Bạn có biết 80% spa mới thất bại vì lý do này?" Đủ để creator bắt đầu quay.
 → Nếu 1 kỳ chỉ có 1 tuần, mỗi section kênh chỉ có 1 bảng tuần đó.
 
-### 5. Content Format Guide — theo ngành + kênh
-Đừng liệt kê UGC/EGC/FGC cứng nhắc. Thay vào đó, xác định **tuyến content phù hợp với ngành này** cho từng kênh:
+### 5. Vận hành (NGẮN GỌN — tối đa 6 dòng)
+- Tool quản lý (Notion/Trello/Google Sheet) + nhịp duyệt bài
+- Giờ đăng tối ưu theo platform VN: TikTok 12-13h & 20-22h · Facebook 8-9h & 19-21h · Zalo OA 8-9h & 12-13h · Instagram 11-13h & 19-21h
+- 1 dòng repurpose: muốn nhân bản 1 bài hero thành nhiều phiên bản theo audience → dùng skill **content_repurpose** (KHÔNG tự dựng repurpose matrix trong calendar này)
 
-- **TikTok** (nếu có trong channels): đề xuất 3-5 format video phù hợp ngành. Ví dụ:
-  - F&B → before/after chế biến, "1 ngày tại bếp", review khách thực tế
-  - Làm đẹp → tutorial, before/after, unboxing, Q&A
-  - Giáo dục → myth-busting, micro-lesson 60s, student story
-  - Lưu ý: ai sẽ quay (founder/nhân viên/khách) chỉ là gợi ý, không ép format
-- **Facebook** (nếu có): chủ yếu repurpose nội dung TikTok up lên, thêm caption dài hơn cho engagement bình luận; bổ sung carousel/ảnh nếu phù hợp ngành
-- **Zalo OA** (nếu có): tin nhắn ngắn, broadcast deal, nhắc lịch — không cần video
-- **Instagram** (nếu có): reels (từ TikTok), carousel tips, stories poll
-Mỗi format phải có: tên format → ai làm → thời lượng/độ dài → tần suất/tuần
+**2 SECTION OPTIONAL (chỉ thêm khi đủ điều kiện — không đủ thì BỎ HẲN, không viết placeholder):**
 
-### 6. Repurpose Matrix 1:7 (BẮT BUỘC — đề xuất cụ thể)
+### [Optional] Năng lực team & phân công
+CHỈ output khi profile có thông tin team (team_size / vai trò). Bảng: Người | Vai trò | Số content/tuần hợp lý → phân công cụ thể cho team này.
 
-Mỗi kỳ phải xác định 1-2 "hero content" để repurpose tối đa:
-
-| Hero Content | Repurpose → 6 dạng con |
-|---|---|
-| Video TikTok 60s | → Facebook Reels (caption dài) / Instagram Reels / YouTube Shorts / Zalo OA broadcast / Carousel screenshots / Quote card |
-| Bài viết dài Facebook | → Thread quote (5 cards) / TikTok talking head / Zalo OA short / Instagram caption / Story poll / Email snippet |
-| Case study/testimonial | → Video UGC repost / Quote image / Carousel trước-sau / Blog excerpt / Ads MOFU / Story highlight |
-
-→ Gợi ý CỤ THỂ 1-2 hero content của kỳ này để repurpose, đừng generic.
-
-### 7. Năng lực team & phân công
-
-Ước tính theo team size từ profile (nếu không có → assume 1 người kiêm nhiệm):
-
-| Người | Vai trò | Số content/tuần hợp lý |
-|---|---|---|
-| Founder | FGC videos + approve | 1-2 video/tuần |
-| Content Writer | Bài text + caption | 5-7 bài/tuần |
-| Video Editor | Edit TikTok/Reels | 3-5 video/tuần |
-| UGC Creator (outsource) | UGC authentic | Theo brief (2-4 video/tháng) |
-
-→ Đề xuất phân công cụ thể cho team size của business này.
-
-### 8. AI Content Scoring — đề xuất ưu tiên
-
-Với mỗi bài trong weekly grid, đánh giá "độ khó làm" vs "impact tiềm năng":
-
-| Score | Nghĩa | Ví dụ |
-|---|---|---|
-| 🔥 High impact / Easy | Làm trước — ROI cao nhất | Repurpose video viral cũ |
-| ✅ High impact / Hard | Lên plan cẩn thận | KOL collab, production lớn |
-| ⚡ Low impact / Easy | Lấp lịch nhanh | Quote card, poll |
-| ⏳ Low impact / Hard | Cân nhắc bỏ hoặc delay | Production phức tạp, reach thấp |
-
-→ Gắn score cho 3-5 bài quan trọng nhất của kỳ này.
-
-### 9. Vận hành
-- Deadline thô / duyệt
-- Tool quản lý (Notion/Trello/Google Sheet)
-- Giờ đăng tối ưu theo platform VN:
-  - TikTok: 12-13h, 20-22h
-  - Facebook: 8-9h, 19-21h
-  - Zalo OA: 8-9h, 12-13h
-  - Instagram: 11-13h, 19-21h
-
-**Lưu ý**: Calibrate Pillar % theo industry (mặc định 35/30/20/15 nhưng có thể adjust):
-- F&B / Local services: tăng Trust (testimonials nhiều)
-- SaaS / Tech: tăng Educate (concept giáo dục cao)
-- E-commerce: tăng Convert (transactional)
+### [Optional] AI Content Scoring
+CHỈ khi kỳ có ≥10 bài: gắn score (🔥 High impact/Easy · ✅ High impact/Hard · ⚡ Low impact/Easy · ⏳ Low impact/Hard) cho 3-5 bài quan trọng nhất để team biết làm gì trước.
 
 **Tuyến content phải suy theo ngành — KHÔNG áp cứng UGC/EGC/FGC:**
 Ví dụ ngành F&B → "behind-the-scenes bếp, review khách thực tế, công thức bí truyền"; Clinic/spa → "before/after, case study thực tế, tips chăm sóc"; Edu → "myth-busting, micro-lesson, student journey".

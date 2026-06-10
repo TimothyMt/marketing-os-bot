@@ -114,8 +114,8 @@ def make_content_calendar_skill() -> OperationalSkill:
     ))
 
 
-def calc_dynamic_pillar_mix(profile, synthesis: str = "") -> dict:
-    """Sprint 3.4: Calculate Pillar % dynamically dựa profile + synthesis.
+def calc_dynamic_pillar_mix(profile, synthesis: str = "", archetype: str = "") -> dict:
+    """Sprint 3.4: Calculate Pillar % dynamically dựa profile + synthesis + archetype.
     Returns dict {educate, trust, engage, convert} that sums to 1.0.
 
     Heuristics:
@@ -125,8 +125,20 @@ def calc_dynamic_pillar_mix(profile, synthesis: str = "") -> dict:
     - Goal "brand_awareness" → Educate + Engage
     - Goal "revenue/conversion" → Convert cao
     - Goal "retention" → Trust cao
+    - Archetype trust_building → Educate+Trust cao; impulse → Convert cao
     """
     base = {"educate": 0.30, "trust": 0.30, "engage": 0.20, "convert": 0.20}
+
+    # Archetype adjustment — phễu mua hàng của ngành quyết định trọng tâm pillar
+    if archetype == "trust_building":
+        base["educate"] += 0.05
+        base["trust"] += 0.05
+        base["convert"] -= 0.10
+    elif archetype == "impulse":
+        base["convert"] += 0.10
+        base["engage"] += 0.05
+        base["educate"] -= 0.15
+    # demand_gen: giữ base — desire-led, cân giữa educate/engage/convert
 
     # Stage adjustment
     stage = (profile.stage or "").lower() if profile else ""
@@ -593,20 +605,41 @@ class ContentCalendarDynamicSkill(OperationalSkill):
 
     def build_user_msg(self, session: Session) -> str:
         base_msg = super().build_user_msg(session)
-        # Inject dynamic pillar mix
+        profile = session.profile
+
+        # Archetype — cùng resolver với funnel_mapper/T5 để story arc + pillar mix
+        # bám đúng phễu mua hàng của ngành (trust_building / demand_gen / impulse)
+        archetype_primary = ""
+        archetype_block = ""
+        try:
+            from frameworks.industry_context import resolve_archetype, format_archetype_block
+            brief_text = " ".join(filter(None, [
+                profile.product_service, profile.target_customer,
+                str(session.pending_intake.get("campaign_goal") or ""),
+            ]))
+            res = resolve_archetype(profile.industry or "", brief_text)
+            archetype_primary = res.get("primary", "") or ""
+            archetype_block = format_archetype_block(profile.industry or "", brief_text)
+        except Exception:
+            pass
+
+        # Inject dynamic pillar mix (archetype-aware)
         synthesis = session.get_latest_result("synthesis") or ""
-        pillar_mix = calc_dynamic_pillar_mix(session.profile, synthesis)
+        pillar_mix = calc_dynamic_pillar_mix(profile, synthesis, archetype_primary)
         pillar_str = " / ".join(
             f"{k.title()} {int(v*100)}%" for k, v in pillar_mix.items()
         )
-        msg = (
-            base_msg
-            + "\n\n---\n\n**PILLAR MIX TÍNH ĐỘNG cho business này (dùng đúng số này, không tự thay):**\n"
+        msg = base_msg
+        if archetype_block:
+            msg += "\n\n---\n\n**ARCHETYPE (phễu mua hàng của ngành — story arc + funnel focus bám theo):**\n" + archetype_block
+        msg += (
+            "\n\n---\n\n**PILLAR MIX TÍNH ĐỘNG cho business này (dùng đúng số này, không tự thay):**\n"
             + pillar_str
             + "\n\n_(Tính dựa trên: stage = "
-            + str(session.profile.stage or "unknown")
+            + str(profile.stage or "unknown")
             + ", goal = "
-            + str(session.profile.primary_goal or "unknown")
+            + str(profile.primary_goal or "unknown")
+            + (", archetype = " + archetype_primary if archetype_primary else "")
             + ")_"
         )
         # Inject calendar edit feedback nếu có
