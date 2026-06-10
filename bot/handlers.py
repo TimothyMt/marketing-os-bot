@@ -1694,6 +1694,27 @@ async def _handle_callback_inner(update, context, query, session, data, user_id)
         await _gen_content_calendar_after_approval(query.message, session, context, update)
         return
 
+    # DEBUG: re-run funnel_map với session hiện tại, không tạo session mới
+    if data == "dbg_funnel":
+        campaign_name = (session.pending_intake.get("campaign_name")
+                         or session.pending_intake.get("current_campaign") or "Campaign")
+        campaign_goal = (session.pending_intake.get("campaign_goal")
+                         or session.profile.primary_goal or "")
+        await query.message.reply_text(
+            f"🧪 *Debug: chạy lại Funnel Map cho \"{campaign_name}\"...*",
+            parse_mode=ParseMode.MARKDOWN,
+        )
+        funnel_ok = await _gen_and_show_funnel_map(
+            query.message, session, context, update, campaign_name, campaign_goal,
+        )
+        prompt = (
+            "👆 *Funnel Map (debug re-run) — tóm tắt trên + file HTML + Excel.*\n\n"
+            if funnel_ok else
+            "_(Debug: chưa dựng được funnel map chi tiết.)_\n\n"
+        )
+        await _emit_funnel_approve_prompt(query.message, session, prompt)
+        return
+
     if data == "brief_edit":
         await query.edit_message_reply_markup(reply_markup=None)
         session.pending_intake["_awaiting_brief_edit"] = "1"
@@ -6982,9 +7003,31 @@ async def _confirm_brief_and_gen_calendar(message, session, context, update):
     )
 
     # ── Funnel Map + Execution Plan → tóm tắt Telegram + file HTML ─────
-    # Gửi tóm tắt ngắn lên chat, chi tiết đầy đủ trong HTML, rồi DỪNG chờ
-    # user duyệt (nút). Duyệt mới dựng Content Calendar. Lỗi → vẫn cho
-    # user duyệt bằng nút để qua bước calendar.
+    funnel_ok = await _gen_and_show_funnel_map(
+        message, session, context, update, campaign_name, campaign_goal,
+    )
+
+    # ── DỪNG chờ user duyệt — KHÔNG auto dựng calendar ────────────────
+    session.pending_intake["_awaiting_funnel_approve"] = "1"
+    session.stage = PipelineStage.TASK_SELECT
+    await save_session(session)
+
+    prompt = (
+        "👆 *Sếp xem kế hoạch triển khai (tóm tắt trên + file HTML + file Excel đầy đủ).*\n\n"
+        if funnel_ok else
+        "_(Em chưa dựng được funnel map chi tiết, nhưng vẫn có thể đi tiếp.)_\n\n"
+    )
+    await _emit_funnel_approve_prompt(message, session, prompt)
+
+
+async def _gen_and_show_funnel_map(
+    message, session, context, update, campaign_name, campaign_goal,
+) -> bool:
+    """Gen Funnel Map + Execution Plan → tóm tắt Telegram + HTML + Excel.
+    Trả funnel_ok (True nếu có map — thật hoặc fallback). Tách riêng để
+    flow chính VÀ nút debug (re-run funnel_map) cùng dùng, không cần tạo
+    lại session từ đầu.
+    """
     funnel_ok = False
     _funnel_map = None
     try:
@@ -7087,16 +7130,12 @@ async def _confirm_brief_and_gen_calendar(message, session, context, update):
     except Exception as _fe:
         logger.warning("funnel_map/execution_plan block skipped: %s", _fe)
 
-    # ── DỪNG chờ user duyệt — KHÔNG auto dựng calendar ────────────────
-    session.pending_intake["_awaiting_funnel_approve"] = "1"
-    session.stage = PipelineStage.TASK_SELECT
-    await save_session(session)
+    return funnel_ok
 
-    prompt = (
-        "👆 *Sếp xem kế hoạch triển khai (tóm tắt trên + file HTML + file Excel đầy đủ).*\n\n"
-        if funnel_ok else
-        "_(Em chưa dựng được funnel map chi tiết, nhưng vẫn có thể đi tiếp.)_\n\n"
-    )
+
+async def _emit_funnel_approve_prompt(message, session, prompt: str):
+    """Gửi prompt + nút duyệt funnel → calendar. Tách riêng để dùng lại."""
+    addr = _addr(session)
     await message.reply_text(
         prompt + f"Duyệt để em dựng *Lịch Nội Dung* theo kế hoạch này cho {addr} nhé?",
         parse_mode=ParseMode.MARKDOWN,
