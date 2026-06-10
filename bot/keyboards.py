@@ -209,7 +209,7 @@ ASK_FOLLOWUP_KEYBOARD = InlineKeyboardMarkup([
 
 def get_action_keyboard(task_name: str) -> InlineKeyboardMarkup:
     """Return post-skill action keyboard, context-aware by task."""
-    if task_name in ("strategy", "synthesis", "full"):
+    if task_name in ("strategy", "synthesis", "full", "tactical_playbook"):
         return ACTION_AFTER_STRATEGY
     return ACTION_AFTER_SKILL
 
