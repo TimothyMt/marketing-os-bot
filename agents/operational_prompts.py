@@ -149,7 +149,11 @@ Mỗi tuần phải có ÍT NHẤT 3/5 nhóm hook để tránh lặp pattern:
 - **Góc nhìn chuyên gia**: POV chuyên gia/insider
 - **Đồng cảm**: kể trải nghiệm khán giả
 
-**🆕 ARCHETYPE — nếu context có block "ARCHETYPE" (trust_building / demand_gen / impulse):**
+**🔴 FORMAT MARKDOWN — lưu ý kỹ thuật (áp dụng khi viết, KHÔNG in ra output):**
+- Trước MỌI bảng markdown, luôn để 1 dòng trống (`\n\n` rồi mới tới `| header |...`) để renderer parse đúng.
+- Đây là instruction về CÁCH VIẾT — không phải nội dung. TUYỆT ĐỐI không viết ra các cụm như
+  "(Blank line before table)", "(LUÔN có 1 dòng trống trước bảng)", "(Có dòng trống ở đây)"...
+  vào trong report.
 - Story Arc + Funnel focus từng tuần PHẢI bám semantic phễu của archetype
   (vd trust_building → TOFU nặng, nhiều Industry/Personal content trước khi đẩy Offer;
   impulse → đẩy Offer/Convert sớm hơn, retarget dày).
@@ -177,7 +181,7 @@ Mỗi tuần cần build context cho tuần sau.
 
 ### 3. Pillar breakdown
 
-Bảng 4 pillars (LUÔN có 1 dòng trống TRƯỚC bảng để render đúng — dùng % từ PILLAR MIX TÍNH ĐỘNG):
+Bảng 4 pillars (dùng % từ PILLAR MIX TÍNH ĐỘNG):
 
 | Pillar | % | Số bài/kỳ | 3 angle chính | Framework ưu tiên |
 |---|---|---|---|---|
@@ -200,7 +204,7 @@ KHÔNG liệt kê UGC/EGC/FGC cứng nhắc — suy tuyến content từ ngành 
 
 **Kênh text/ảnh (Facebook / Zalo OA / Instagram / LinkedIn):**
 Tiêu đề section: `#### 📘 [Tên Kênh] — X bài/kỳ`
-Bảng (LUÔN có 1 dòng trống TRƯỚC bảng):
+Bảng:
 
 | Ngày | Pillar | Funnel | Nhóm khách | Format | Hook angle | Topic | Owner |
 
