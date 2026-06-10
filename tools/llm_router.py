@@ -845,7 +845,6 @@ OPS_SKILL_TASK_TYPES: dict[str, TaskType] = {
     "campaign_brief":        TaskType.OPS_BRIEF,
 
     # ── GPT-5 primary: data analysis & diagnosis ──────────────────
-    "performance_audit":     TaskType.OPS_ANALYSIS,
     "ads_analytics":         TaskType.OPS_ANALYSIS,
     "competitor_spy":        TaskType.OPS_ANALYSIS,
     "competitor_comparison": TaskType.OPS_ANALYSIS,

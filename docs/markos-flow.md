@@ -226,7 +226,6 @@ ContentGeneratorPipeline.run_pipeline(session):
 | `campaign_brief` | OPS_BRIEF (GPT-5) | 10-section campaign plan |
 | `ads_copy` | OPS_CONTENT_CREATIVE (GPT-5) | 3 tầng × 2 variant |
 | `video_scripts` | OPS_CONTENT_CREATIVE | Kịch bản 4 creator type |
-| `performance_audit` | OPS_ANALYSIS (GPT-5) | Audit + recommendations |
 | `post_write` | OPS_CONTENT_CREATIVE | 1 bài hoàn chỉnh, 3 hook variants |
 | `post_adapt` | CHANNEL_ADAPT (GPT-5-mini) | 1 bài → N channel formats |
 | `post_voice_check` | CRITIC_REVIEW (Haiku) | Voice score /10 + fix suggestions |
@@ -315,7 +314,6 @@ Skill có trong SKILL_TEMPLATE_SHEET:
     video_scripts, video_script_gen               → sheet "🎬 Video Script"
     ugc_brief                                      → sheet "🤝 UGC Brief"
     email_zalo_sequence                            → sheet "📧 Email & Zalo"
-    performance_audit                              → sheet "📊 KPI Dashboard"
 
 render_template_excel():
     1. Load template .xlsx

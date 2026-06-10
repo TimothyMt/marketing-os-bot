@@ -169,7 +169,6 @@ Sản xuất deliverable dùng được ngay. Intake qua single-shot form. Outpu
 
 | Skill | Menu | Chức năng | Data source |
 |---|---|---|---|
-| `performance_audit` | 📊 Báo Cáo Ads | Audit campaign + VN benchmarks + diagnostic | FB API / paste tay |
 | `ads_analytics` | 📈 Analytics Tự Động | Phân tích portfolio: winners/losers, creative fatigue, budget | FB Marketing API |
 | `ads_optimizer` | ⚡ Tối Ưu Ads Trực Tiếp | Đề xuất + **thực thi** pause/activate/budget trên FB | FB Marketing API (write) |
 | `viral_video_analyzer` | 🎥 Phân Tích Video Viral | Reverse-engineer video viral → công thức + production brief | KrillinAI + Vision |

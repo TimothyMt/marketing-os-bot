@@ -27,7 +27,6 @@ from agents.operational_prompts import (
     EMAIL_ZALO_SEQUENCE_SYSTEM,
     COMPETITOR_SPY_SYSTEM,
     COMPETITOR_COMPARISON_SYSTEM,
-    PERFORMANCE_AUDIT_SYSTEM,
     COMMENT_MINING_SYSTEM,
     BRAND_VOICE_SYSTEM,
     CONTENT_REPURPOSE_SYSTEM,
@@ -503,18 +502,6 @@ def make_winback_campaign_skill() -> OperationalSkill:
         max_tokens=8000,
         context_strategy=ContextStrategy.PROFILE_ONLY,
         primary_deliverable=PrimaryDeliverable.MARKDOWN,
-    ))
-
-
-def make_performance_audit_skill() -> OperationalSkill:
-    return OperationalSkill(_config_for(
-        "performance_audit",
-        PERFORMANCE_AUDIT_SYSTEM,
-        max_tokens=10000,  # bumped — analysis output is data-heavy
-        output_format=OutputFormat.OPERATIONAL_ANALYSIS,
-        context_strategy=ContextStrategy.PROFILE_PLUS_CAMPAIGN,
-        primary_deliverable=PrimaryDeliverable.EXCEL,
-        enable_critic=True,
     ))
 
 
@@ -1056,7 +1043,6 @@ OPS_SKILL_FACTORIES: dict[str, callable] = {
     "competitor_comparison": make_competitor_comparison_skill,
     "sales_inbox_script":  make_sales_inbox_script_skill,
     "email_zalo_sequence": make_email_zalo_sequence_skill,
-    "performance_audit":   make_performance_audit_skill,
     "ads_analytics":       make_ads_analytics_skill,
     "ads_optimizer":       AdsOptimizerSkill,
     "ads_copy":            AdsCopySkill,

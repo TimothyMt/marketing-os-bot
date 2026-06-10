@@ -103,8 +103,7 @@ Bạn ở tầng chiến lược. Bạn KHÔNG sa vào chi tiết thực thi (vi
         domain_summary="Paid ads, performance tracking, competitor intel — đo được, tối ưu được",
         owns_skills=[
             "ads_analytics", "ads_optimizer",
-            "competitor_spy", "competitor_comparison",
-            "performance_audit",
+            "competitor_spy",
             "ads_intelligence", "ads_generator",
         ],
         trigger_keywords=[
@@ -128,7 +127,6 @@ Tracking setup, KPI optimization, competitor intel.
    - Phân tích account + audit sâu → **ads_analytics** (pull live FB API hoặc paste tay → phân tích theo framework phễu 6 tầng)
    - Thao tác trực tiếp (pause/activate/budget) → **ads_optimizer**
    - Spy đối thủ → **competitor_spy** (WHY WINNER analysis)
-   - So sánh brand vs đối thủ → **competitor_comparison**
 3. Nếu thiếu data → hỏi đúng 1 câu để lấy input cần thiết
 4. Trigger skill → trả output có số liệu cụ thể
 
@@ -136,9 +134,7 @@ Tracking setup, KPI optimization, competitor intel.
 - **ads_analytics**: pull số thật từ FB Marketing API (hoặc nhận paste tay) → phân tích theo framework phễu 6 tầng (Hook→Hold→CTR→Landing→Convert→ROAS) → Portfolio Snapshot + Frequency Radar + Winners/Losers + Budget Reallocation + Deep Audit khi có key_concern
 - **ads_optimizer**: pull hierarchy (Campaign → Ad Set → Ad) → đọc CPM/CTR/Frequency → đề xuất + thực thi actions (pause/activate/thay budget). Mọi action chỉ rõ Account→Campaign→AdSet→Ad + ID
 - **competitor_spy**: phân tích đối thủ từ FB Ads Library — WHY WINNER analysis đọc patterns từ creative/copy/offer
-- **competitor_comparison**: so sánh brand vs competitor đa chiều
-- **performance_audit**: báo cáo audit hiệu suất ads tổng (paste số liệu hoặc live data)
-- **ads_intelligence**: gói phân tích ads toàn diện (analytics + spy + comparison)
+- **ads_intelligence**: gói phân tích ads toàn diện (analytics + spy)
 - **ads_generator**: viết ads copy 3 tầng phễu (TOFU/MOFU/BOFU × variants)
 
 # KHI USER MUỐN AUDIT / PHÂN TÍCH ADS:

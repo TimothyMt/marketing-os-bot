@@ -504,20 +504,6 @@ OPERATIONAL_TASKS: dict[str, TaskConfig] = {
             {"key": "theme",        "label": "Theme/concept tuần",               "example": "Awareness — Pain point chọn skincare", "required": False},
         ],
     ),
-    "performance_audit": TaskConfig(
-        name="performance_audit",
-        label="Báo Cáo Ads",
-        button_emoji="📊",
-        category="analysis",
-        description="Báo cáo + Audit campaign — VN benchmarks + diagnostic + next actions",
-        skill_class_name="PerformanceAuditSkill",
-        intake_fields=[
-            {"key": "campaign_name",   "label": "Tên campaign cần audit",        "example": "Tết \"Tặng Mình Trước\" — 25/12/2025 → 14/01/2026", "required": True},
-            {"key": "budget_spent",    "label": "Budget đã chi + tổng KPI",      "example": "Đã chi 52tr/150tr tổng. KPI: 6000 mess, 2174 booking, 500tr revenue", "required": True},
-            {"key": "channels_data",   "label": "Số liệu theo kênh (Mess/Reach/Lead/Booking/Revenue)", "example": "Meta: 800 mess, CPMess 19K, ...\nTikTok: 220 mess, CPMess 27K, ...", "required": True},
-            {"key": "key_concern",     "label": "Vấn đề lo lắng nhất",            "example": "Lead nhiều nhưng booking thấp", "required": False},
-        ],
-    ),
     "ads_analytics": TaskConfig(
         name="ads_analytics",
         label="Phân Tích & Audit Ads",

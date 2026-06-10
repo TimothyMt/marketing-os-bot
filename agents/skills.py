@@ -57,7 +57,7 @@ class ContextStrategy(str, Enum):
 class PrimaryDeliverable(str, Enum):
     """Main output format user receives (in addition to Telegram bullets)."""
     HTML     = "html"      # All skills support; default
-    EXCEL    = "excel"     # Table-heavy: content_calendar, performance_audit
+    EXCEL    = "excel"     # Table-heavy: content_calendar
     MARKDOWN = "markdown"  # Creative deliverables: ads_copy, video_scripts, briefs
 
 

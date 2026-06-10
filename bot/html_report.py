@@ -41,7 +41,6 @@ STAGE_META = {
     "email_zalo_sequence": {"title": "Chăm Sóc Khách Hàng",         "icon": "📧", "color": "pricing"},
     "competitor_spy":      {"title": "Theo Dõi Đối Thủ",            "icon": "🔍", "color": "competitor"},
     "competitor_comparison": {"title": "So Sánh Với Đối Thủ",         "icon": "🆚", "color": "competitor"},
-    "performance_audit":   {"title": "Báo Cáo Ads",                 "icon": "📊", "color": "strategy"},
     "campaign_plan":       {"title": "Kế Hoạch Triển Khai Campaign", "icon": "🗺️", "color": "strategy"},
 }
 

@@ -3,7 +3,7 @@ Output renderers — convert parsed agent output to deliverable formats.
 
 Per-skill primary_deliverable determines which format is sent as main attachment:
   - HTML: all skills support (general purpose, mobile-safe)
-  - EXCEL: content_calendar (table grid), performance_audit (data tables)
+  - EXCEL: content_calendar (table grid)
   - MARKDOWN: ad_copy, video_scripts, briefs (deliverable for downstream tools)
 
 HTML always generated as fallback. Excel/Markdown generated when primary_deliverable matches.
@@ -45,7 +45,6 @@ SKILL_TEMPLATE_SHEET: dict[str, str] = {
     "video_script_gen":    "🎬 Video Script",
     "ugc_brief":           "🤝 UGC Brief",
     "email_zalo_sequence": "📧 Email & Zalo",
-    "performance_audit":   "📊 KPI Dashboard",
 }
 
 
@@ -219,7 +218,7 @@ def render_markdown_file(
 
 
 # ─────────────────────────────────────────────────────────────────
-# Excel renderer — for content_calendar + performance_audit
+# Excel renderer — for content_calendar
 # ─────────────────────────────────────────────────────────────────
 
 def _clean_cell(value) -> str:

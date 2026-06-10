@@ -3875,7 +3875,7 @@ async def _send_single_shot_form(message: Message, session, task_name: str, _ski
 
     # Ads tasks pull data từ 1 Ad Account cụ thể — nếu user có nhiều account,
     # cho chọn account trước khi vào form (tránh audit/phân tích nhầm account).
-    if task_name in ("ads_analytics", "performance_audit") and not _skip_account_pick:
+    if task_name == "ads_analytics" and not _skip_account_pick:
         from storage.fb_connections import get_connection, get_available_accounts
         conn = await get_connection(session.user_id)
         if conn:
@@ -4323,35 +4323,6 @@ async def _handle_ops_intake_reply(update: Update, context: ContextTypes.DEFAULT
             # Gate: cần ít nhất 1 nguồn data
             if not session.pending_intake.get("_fb_data_spy") and not session.pending_intake.get("_fb_data_analytics"):
                 await _abort_with_fb_error(update.message, session, "ads_intelligence", spy_status)
-                return
-        elif task_name == "performance_audit":
-            fb_status = await _prefetch_performance_data(update.message, session)
-            # Gate: cần live data HOẶC user paste số liệu thực trong channels_data
-            has_live = bool(session.pending_intake.get("_fb_data"))
-            channels = (session.pending_intake.get("channels_data") or "").strip()
-            import re as _re
-            has_manual = bool(channels and len(channels) >= 20 and _re.search(r"\d", channels))
-            if not has_live and not has_manual:
-                session.stage = PipelineStage.TASK_SELECT
-                session.pending_intake.pop(OPS_INTAKE_AWAITING, None)
-                await save_session(session)
-                reason = fb_status.get("reason", "no_token")
-                detail = fb_status.get("detail", "")
-                if reason in ("no_token", "no_account"):
-                    api_note = f"FB API chưa cấu hình ({_md_detail(detail)}). Admin set env var trên Railway, HOẶC:"
-                elif reason == "api_error":
-                    api_note = f"FB API lỗi: {_md_detail(detail[:150])}. Admin fix token, HOẶC:"
-                else:
-                    api_note = "FB API không trả về data. HOẶC:"
-                await update.message.reply_text(
-                    "🛑 *Không có data để audit.*\n\n"
-                    f"{api_note}\n\n"
-                    "*Sếp paste số liệu thật vào ô `Số liệu theo kênh` khi chạy lại task* "
-                    "(vd: `Meta: 800 mess, CPMess 19K, CTR 1.2%, 120 lead`). "
-                    "Không có số thật → em không audit được.\n\n"
-                    "_Gõ /menu để chọn task khác._",
-                    parse_mode=ParseMode.MARKDOWN,
-                )
                 return
         elif task_name == "ads_optimizer":
             fb_status = await _prefetch_optimizer_data(update.message, session)
@@ -5717,7 +5688,7 @@ Language: {en_note}
 - Nếu user nói rõ tên 1 task (vd: "chạy phân tích đối thủ", "lên lịch nội dung") → kết thúc bằng marker `[RUN_TASK:<task_name>]`
 - Vd: "OK em chạy ngay ạ.\n[RUN_TASK:competitor]"
 - task_name AVAILABLE: market / competitor / customer / pricing / strategy / full /
-  content_calendar / content_generator / email_zalo_sequence / competitor_spy / performance_audit
+  content_calendar / content_generator / email_zalo_sequence / competitor_spy
 - task_name COMING SOON (KHÔNG được dùng RUN_TASK, chỉ thông báo "sắp ra mắt"):
   campaign_brief / ads_generator / video_scripts / sales_inbox_script
 
@@ -6127,7 +6098,7 @@ async def _prefetch_competitor_ads(message: Message, session) -> dict:
 
 
 async def _prefetch_performance_data(message: Message, session) -> dict:
-    """Pre-fetch FB Marketing API data cho performance_audit / ads_analytics skill.
+    """Pre-fetch FB Marketing API data cho ads_analytics / ads_intelligence skill.
     Ưu tiên token per-user (OAuth), fallback về global env var.
 
     Returns dict: {"ok": bool, "reason": str, "detail": str}

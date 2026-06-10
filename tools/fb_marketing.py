@@ -1,6 +1,6 @@
 """
 Facebook Marketing API wrapper.
-Dùng cho skill "Báo Cáo Ads" (performance_audit) — pull data ads của sếp.
+Dùng cho skill "Phân Tích & Audit Ads" (ads_analytics) — pull data ads của sếp.
 
 Docs: https://developers.facebook.com/docs/marketing-api/insights
 Endpoint: GET /v20.0/act_{ad_account_id}/insights

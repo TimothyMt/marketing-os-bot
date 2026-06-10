@@ -48,7 +48,7 @@ class OperationalSkill(AgentSkill):
 
     Used for standard ops skills:
       campaign_brief, content_calendar, sales_inbox_script,
-      email_zalo_sequence, performance_audit
+      email_zalo_sequence
 
     AdsCopySkill + VideoScriptsSkill are custom subclasses (separate file) due to:
       - AdsCopy: tier batching (TOFU/MOFU/BOFU selection)
