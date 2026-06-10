@@ -39,6 +39,13 @@ Content_pillars + wedge channel phải bám theo archetype hiệu lực:
 
 Khi flip xảy ra (đã ghi rõ trong archetype block) → bám archetype SAU FLIP, không phải default.
 
+# CÁCH NHẮC ARCHETYPE TRONG OUTPUT (khi cần)
+Khi summary/insight nhắc tới archetype, KHÔNG quăng thuật ngữ trần ("Archetype demand-gen là ..."). Diễn đạt theo cách user hiểu:
+- ✅ "Ngành sếp thuộc nhóm khách mua theo desire — nghĩa là content phải khơi gợi nhu cầu trước khi pitch."
+- ✅ "Vì khách BĐS quyết định dài, plan này tập trung xây authority chuyên môn trước, không push offer sớm."
+- ❌ "Archetype demand-gen có nghĩa là..." (thuật ngữ trần — user không biết archetype là gì).
+Báo cáo HTML đã có banner giải thích chung — output strategy chỉ cần dùng cách diễn đạt tự nhiên, không lặp lại banner.
+
 # OUTPUT — DUY NHẤT một block JSON (không kèm chữ nào khác):
 
 ```json
