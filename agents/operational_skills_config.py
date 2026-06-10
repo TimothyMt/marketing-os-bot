@@ -668,6 +668,14 @@ class AdsCopySkill(AgentSkill):
 
     def build_context(self, session: Session) -> str:
         parts = [session.profile.to_context_string()]
+        # USP (T2) — headline ads phải bám USP đã chốt
+        usp = session.get_latest_result("usp_definition")
+        if usp:
+            parts.append(f"## USP đã chốt (T2 — headline/hook PHẢI bám USP này)\n{usp[:3000]}")
+        # Strategy nền (T4) — đọc wedge channels để chỉ gen cho kênh mũi nhọn
+        synthesis = session.get_latest_result("synthesis")
+        if synthesis:
+            parts.append(f"## Marketing Strategy nền (đọc kênh mũi nhọn / wedge channels)\n{synthesis[:3000]}")
         # Inject campaign_brief if available for tone consistency
         campaign_brief = session.get_latest_result("campaign_brief")
         if campaign_brief:
@@ -690,12 +698,31 @@ class AdsCopySkill(AgentSkill):
             "all":  "Generate FULL 3 tầng (TOFU + MOFU + BOFU), mỗi tầng 2 variants. Tổng 6 copy units.",
         }.get(tier, "Generate FULL 3 tầng (TOFU + MOFU + BOFU).")
 
+        # Format ads (user chọn ở bước 2) — copy video khác hẳn copy ảnh
+        ads_format = (intake.get("ads_format") or "").lower()
+        if ads_format == "video":
+            format_instruction = (
+                "VIDEO ads — copy dẫn bằng script: hook NÓI 3s đầu + voice-over theo beat "
+                "+ text overlay ngắn. Primary text chỉ là caption hỗ trợ (ngắn hơn), "
+                "trọng tâm nằm ở script/voice-over từng variant."
+            )
+        elif ads_format == "image":
+            format_instruction = (
+                "IMAGE/ẢNH ads — copy dẫn bằng visual: headline đập vào mắt + primary text "
+                "ngắn gọn làm việc chính. KHÔNG viết script video. Mỗi variant kèm 1 dòng "
+                "gợi ý visual (concept ảnh) để khớp copy."
+            )
+        else:
+            format_instruction = "Chưa chọn format — viết copy dùng được cho cả ảnh lẫn video."
+
         return f"""## Yêu cầu: Viết Ads Copy cho campaign
 
 **Sản phẩm/giá:** {intake.get('product', 'chưa có')}
 **Insight cốt lõi:** {intake.get('insight', 'chưa có')}
 **Mục tiêu campaign:** {intake.get('campaign_goal', 'chưa có')}
 **Ưu đãi + deadline:** {intake.get('offer', 'chưa có')}
+
+**Format ads (BẮT BUỘC viết đúng format):** {format_instruction}
 
 **Context business:**
 - Ngành: {profile.industry or 'chưa xác định'}
@@ -704,7 +731,10 @@ class AdsCopySkill(AgentSkill):
 
 **Scope:** {scope_instruction}
 
-Viết copy thật sự dùng được ngay, không generic."""
+**Kênh:** Nếu context có Strategy nền/Tactical Playbook chỉ rõ kênh mũi nhọn (wedge channels) →
+CHỈ viết platform block cho các kênh đó, KHÔNG gen đủ 4 platform mặc định. Chưa có wedge → mặc định Meta + TikTok.
+
+Viết copy thật sự dùng được ngay, không generic. Headline/hook bám USP đã chốt trong context (nếu có)."""
 
 
 class VideoScriptsSkill(AgentSkill):

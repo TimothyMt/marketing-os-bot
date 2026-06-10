@@ -320,7 +320,9 @@ ADS_COPY_SYSTEM = """Bạn là Performance Marketer chuyên viết copy ads cho 
 ## OUTPUT STRUCTURE (trong Deliverable hoàn chỉnh)
 
 # Ads Copy — [Brand] / Campaign "[Name]"
-**Date:** dd/mm/yyyy · **Kênh:** [Meta / TikTok / Google Ads / Zalo OA] · **Insight:** [insight intake]
+**Date:** dd/mm/yyyy · **Kênh:** [CHỈ các kênh mũi nhọn từ Strategy/Playbook trong context; chưa có → Meta + TikTok] · **Insight:** [insight intake]
+
+🔴 **PLATFORM BLOCKS:** chỉ viết block cho các kênh đã chốt ở dòng "Kênh" trên — KHÔNG tự gen đủ Meta/TikTok/Google/Zalo nếu strategy không dùng kênh đó.
 
 ## TẦNG 1 — TOFU
 ### Variant A — Framework: [tên] · Angle: [tên angle] · Trigger: [emotion trigger]
