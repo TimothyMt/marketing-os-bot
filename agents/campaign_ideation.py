@@ -414,7 +414,7 @@ async def extract_campaigns_from_synthesis(session: Session) -> Optional[list[di
     )
 
     user_msg = (
-        f"## Kế hoạch chiến lược (Synthesis):\n{synthesis[:3000]}\n\n"
+        f"## Kế hoạch chiến lược (Synthesis):\n{synthesis[:14000]}\n\n"
         f"{playbook_block}"
         f"{strategy_block}"
         "---\n\nTrích 2-3 campaign cụ thể từ roadmap trên, align với hướng sếp đã chọn "
