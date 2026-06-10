@@ -404,10 +404,12 @@ async def extract_campaigns_from_synthesis(session: Session) -> Optional[list[di
         if answer_lines else ""
     )
 
-    # T5 Tactical Playbook — campaign trích ra phải nhất quán với tactics đã đề xuất
+    # T5 Tactical Playbook — campaign trích ra phải nhất quán với tactics đã đề xuất.
+    # Dùng FULL playbook (~10-12K ký tự): 2500 ký tự đầu chỉ chứa archetype + insight,
+    # cắt ngay TRƯỚC các Hướng tactic (SO/WO/WT) — đúng phần cần để trích campaign.
     playbook = (session.get_latest_result("tactical_playbook") or "").strip()
     playbook_block = (
-        f"## Tactical Playbook (SO/WO/WT tactics):\n{playbook[:2500]}\n\n"
+        f"## Tactical Playbook (SO/WO/WT tactics):\n{playbook[:14000]}\n\n"
         if playbook else ""
     )
 
