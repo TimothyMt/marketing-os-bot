@@ -302,11 +302,12 @@ body {
   border-left: 4px solid #f59e0b;
   border-radius: 10px;
   padding: 20px 24px;
-  margin: 16px 0 24px;
+  margin: 0 0 20px;
   font-size: 14px;
   line-height: 1.6;
   color: #1f2937;
 }
+.archetype-banner .archetype-diagnosis { margin: 8px 0 12px; }
 .archetype-banner .archetype-head {
   display: flex; align-items: center; gap: 10px; margin-bottom: 10px;
 }
@@ -471,8 +472,6 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     <div class="powered">Powered by Max — AI CMO · Marketing OS</div>
   </div>
 
-  {archetype_banner_html}
-
   <div class="tabs">
     {tabs_html}
   </div>
@@ -588,12 +587,30 @@ def parse_agent_output(text: str) -> dict:
     return result
 
 
-def render_stage_html(stage_key: str, parsed: dict, idx: int) -> str:
-    """Render one stage as a CSS-only tabbed section with data-idx attribute."""
+def render_stage_html(
+    stage_key: str,
+    parsed: dict,
+    idx: int,
+    archetype_banner: str = "",
+) -> str:
+    """Render one stage as a CSS-only tabbed section with data-idx attribute.
+
+    archetype_banner: pre-rendered HTML. Hiển thị ở đầu section content nếu
+    (a) stage_key thuộc allowlist HOẶC (b) section content nhắc archetype.
+    Pass "" để skip banner cho section này.
+    """
     meta = STAGE_META.get(stage_key, {"title": stage_key, "icon": "📄", "color": ""})
 
-    # Order: Insight (hook) → Detail (full) → Summary (recap) → Benchmarks (bottom)
+    # Decide có hiện banner cho section này không
+    show_banner = bool(archetype_banner) and (
+        stage_key in _ARCHETYPE_RELEVANT_KEYS
+        or _section_mentions_archetype(parsed)
+    )
+
+    # Order: Banner (nếu có) → Insight (hook) → Detail (full) → Summary (recap) → Benchmarks (bottom)
     parts = []
+    if show_banner:
+        parts.append(archetype_banner)
     if parsed.get("insight"):
         insight = parsed["insight"].strip().strip('"').strip("'")
         parts.append(f'<div class="insight">{_md_to_html(insight)}</div>')
@@ -726,7 +743,6 @@ def build_ads_dashboard_report(
         radio_inputs=radio,
         tabs_html=tab_label,
         sections_html=section_html,
-        archetype_banner_html="",
         css=CSS,
         tab_rules=_generate_tab_css(1),
         pos_map_script=POS_MAP_SCRIPT,
@@ -812,7 +828,6 @@ def build_single_skill_report(
         radio_inputs=radio,
         tabs_html=tab_label,
         sections_html=section_html,
-        archetype_banner_html="",
         css=CSS,
         tab_rules=_generate_tab_css(1),
         pos_map_script=POS_MAP_SCRIPT,
@@ -823,95 +838,307 @@ def build_single_skill_report(
 # Archetype banner — giải thích archetype mua hàng để user hiểu plan
 # ─────────────────────────────────────────────────────────────────
 
-_ARCHETYPE_MEANING = {
+# Industry code → label tiếng Việt (cho fallback template — bỏ raw key như "fnb")
+_INDUSTRY_VI = {
+    "fnb":                  "đồ ăn uống",
+    "tech_saas":            "phần mềm SaaS",
+    "ecommerce":            "thương mại điện tử",
+    "education":            "giáo dục",
+    "health_beauty":        "làm đẹp",
+    "retail":               "bán lẻ",
+    "b2b_service":          "dịch vụ B2B",
+    "real_estate":          "bất động sản",
+    "health_clinic":        "y tế / phòng khám",
+    "agency":               "agency marketing",
+    "fashion_retail":       "thời trang",
+    "travel_hospitality":   "du lịch / khách sạn",
+    "interior_design":      "thiết kế nội thất",
+    "pet_care":             "chăm sóc thú cưng",
+    "events_wedding":       "sự kiện / cưới hỏi",
+}
+
+# Section keys luôn nhận banner (cấu trúc bám archetype) — Phần A allowlist
+_ARCHETYPE_RELEVANT_KEYS = {"strategy", "synthesis", "campaign_plan", "campaign_brief"}
+
+# Keyword bắt mention archetype organic ở section khác — Phần A detect động
+# CHÚ Ý: KHÔNG dùng bare "impulse" (false positive với "impulse buy" trong pricing/SWOT)
+_ARCHETYPE_KEYWORDS = (
+    "archetype",
+    "demand-gen", "demand_gen", "demand-generation",
+    "trust-building", "trust_building",
+    "archetype impulse", "mua theo impulse",
+)
+
+
+def _section_mentions_archetype(parsed: dict) -> bool:
+    """Detect động: section có chữ archetype trong content không."""
+    blob = " ".join(filter(None, [
+        parsed.get("detail", ""),
+        parsed.get("insight", ""),
+        parsed.get("summary", ""),
+    ])).lower()
+    return any(k in blob for k in _ARCHETYPE_KEYWORDS)
+
+
+# Template fallback per archetype (label + diagnosis + plan_impact)
+# Placeholder: {business_name}, {industry_vi}
+_ARCHETYPE_TEMPLATES = {
     "trust_building": {
-        "label":   "Trust-building",
-        "meaning": "Khách BIẾT mình có vấn đề, nhưng chu kỳ ra quyết định DÀI — cần xây <strong>authority + chuyên môn</strong> trước khi pitch. Brand đẹp chưa chắc ra lead — chuyên môn sâu mới ra.",
-        "impact":  "Plan này tối ưu cho trust-building: content_pillars ưu tiên <em>Industry expertise</em> + <em>Personal POV</em>, funnel 60/30/10 (Industry/Personal/Offer), kênh ưu tiên long-form (LinkedIn, blog, podcast, YouTube long).",
+        "label": "Trust-building",
+        "diagnosis": (
+            "Khách của {business_name} BIẾT mình có vấn đề nhưng chu kỳ ra quyết định "
+            "dài — họ research kỹ trước khi chốt. Với nhóm này, brand đẹp chưa đủ; phải "
+            "xây authority + chuyên môn sâu thì mới có lead. Trong ngành {industry_vi}, "
+            "kết quả không đến từ ads đẹp mà từ thought leadership được công nhận."
+        ),
+        "impact": (
+            "Plan ưu tiên proof + case study + chia sẻ chuyên môn, kênh thiên long-form "
+            "(LinkedIn, blog, podcast). Offer chỉ pitch sau khi đã build trust."
+        ),
     },
     "demand_gen": {
-        "label":   "Demand-generation",
-        "meaning": "Khách <strong>chưa biết</strong> mình cần — content phải <strong>khơi gợi desire</strong> trước khi pitch. Brand mạnh thì đẩy được giá cao.",
-        "impact":  "Plan này tối ưu cho demand-gen: content_pillars ưu tiên <em>Lifestyle/Aspiration</em> + <em>Desire trigger</em>, funnel 50/30/20 (Desire/Lifestyle+Proof/Convert), kênh ưu tiên video-first organic (TikTok, Reels, Shorts).",
+        "label": "Demand-generation",
+        "diagnosis": (
+            "Khách của {business_name} thường không tự nghĩ tới chuyện mua — họ chỉ "
+            "mua khi content khơi gợi được desire (lifestyle, aspiration, FOMO). Với "
+            "nhóm này, content phải tạo nhu cầu TRƯỚC khi pitch sản phẩm, và brand "
+            "mạnh thường đẩy được giá cao hơn baseline ngành {industry_vi}."
+        ),
+        "impact": (
+            "Plan ưu tiên content lifestyle / desire trigger, kênh video-first "
+            "(TikTok, Reels). Offer chỉ chốt khi desire đã đủ chín."
+        ),
     },
     "impulse": {
-        "label":   "Impulse purchase",
-        "meaning": "Khách mua <strong>nhanh theo cảm xúc</strong>, ít cân nhắc. Ads tốt = ra đơn, không cần brand mạnh.",
-        "impact":  "Plan này tối ưu cho impulse: content_pillars ưu tiên <em>Hook</em> + <em>Social proof</em> + <em>Offer</em>, funnel 30/20/50 (Hook/Retarget+Proof/Offer), kênh ưu tiên paid ads + retarget + livestream (Meta Ads, TikTok Ads/Shop, Shopee).",
+        "label": "Impulse purchase",
+        "diagnosis": (
+            "Khách của {business_name} mua nhanh theo cảm xúc, ít cân nhắc — họ chốt "
+            "trong 1-2 phút nếu thấy hook đủ mạnh hoặc deal đủ hời. Với nhóm này, ads "
+            "tốt = ra đơn, brand mạnh là cộng thêm chứ không phải điều kiện cần. Trong "
+            "ngành {industry_vi}, ai có hook + price anchor đúng sẽ thắng."
+        ),
+        "impact": (
+            "Plan ưu tiên hook nhanh, social proof định lượng, price anchor / flash deal, "
+            "kênh promo-heavy (Shopee Live, Reels promo, Meta Ads + retarget)."
+        ),
     },
 }
 
 
-def _render_archetype_banner(industry: str, signal_text: str = "") -> str:
-    """Render banner giải thích archetype mua hàng cho user.
+def _resolve_or_none(industry: str, signal_text: str = "") -> dict | None:
+    """Wrapper resolve_archetype — return None nếu fail import hoặc không có primary."""
+    try:
+        from frameworks.industry_context import resolve_archetype
+    except ImportError:
+        return None
+    res = resolve_archetype(industry or "", signal_text or "")
+    if not res.get("primary") or res["primary"] not in _ARCHETYPE_TEMPLATES:
+        return None
+    return res
 
-    Đọc archetype từ industry_context + áp signal flip. Trả về "" nếu
-    industry không có declaration (banner skip — backward compat).
+
+def _extract_context_snippets(parsed_stages: list[tuple[str, dict]]) -> str:
+    """Trích summary/insight từ market_research + customer_insight + usp_definition → context cho LLM.
+
+    Mỗi snippet tối đa 500 char, gắn nhãn section để LLM biết nguồn.
+    """
+    if not parsed_stages:
+        return ""
+
+    wanted_keys = {
+        "market_research": "Nghiên cứu Thị trường",
+        "market":          "Nghiên cứu Thị trường",
+        "customer_insight": "Customer Insight",
+        "customer":         "Customer Insight",
+        "usp_definition":   "USP Definition",
+    }
+    snippets = []
+    for key, parsed in parsed_stages:
+        label = wanted_keys.get(key)
+        if not label:
+            continue
+        text = (parsed.get("insight") or parsed.get("summary") or parsed.get("detail") or "").strip()
+        if not text:
+            continue
+        # Strip markdown headers/bullets cho LLM đỡ nhiễu
+        text = re.sub(r'^[#>*\-\s]+', '', text, flags=re.MULTILINE)
+        text = re.sub(r'\s+', ' ', text)[:500]
+        snippets.append(f"[{label}]\n{text}")
+
+    return "\n\n".join(snippets[:3])
+
+
+def _template_banner_data(business_name: str, industry: str, archetype_result: dict) -> dict:
+    """Fallback template — fill business_name + industry_vi vào template tĩnh."""
+    primary = archetype_result["primary"]
+    template = _ARCHETYPE_TEMPLATES[primary]
+    industry_vi = _INDUSTRY_VI.get(industry.lower(), "ngành của sếp")
+    bn = business_name or "brand"
+    return {
+        "label":     template["label"],
+        "diagnosis": template["diagnosis"].format(business_name=bn, industry_vi=industry_vi),
+        "impact":    template["impact"].format(business_name=bn, industry_vi=industry_vi),
+    }
+
+
+async def _generate_banner_copy_via_llm(
+    business_name: str,
+    industry: str,
+    archetype_result: dict,
+    context_snippets: str,
+) -> dict | None:
+    """LLM-first path — gen 2-3 câu personalize từ context. None nếu fail.
+
+    Returns: {label, diagnosis, impact} hoặc None.
     """
     try:
-        from frameworks.industry_context import resolve_archetype, ARCHETYPE_LABEL
+        from tools.llm_router import call as router_call, TaskType, AllProvidersFailedError
+        from frameworks.industry_context import ARCHETYPE_LABEL
     except ImportError:
-        return ""
+        return None
 
-    res = resolve_archetype(industry or "", signal_text or "")
-    primary = res.get("primary", "")
-    if not primary or primary not in _ARCHETYPE_MEANING:
-        return ""
+    primary = archetype_result["primary"]
+    label_full = ARCHETYPE_LABEL.get(primary, primary).split(" (")[0]  # bỏ phần ngoặc giải nghĩa
+    industry_vi = _INDUSTRY_VI.get(industry.lower(), industry)
+    flipped = archetype_result.get("flipped", False)
+    matched = archetype_result.get("matched_signals") or []
 
-    meta      = _ARCHETYPE_MEANING[primary]
-    label     = meta["label"]
-    meaning   = meta["meaning"]
-    impact    = meta["impact"]
-    flipped   = res.get("flipped", False)
-    secondary = res.get("secondary", "")
-    blend     = res.get("blend", "")
-    matched   = res.get("matched_signals") or []
-
-    # Lý do chọn — pure vs blend default vs flipped
-    if flipped:
-        signals_str = ", ".join(f"<em>{s}</em>" for s in matched)
-        sec_label   = _ARCHETYPE_MEANING.get(secondary, {}).get("label", secondary)
-        why_html = (
-            f'<div class="archetype-flip">⚡ Đã điều chỉnh archetype từ default sang '
-            f'<strong>{label}</strong> vì brief có signal: {signals_str}. '
-            f'Secondary giữ là {sec_label} (blend {blend}).</div>'
-        )
-    elif secondary and blend:
-        sec_label = _ARCHETYPE_MEANING.get(secondary, {}).get("label", secondary)
-        why_html = (
-            f'<div class="archetype-why">📍 Vì sao plan này áp dụng: ngành '
-            f'<strong>{industry}</strong> mặc định <strong>{label}</strong> + secondary '
-            f'<strong>{sec_label}</strong> (blend {blend}). Brief chưa có signal đặc thù → giữ default.</div>'
-        )
-    else:
-        why_html = (
-            f'<div class="archetype-why">📍 Vì sao plan này áp dụng: ngành '
-            f'<strong>{industry}</strong> thuộc nhóm <strong>{label}</strong> (pure).</div>'
-        )
-
-    # 2 archetype còn lại để so sánh
-    others = [k for k in _ARCHETYPE_MEANING if k != primary]
-    compare_items = "".join(
-        f'<li><strong>{_ARCHETYPE_MEANING[k]["label"]}</strong>: '
-        f'{_ARCHETYPE_MEANING[k]["meaning"]}</li>'
-        for k in others
+    system = (
+        "Bạn viết 2-3 câu chẩn đoán archetype mua hàng cho 1 business cụ thể. "
+        "KHÔNG dùng jargon framework (TOFU/MOFU/BOFU, content_pillars, funnel ratio, CAC, LTV). "
+        "KHÔNG kể framework theo kiểu giáo trình. "
+        "Nói như 1 cố vấn quen brand đó — gọi tên brand, dẫn 1-2 chi tiết cụ thể từ context "
+        "(competitor name, geo, target audience, insight quan trọng). "
+        "Output JSON đúng schema, KHÔNG markdown wrapper."
     )
+
+    user_parts = [
+        f"# Business",
+        f"- Tên brand: {business_name}",
+        f"- Ngành: {industry_vi}",
+        f"- Archetype mua hàng: {label_full}",
+    ]
+    if flipped and matched:
+        user_parts.append(f"- Lưu ý: archetype này đã được flip từ default vì brief có signal: {', '.join(matched)}.")
+    if context_snippets:
+        user_parts += ["", "# Context từ các section đã phân tích", context_snippets]
+    user_parts += [
+        "",
+        "# Yêu cầu output",
+        "Trả về JSON với 2 field:",
+        '- "diagnosis": 2-3 câu chẩn đoán — vì sao brand này thuộc archetype X, dẫn chứng cụ thể từ context.',
+        '- "plan_impact": 1 câu — plan dưới đây sẽ làm gì cụ thể với business này (kênh / hướng content cụ thể).',
+        "",
+        "Văn phong: tư vấn thân mật ('khách của brand', 'plan dưới đây'), không công thức.",
+        'Ví dụ structure: {"diagnosis": "...", "plan_impact": "..."}',
+    ]
+
+    try:
+        result = await router_call(
+            task_type  = TaskType.INTAKE_JSON,
+            system     = system,
+            user       = "\n".join(user_parts),
+            max_tokens = 500,
+        )
+    except AllProvidersFailedError:
+        return None
+    except Exception:
+        return None
+
+    raw = (result or {}).get("output", "").strip()
+    if not raw:
+        return None
+
+    # Strip ```json wrapper nếu có
+    raw = re.sub(r'^```(?:json)?\s*', '', raw)
+    raw = re.sub(r'\s*```\s*$', '', raw).strip()
+
+    import json
+    try:
+        data = json.loads(raw)
+    except (json.JSONDecodeError, ValueError):
+        return None
+
+    diagnosis = (data.get("diagnosis") or "").strip()
+    plan_impact = (data.get("plan_impact") or "").strip()
+    if not diagnosis or not plan_impact:
+        return None
+
+    return {
+        "label":     label_full,
+        "diagnosis": diagnosis,
+        "impact":    plan_impact,
+    }
+
+
+def _compose_banner_html(
+    business_name: str,
+    banner_data: dict,
+    archetype_result: dict,
+) -> str:
+    """Compose HTML từ banner_data (label + diagnosis + impact) + flip signal nếu có."""
+    label = banner_data["label"]
+    bn = business_name or "brand"
+
+    # Flip signal — chỉ hiện 1 dòng inline, không lặp lại comparison block
+    flip_html = ""
+    if archetype_result.get("flipped"):
+        matched = archetype_result.get("matched_signals") or []
+        signals_str = ", ".join(f"<em>{s}</em>" for s in matched)
+        flip_html = (
+            f'<div class="archetype-flip">⚡ Đã chuyển sang <strong>{label}</strong> '
+            f'vì brief có signal: {signals_str}.</div>'
+        )
 
     return (
         '<div class="archetype-banner">'
         '<div class="archetype-head">'
         '<span class="icon">🎯</span>'
-        f'<h3>Archetype mua hàng: {label}</h3>'
+        f'<h3>Khách của {bn} thuộc nhóm {label}</h3>'
         '</div>'
-        f'<div class="archetype-meaning">{meaning}</div>'
-        f'{why_html}'
-        '<details class="archetype-compare">'
-        '<summary>So với 2 archetype khác</summary>'
-        f'<ul>{compare_items}</ul>'
-        '</details>'
-        f'<div class="archetype-impact">{impact}</div>'
+        f'<div class="archetype-diagnosis">{banner_data["diagnosis"]}</div>'
+        f'{flip_html}'
+        f'<div class="archetype-impact">{banner_data["impact"]}</div>'
         '</div>'
     )
+
+
+async def generate_archetype_banner_html(
+    business_name: str,
+    industry: str,
+    signal_text: str,
+    parsed_stages: list[tuple[str, dict]] | None = None,
+) -> str:
+    """Async entry — LLM-first + template fallback.
+
+    Trả về "" nếu industry không có archetype declaration (skip banner).
+    """
+    res = _resolve_or_none(industry, signal_text)
+    if not res:
+        return ""
+
+    # LLM primary path — thử trước
+    context_snippets = _extract_context_snippets(parsed_stages or [])
+    data = await _generate_banner_copy_via_llm(business_name, industry, res, context_snippets)
+
+    # Fallback template nếu LLM fail / empty / parse error
+    if not data:
+        data = _template_banner_data(business_name, industry, res)
+
+    return _compose_banner_html(business_name, data, res)
+
+
+def render_archetype_banner_sync(business_name: str, industry: str, signal_text: str = "") -> str:
+    """Sync entry — chỉ dùng template (không gọi LLM). Cho build_single_skill_report
+    và build_ads_dashboard_report (vốn không có context_snippets đầy đủ).
+
+    Trả về "" nếu industry không có archetype declaration.
+    """
+    res = _resolve_or_none(industry, signal_text)
+    if not res:
+        return ""
+    data = _template_banner_data(business_name, industry, res)
+    return _compose_banner_html(business_name, data, res)
 
 
 def build_report(
@@ -920,9 +1147,21 @@ def build_report(
     stage: str,
     parsed_stages: list[tuple[str, dict]],
     archetype_signal_text: str = "",
+    archetype_banner_html: str | None = None,
 ) -> str:
-    """Render full HTML report with CSS-only tab navigation (radio buttons, no JS)."""
+    """Render full HTML report with CSS-only tab navigation (radio buttons, no JS).
+
+    archetype_banner_html: pre-computed banner (đã async-gen từ LLM). Nếu None,
+    fallback sang sync template render — giữ backward compat cho caller chưa
+    await generate_archetype_banner_html().
+    """
     n = len(parsed_stages)
+
+    # Resolve banner — caller có thể pre-compute (LLM path) hoặc để None (sync fallback)
+    if archetype_banner_html is None:
+        archetype_banner_html = render_archetype_banner_sync(
+            business_name, industry, archetype_signal_text
+        )
 
     # Radio inputs at top — first one checked
     radio_inputs = "\n  ".join(
@@ -943,9 +1182,10 @@ def build_report(
         )
     tabs_html = "\n    ".join(tab_labels)
 
-    # Section blocks
+    # Section blocks — banner inject vào section thuộc allowlist HOẶC detect động
     sections_html = "\n".join(
-        render_stage_html(k, p, i) for i, (k, p) in enumerate(parsed_stages)
+        render_stage_html(k, p, i, archetype_banner=archetype_banner_html)
+        for i, (k, p) in enumerate(parsed_stages)
     )
 
     # Dynamic title: nhiều skill = full report; 1 skill = tên skill cụ thể
@@ -971,7 +1211,6 @@ def build_report(
         radio_inputs=radio_inputs,
         tabs_html=tabs_html,
         sections_html=sections_html,
-        archetype_banner_html=_render_archetype_banner(industry, archetype_signal_text),
         css=CSS,
         tab_rules=_generate_tab_css(n),
         pos_map_script=POS_MAP_SCRIPT,

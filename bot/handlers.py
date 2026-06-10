@@ -5254,15 +5254,25 @@ async def _run_pipeline_sequentially(message: Message, session):
         # đã nhận file nhưng response timeout) KHÔNG được báo nhầm "không generate được".
         html_str = None
         try:
+            from bot.html_report import generate_archetype_banner_html
+            signal_text = " ".join(filter(None, [
+                session.profile.product_service or "",
+                session.profile.target_customer or "",
+            ]))
+            # LLM-personalize banner (fallback template nếu LLM fail)
+            archetype_banner_html = await generate_archetype_banner_html(
+                business_name=session.profile.business_name or "Business",
+                industry=session.profile.industry or "",
+                signal_text=signal_text,
+                parsed_stages=valid_stages,
+            )
             html_str = build_report(
                 business_name=session.profile.business_name or "Business",
                 industry=session.profile.industry or "",
                 stage=session.profile.stage or "",
                 parsed_stages=valid_stages,
-                archetype_signal_text=" ".join(filter(None, [
-                    session.profile.product_service or "",
-                    session.profile.target_customer or "",
-                ])),
+                archetype_signal_text=signal_text,
+                archetype_banner_html=archetype_banner_html,
             )
         except Exception as e:
             logger.exception("Failed to BUILD HTML report: %s", e)
