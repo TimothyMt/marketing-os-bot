@@ -339,16 +339,9 @@ OPERATIONAL_TASKS: dict[str, TaskConfig] = {
             {"key": "pasted_ads",      "label": "Paste ads tay (nếu FB API chưa setup, mở https://facebook.com/ads/library copy 3-10 ads vào đây)", "example": "Ad 1: 'CEO sẽ hỏi gì?...' / Ad 2: ...", "required": False},
         ],
     ),
-    "competitor_comparison": TaskConfig(
-        name="competitor_comparison",
-        label="So Sánh Với Đối Thủ",
-        button_emoji="🆚",
-        category="operational",
-        description="So sánh business của sếp với đối thủ đã phân tích",
-        skill_class_name="CompetitorComparisonSkill",
-        # KHÔNG có intake_fields — đọc full từ session.results
-        intake_fields=[],
-    ),
+    # "competitor_comparison" — TẠM TẮT (user không dùng được).
+    # Prompt COMPETITOR_COMPARISON_SYSTEM + make_competitor_comparison_skill vẫn còn —
+    # muốn bật lại thì thêm lại TaskConfig ở đây + gắn vào owns_skills của persona.
     "comment_mining": TaskConfig(
         name="comment_mining",
         label="Phân Tích Comment",

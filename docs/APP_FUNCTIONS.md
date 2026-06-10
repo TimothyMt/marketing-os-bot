@@ -156,7 +156,6 @@ Sản xuất deliverable dùng được ngay. Intake qua single-shot form. Outpu
 | `brand_voice` | 🎙️ Brand Voice Rules | Bộ quy tắc giọng văn cho team dùng nhất quán |
 | `comment_mining` | 💬 Phân Tích Comment | Khai thác insight từ comments → 7 content idea |
 | `competitor_spy` | 🔍 Theo Dõi Đối Thủ | Phân tích FB Ads Library đối thủ — pattern + insight |
-| `competitor_comparison` | 🆚 So Sánh Đối Thủ | So sánh business của sếp vs đối thủ đã phân tích |
 
 > **Lưu ý:** Tất cả content skills tự inject **Industry Brain** (14 ngành) + **Brand
 > Voice** của user vào prompt lúc chạy — không cần config thủ công.
