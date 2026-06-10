@@ -1697,6 +1697,7 @@ async def _handle_callback_inner(update, context, query, session, data, user_id)
     if data == "brief_edit":
         await query.edit_message_reply_markup(reply_markup=None)
         session.pending_intake["_awaiting_brief_edit"] = "1"
+        session.pending_intake.pop("_brief_edit_orig_comment", None)
         session.pending_intake.pop("_awaiting_rating_for", None)
         await save_session(session)
         addr = _addr(session)
@@ -6667,11 +6668,18 @@ async def _handle_brief_edit_text(update, context, session, text: str):
     brief = session.get_latest_result("campaign_brief")
     if not brief:
         session.pending_intake.pop("_awaiting_brief_edit", None)
+        session.pending_intake.pop("_brief_edit_orig_comment", None)
         await save_session(session)
         await update.message.reply_text(
             "⚠️ Em không tìm thấy brief để sửa. Sếp chạy lại Brief Campaign giúp em nhé.",
         )
         return
+
+    # Nếu lượt trước Max đã hỏi lại (PATCH_ASK), gộp câu trả lời này với
+    # yêu cầu gốc để patch_document có đủ ngữ cảnh — tránh hỏi lặp vòng.
+    prior_comment = session.pending_intake.get("_brief_edit_orig_comment")
+    if prior_comment:
+        comment = f"{prior_comment}\n\nLàm rõ thêm: {comment}"
 
     await update.message.reply_text(
         "✏️ *Em đang chỉnh đúng phần sếp nói trong brief...*", parse_mode=ParseMode.MARKDOWN,
@@ -6692,10 +6700,14 @@ async def _handle_brief_edit_text(update, context, session, text: str):
         return
 
     if status == PATCH_ASK:
+        session.pending_intake["_brief_edit_orig_comment"] = comment
+        await save_session(session)
         await update.message.reply_text(f"🤔 {payload}")
         return
 
     if status == PATCH_NOOP:
+        session.pending_intake.pop("_brief_edit_orig_comment", None)
+        await save_session(session)
         await update.message.reply_text(
             "🤔 Em chưa khoanh được đúng phần cần sửa. Sếp chỉ rõ giúp em *phần nào* và "
             "*thêm/bớt/đổi* thế nào ạ?",
@@ -6704,6 +6716,7 @@ async def _handle_brief_edit_text(update, context, session, text: str):
         return
 
     # PATCH_OK — lưu version mới + re-render HTML brief
+    session.pending_intake.pop("_brief_edit_orig_comment", None)
     session.add_result("campaign_brief", payload)
     await save_session(session)
 
@@ -6902,6 +6915,7 @@ async def _confirm_brief_and_gen_calendar(message, session, context, update):
     (trong _gen_content_calendar_after_approval).
     """
     session.pending_intake.pop("_awaiting_brief_edit", None)
+    session.pending_intake.pop("_brief_edit_orig_comment", None)
     session.pending_intake.pop("_awaiting_rating_for", None)
 
     brief = session.get_latest_result("campaign_brief") or ""
