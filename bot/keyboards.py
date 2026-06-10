@@ -10,6 +10,7 @@ from telegram import InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardMa
 
 MAIN_MENU_KEYBOARD = InlineKeyboardMarkup([
     [InlineKeyboardButton("🧠 Max — Chiến lược & Điều phối (CMO)", callback_data="persona_menu_cmo")],
+    [InlineKeyboardButton("📋 Brief Campaign — kế hoạch chiến dịch", callback_data="task_campaign_brief")],
     [InlineKeyboardButton("📅 Lịch Nội Dung — kế hoạch đăng bài", callback_data="task_content_calendar")],
     [InlineKeyboardButton("✍️ Viết Content — full workflow", callback_data="task_write_content")],
     [InlineKeyboardButton("📊 Minh — Ads & Performance",   callback_data="persona_menu_digital_marketing")],

@@ -438,7 +438,29 @@ async def _run_skill(skill: AgentSkill, session: Session) -> str:
         except Exception as e:
             logger.warning("[CalendarInject] failed (non-fatal) skill=%s: %s", skill.name, e)
 
-    # P1 fix: Forward tone signals đã chốt ở Tone Calibration vào production skills,
+    # Bridge funnel_map → content_calendar: lịch bám đúng phân bổ ToFu/MoFu/BoFu
+    # per-channel (ratio, format, content angle, CTA, volume) đã map ở bước Funnel.
+    if skill.name == "content_calendar":
+        try:
+            import json as _json_fm
+            from agents.funnel_mapper import build_funnel_map_markdown
+            fm_raw = session.get_latest_result("funnel_map")
+            if fm_raw and "FUNNEL MAP" not in context:
+                fm_list = _json_fm.loads(fm_raw) if isinstance(fm_raw, str) else fm_raw
+                if fm_list:
+                    fm_md = build_funnel_map_markdown(fm_list)
+                    context += (
+                        "\n\n---\n\n"
+                        "## FUNNEL MAP đã duyệt (BÁM SÁT — mỗi kênh có tỷ lệ ToFu/MoFu/BoFu, "
+                        "format, content angle, CTA, volume/tuần riêng. Weekly grid + pillar mix "
+                        "của calendar PHẢI khớp phân bổ này cho từng kênh, KHÔNG tự đặt lại tỷ lệ):\n"
+                        + fm_md[:5000]
+                    )
+                    logger.info("[FunnelMapInject] content_calendar chars=%d", min(len(fm_md), 5000))
+        except Exception as e:
+            logger.warning("[FunnelMapInject] failed (non-fatal): %s", e)
+
+
     # để bài viết giữ đúng tone user đã duyệt (không chỉ dừng ở bài mẫu).
     if skill.name in CALENDAR_DRIVEN_SKILLS or skill.name in BV_INJECTED_SKILLS:
         try:
