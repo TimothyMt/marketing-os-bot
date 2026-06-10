@@ -149,4 +149,14 @@ KHÔNG nằm trong `ContentGeneratorPipeline.SUB_SKILLS` (pipeline dùng post_ba
 **owns_skills của Nam sau khi dọn:**
 `["content_generator", "post_write", "post_batch", "post_hooks", "post_adapt", "post_voice_check"]`
 
+**d) Soft-gate khi chưa có content_calendar/campaign_brief:**
+Nếu user gọi thẳng skill của Nam/Trang (vd `post_batch`, `video_script_gen`,
+`ugc_brief`, `video_scripts`) khi `session.results` CHƯA có `content_calendar`
+(hoặc `campaign_brief`), context vẫn chạy bình thường (chỉ mỏng hơn — chỉ có
+profile + synthesis) — không chặn cứng, nhưng nên thêm 1 dòng gợi ý mềm kiểu:
+"Chưa có Content Calendar — chạy với Max trước (`content_calendar`) thì kết quả
+sẽ bám đúng kế hoạch hơn. Vẫn muốn chạy luôn không?"
+Vị trí thêm: `build_user_msg`/`build_context` của các `CALENDAR_DRIVEN_SKILLS`
+(`agents/pipeline.py:391`) hoặc handler trước khi dispatch.
+
 ---
