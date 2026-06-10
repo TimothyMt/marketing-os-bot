@@ -3102,7 +3102,14 @@ async def _handle_callback_inner(update, context, query, session, data, user_id)
                 or session.get_latest_result("strategy")
             )
             if has_strategy:
-                # YES branch — leverage roadmap
+                # campaign_brief → full A→Z flow: LLM-extracted campaigns
+                # (extract_campaigns_from_synthesis) → offer lever → channel/budget
+                # setup → brief. Same path as strategy_confirm, so the direct test
+                # button produces the SAME complete brief (not the lean 3-question
+                # shortcut). content_calendar keeps its lightweight strategy-aware form.
+                if task_type == "campaign_brief":
+                    await _show_extracted_campaigns(query.message, session)
+                    return
                 await _send_strategy_aware_form(query.message, session, task_type)
                 return
             # NO branch — suggest A→Z
@@ -5919,7 +5926,11 @@ async def _launch_task_from_advisor(update, context, session, task_name: str):
             session.get_latest_result("synthesis") or session.get_latest_result("strategy")
         )
         if has_strategy:
-            await _send_strategy_aware_form(msg, session, task_name)
+            # campaign_brief → full A→Z flow (giống nút Brief Campaign / strategy_confirm)
+            if task_name == "campaign_brief":
+                await _show_extracted_campaigns(msg, session)
+            else:
+                await _send_strategy_aware_form(msg, session, task_name)
         else:
             session.pending_followup_skill = task_name
             await save_session(session)
