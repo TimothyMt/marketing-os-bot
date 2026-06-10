@@ -1558,6 +1558,14 @@ async def _handle_callback_inner(update, context, query, session, data, user_id)
         await _send_single_shot_form(query.message, session, "ugc_brief")
         return
 
+    # ── Backlog #1: competitor_comparison — so sánh luôn không cần landscape ──
+    if data == "force_comp_compare":
+        await query.edit_message_reply_markup(reply_markup=None)
+        session.selected_task = "competitor_comparison"
+        await save_session(session)
+        await _send_single_shot_form(query.message, session, "competitor_comparison")
+        return
+
     # ── Backlog 2.2: brand_positioning revise loop ──────────────
     if data == "bp_confirm":
         await query.edit_message_reply_markup(reply_markup=None)
@@ -3039,6 +3047,24 @@ async def _handle_callback_inner(update, context, query, session, data, user_id)
                 "để có hệ thống tổng thể (recommend)._",
                 parse_mode=ParseMode.MARKDOWN,
                 reply_markup=GROWTH_CHANNEL_KEYBOARD,
+            )
+            return
+
+        # ── competitor_comparison: soft-gate — có landscape thì so sánh sắc hơn ──
+        if (task_type == "competitor_comparison"
+                and not session.get_latest_result("competitor")):
+            await query.edit_message_reply_markup(reply_markup=None)
+            await save_session(session)
+            await query.message.reply_text(
+                "🆚 *So Sánh 1-1 Với Đối Thủ* — em chưa có phân tích competitor landscape ạ.\n\n"
+                "Có landscape trước thì so sánh sẽ sắc hơn (em đối chiếu được vị trí đối thủ "
+                "trong toàn cảnh). Không có em vẫn search Google được.\n\n"
+                "Sếp muốn chạy *Phân Tích Đối Thủ* trước hay so sánh luôn?",
+                parse_mode=ParseMode.MARKDOWN,
+                reply_markup=InlineKeyboardMarkup([
+                    [InlineKeyboardButton("🔍 Phân Tích Đối Thủ trước", callback_data="task_competitor")],
+                    [InlineKeyboardButton("▶️ Vẫn so sánh luôn",         callback_data="force_comp_compare")],
+                ]),
             )
             return
 

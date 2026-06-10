@@ -848,7 +848,8 @@ OPS_SKILL_TASK_TYPES: dict[str, TaskType] = {
     # ── GPT-5 primary: data analysis & diagnosis ──────────────────
     "ads_analytics":         TaskType.OPS_ANALYSIS,
     "competitor_spy":        TaskType.OPS_ANALYSIS,
-    "competitor_comparison": TaskType.OPS_ANALYSIS,
+    # Backlog #1: comparison 1-1 cần Google Search grounded → route research chain
+    "competitor_comparison": TaskType.COMPETITOR_RESEARCH,
 
     # ── GPT-5 primary: creative writing ───────────────────────────
     "ads_generator":         TaskType.OPS_CONTENT_CREATIVE,

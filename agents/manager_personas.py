@@ -54,6 +54,7 @@ PERSONAS: list[ManagerPersona] = [
             "tactical_playbook", # SO/WO/WT tactics per-segment
             "market",            # Nghiên cứu thị trường (TAM/SAM/SOM)
             "competitor",        # Phân tích đối thủ (8 chiều)
+            "competitor_comparison",  # So sánh 1-1 với đối thủ cụ thể (grounded search)
             "customer",          # Insight khách hàng (ICP + JTBD)
             "pricing",           # Chiến lược giá
             "campaign_brief",    # Brief tổng cho campaign (tầng kế hoạch — Nam/Trang/Linh đọc output)
@@ -84,6 +85,7 @@ Bạn ở tầng chiến lược. Bạn KHÔNG sa vào chi tiết thực thi (vi
 - **strategy**: Lập kế hoạch tổng (SAVE + SMART + roadmap 90 ngày).
 - **market**: Nghiên cứu thị trường (TAM/SAM/SOM, market dynamics).
 - **competitor**: Phân tích đối thủ (8 chiều + market gap).
+- **competitor_comparison**: So sánh 1-1 với MỘT đối thủ cụ thể (search Google công khai + data đã phân tích). Nên chạy sau **competitor**.
 - **customer**: Insight khách hàng (ICP + Jobs-to-be-Done).
 - **pricing**: Chiến lược giá + psychology tactics.
 

@@ -364,15 +364,53 @@ def make_competitor_spy_skill() -> OperationalSkill:
     ))
 
 
+class CompetitorComparisonSkill(OperationalSkill):
+    """Backlog #1 (re-enabled 2026-06-10): so sánh 1-1 với đối thủ CỤ THỂ.
+
+    - Nhận tên đối thủ qua intake (không còn chạy chay từ landscape cũ)
+    - Route qua TaskType.COMPETITOR_RESEARCH → Gemini Pro Grounded (Google Search)
+      để tự tìm thông tin công khai về đối thủ đó
+    - Kết hợp: grounded search + session.results["competitor"] (landscape)
+      + competitor_spy (ads data) + thông tin sếp tự cung cấp
+    """
+
+    def __init__(self):
+        config = _config_for(
+            "competitor_comparison",
+            COMPETITOR_COMPARISON_SYSTEM,
+            max_tokens=8000,
+            context_strategy=ContextStrategy.PROFILE_ONLY,  # override bên dưới
+            primary_deliverable=PrimaryDeliverable.HTML,
+        )
+        super().__init__(config)
+
+    def build_context(self, session: Session) -> str:
+        parts = [session.profile.to_context_string()]
+        landscape = session.get_latest_result("competitor")
+        if landscape:
+            parts.append(f"## Competitor Landscape đã phân tích (T1)\n{landscape[:4000]}")
+        spy = session.get_latest_result("competitor_spy")
+        if spy:
+            parts.append(f"## Competitor Spy — ads data từ FB Ads Library\n{spy[:4000]}")
+        return "\n\n---\n\n".join(parts)
+
+    def build_user_msg(self, session: Session) -> str:
+        intake = session.pending_intake or {}
+        name = (intake.get("competitor_name") or "").strip() or "chưa rõ — hỏi lại user"
+        known = (intake.get("competitor_known_info") or "").strip()
+        msg = (
+            f"## Yêu cầu: So sánh 1-1 business của sếp với đối thủ: **{name}**\n\n"
+            f"Search Google thông tin công khai về \"{name}\" "
+            f"(website, Maps, review, fanpage, giá) trước khi so sánh. "
+            f"Output đủ 7 mục theo system prompt — claim nào không có nguồn thì ghi rõ."
+        )
+        if known:
+            msg += f"\n\n**Thông tin sếp biết về đối thủ này (nguồn: user cung cấp):**\n{known}"
+        return msg
+
+
 def make_competitor_comparison_skill() -> OperationalSkill:
-    """Sprint 4: Follow-up sau competitor analysis — so sánh business sếp vs đối thủ."""
-    return OperationalSkill(_config_for(
-        "competitor_comparison",
-        COMPETITOR_COMPARISON_SYSTEM,
-        max_tokens=6000,
-        context_strategy=ContextStrategy.FULL_PIPELINE,  # Đọc cả competitor + profile
-        primary_deliverable=PrimaryDeliverable.HTML,
-    ))
+    return CompetitorComparisonSkill()
 
 
 class BrandPositioningSkill(OperationalSkill):

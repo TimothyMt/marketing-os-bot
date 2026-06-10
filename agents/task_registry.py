@@ -328,9 +328,20 @@ OPERATIONAL_TASKS: dict[str, TaskConfig] = {
             {"key": "pasted_ads",      "label": "Paste ads tay (nếu FB API chưa setup, mở https://facebook.com/ads/library copy 3-10 ads vào đây)", "example": "Ad 1: 'CEO sẽ hỏi gì?...' / Ad 2: ...", "required": False},
         ],
     ),
-    # "competitor_comparison" — TẠM TẮT (user không dùng được).
-    # Prompt COMPETITOR_COMPARISON_SYSTEM + make_competitor_comparison_skill vẫn còn —
-    # muốn bật lại thì thêm lại TaskConfig ở đây + gắn vào owns_skills của persona.
+    # competitor_comparison — BẬT LẠI 2026-06-10 theo backlog #1: so sánh 1-1 với
+    # đối thủ cụ thể, dùng Gemini Grounded search + landscape/spy data trong session.
+    "competitor_comparison": TaskConfig(
+        name="competitor_comparison",
+        label="So Sánh 1-1 Với Đối Thủ",
+        button_emoji="🆚",
+        category="operational",
+        description="So sánh trực diện với 1 đối thủ cụ thể — search Google thông tin công khai + kết hợp data đã phân tích",
+        skill_class_name="CompetitorComparisonSkill",
+        intake_fields=[
+            {"key": "competitor_name",       "label": "Tên đối thủ muốn so sánh trực tiếp", "example": "Spa ABC (Quận 3) / thegioididong.com", "required": True},
+            {"key": "competitor_known_info", "label": "Thông tin sếp biết về đối thủ này",   "example": "Họ mạnh TikTok, giá rẻ hơn mình ~15%, mới mở chi nhánh 2", "required": False},
+        ],
+    ),
     # "comment_mining" — ĐÃ XOÁ (2026-06-10): PROFILE_ONLY, tách biệt hoàn toàn T1-T5.
     "brand_positioning": TaskConfig(
         name="brand_positioning",

@@ -4,7 +4,7 @@ Các ý tưởng / tính năng / vấn đề đã bàn nhưng chưa triển khai
 
 ---
 
-## 1. So sánh 1-1 với đối thủ cụ thể (Competitor 1-on-1)
+## 1. ✅ DONE (2026-06-10) — So sánh 1-1 với đối thủ cụ thể (Competitor 1-on-1)
 
 **Vấn đề hiện tại:**
 `competitor_comparison` ("🆚 So Sánh Với Đối Thủ") chỉ xuất hiện 1 lần duy nhất sau khi chạy xong "Phân tích đối thủ" — nếu bỏ qua thì không có cách quay lại. Khi chạy, skill này không nhận tên đối thủ cụ thể (`intake_fields=[]`) — chỉ đọc lại bản phân tích landscape cũ (`session.results["competitor"]`) → output chung chung, cảm giác "dùng lại bài gốc".
@@ -37,19 +37,20 @@ Các ý tưởng / tính năng / vấn đề đã bàn nhưng chưa triển khai
 - `bot/handlers.py:4704` — follow-up button hiện tại (sau khi chạy competitor)
 - `bot/keyboards.py:107` — `COMPARE_PROMPT_KEYBOARD`
 
-> ⚠️ Update 2026-06-10: `competitor_comparison` đã TẠM TẮT (gỡ TaskConfig khỏi registry,
-> bỏ khỏi owns_skills của Minh). Prompt + factory vẫn còn. Khi làm mục này thì thêm lại
-> TaskConfig theo hướng trên.
+> ✅ Đã BẬT LẠI 2026-06-10 theo đúng hướng trên: TaskConfig mới (intake tên đối thủ +
+> thông tin sếp biết), `CompetitorComparisonSkill` route qua `TaskType.COMPETITOR_RESEARCH`
+> (Gemini Pro Grounded), kết hợp landscape + competitor_spy + user info, anti-hallucination
+> rule trong prompt, gắn vào owns_skills của Max + soft-gate gợi ý chạy competitor trước.
 
 ---
 
-## 2. Đã chốt với sếp — làm theo thứ tự (2026-06-10)
+## 2. ✅ DONE (2026-06-10) — Đã chốt với sếp, đã triển khai toàn bộ
 
-### 2.1. Xoá dead code `run_ads_after_cal`
+### 2.1. ✅ Xoá dead code `run_ads_after_cal`
 Handler `bot/handlers.py` (`if data == "run_ads_after_cal"`) không có button nào emit
 callback này — Calendar → Ads tắt thẳng không qua Nam chưa bao giờ chạy được. Xoá block.
 
-### 2.2. Build skill `brand_positioning` cho Linh (Brand Manager)
+### 2.2. ✅ Build skill `brand_positioning` cho Linh (Brand Manager)
 Flow đã chốt:
 - **Input** (tự đọc từ session, KHÔNG bắt user nhập lại):
   - `usp_definition` (T2) — USP đã chốt + options + reasoning
@@ -71,14 +72,14 @@ Flow đã chốt:
 - Messaging house sau đó inject vào context của Nam/Trang/post_voice_check
   (giống pattern tactical_playbook)
 
-### 2.3. Cải tiến `ads_generator` (3 gap đã phát hiện — chưa chốt ưu tiên)
+### 2.3. ✅ Cải tiến `ads_generator` (3 gap — đã fix cả 3)
 1. `ads_format` (Video/Ảnh chọn ở bước 2) KHÔNG được truyền vào prompt —
    copy gen ra giống nhau bất kể format
 2. `build_context` chưa inject `usp_definition` — headline ads lẽ ra phải bám USP
 3. Platform cứng trong prompt (Meta/TikTok/Google/Zalo) — chưa đọc wedge
    channels từ synthesis để chỉ gen cho đúng kênh mũi nhọn
 
-### 2.4. Tái cấu trúc `content_calendar` (CONTENT_CALENDAR_SYSTEM) — chống quá tải (2026-06-10)
+### 2.4. ✅ Tái cấu trúc `content_calendar` (CONTENT_CALENDAR_SYSTEM) — chống quá tải
 
 **Vấn đề:** prompt hiện có 9 section bắt buộc trong 1 output → model dễ làm mỏng
 từng phần. Đồng thời `content_calendar` đã nhận T4 (synthesis + dynamic pillar mix)
@@ -114,7 +115,7 @@ và T5 (tactical_playbook) qua `ContextStrategy.PROFILE_PLUS_CAMPAIGN`, nhưng
 - `frameworks/industry_context.py` — `resolve_archetype()`, `format_archetype_block()`
 - `agents/funnel_mapper.py` — pattern tham khảo cho archetype injection
 
-### 2.5. Dọn skill của Nam — đã chốt với sếp (2026-06-10)
+### 2.5. ✅ Dọn skill của Nam
 
 **a) Xoá hẳn 2 skill** (pattern giống landing_page/performance_audit — gỡ TaskConfig,
 factory, prompt, OPERATIONAL_SYSTEMS, owns_skills, html_report/renderers/llm_router

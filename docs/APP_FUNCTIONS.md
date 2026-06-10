@@ -151,8 +151,10 @@ Sản xuất deliverable dùng được ngay. Intake qua single-shot form. Outpu
 ### Brand & Insight
 | Skill | Menu | Chức năng |
 |---|---|---|
+| `brand_positioning` | 🏛️ Messaging House | Refine T2 USP + T4 positioning → statement, tagline, value prop ladder, key messages (Linh — có revise loop) |
 | `brand_voice` | 🎙️ Brand Voice Rules | Bộ quy tắc giọng văn cho team dùng nhất quán |
 | `competitor_spy` | 🔍 Theo Dõi Đối Thủ | Phân tích FB Ads Library đối thủ — pattern + insight |
+| `competitor_comparison` | 🆚 So Sánh 1-1 | So sánh trực diện 1 đối thủ cụ thể — Gemini grounded search + data session (Max) |
 
 > **Lưu ý:** Tất cả content skills tự inject **Industry Brain** (14 ngành) + **Brand
 > Voice** của user vào prompt lúc chạy — không cần config thủ công.
