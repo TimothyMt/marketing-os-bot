@@ -846,6 +846,8 @@ TASK_PIPELINE_MAP: dict[str, list] = {
     "pricing":    [(PipelineStage.PSYCHOLOGY_PRICING, run_psychology_and_pricing, "psychology_pricing")],
     # "social":   [(PipelineStage.SOCIAL_LISTENING, run_social_listening, "social_listening")],  # tạm tắt
     "strategy":   [(PipelineStage.SYNTHESIS, run_strategy_synthesis, "synthesis")],
+    "swot":       [(PipelineStage.SWOT, run_swot_analysis, "swot")],
+    "tactical_playbook": [(PipelineStage.TACTICAL_PLAYBOOK, run_tactical_playbook, "tactical_playbook")],
 }
 
 

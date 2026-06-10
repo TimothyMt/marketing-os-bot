@@ -93,6 +93,8 @@ TASK_LABELS = {
     "pricing":    "Pricing Strategy",
     "social":     "Social Listening",
     "strategy":   "Kế Hoạch Đề Xuất",
+    "swot":       "SWOT Analysis",
+    "tactical_playbook": "Tactical Playbook",
 }
 
 TASK_PIPELINE_STEPS = {
@@ -103,6 +105,8 @@ TASK_PIPELINE_STEPS = {
     "pricing":    "💰 Pricing model + psychology tactics + revenue optimization",
     # "social":  "📡 Keyword clusters + monitoring routine + crisis thresholds",  # tạm tắt
     "strategy":   "🎯 SAVE Framework + SMART Goals + 90-day Roadmap",
+    "swot":       "⚖️ SWOT 4 ô + chiến lược SO/WO/ST/WT",
+    "tactical_playbook": "📕 Đào sâu kế hoạch chiến lược thành tactics thực thi từng kênh",
 }
 
 TASK_STAGE_COUNT = {
@@ -115,6 +119,8 @@ TASK_STAGE_COUNT = {
     "pricing": 1,
     # "social": 1,  # tạm tắt
     "strategy": 1,
+    "swot": 1,
+    "tactical_playbook": 1,
 }
 
 WELCOME_MESSAGE = """Em là *Max*, trợ lý marketing của sếp.
