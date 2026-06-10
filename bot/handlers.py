@@ -64,10 +64,10 @@ from bot.keyboards import (
 
 # Sprint 5: Creative ops skills cần Brand Voice — lazy trigger gate
 BRAND_VOICE_GATED_SKILLS = {
-    "post_write", "post_adapt", "post_batch", "post_hooks", "post_visual",
+    "post_write", "post_adapt", "post_batch", "post_hooks",
     "ads_generator", "ads_copy", "video_scripts",
     "sales_inbox_script", "email_zalo_sequence", "content_repurpose",
-    "content_generator", "social_posts", "video_script_gen", "ugc_brief",
+    "content_generator", "video_script_gen", "ugc_brief",
 }
 
 logger = logging.getLogger(__name__)
@@ -1528,20 +1528,7 @@ async def _handle_callback_inner(update, context, query, session, data, user_id)
         )
         return
 
-    # ── Calendar → Tách loại nội dung: Social / Video / UGC / Ads ──
-    if data == "run_social_posts_after_cal":
-        await query.edit_message_reply_markup(reply_markup=None)
-        duration = session.pending_intake.get("duration") or "Theo Lịch Nội Dung"
-        session.pending_intake.setdefault("scope", duration)
-        session.selected_task = "social_posts"
-        await save_session(session)
-        await query.message.reply_text(
-            "📝 *Viết Bài Đăng từ Lịch Nội Dung...*",
-            parse_mode=ParseMode.MARKDOWN,
-        )
-        await _send_single_shot_form(query.message, session, "social_posts")
-        return
-
+    # ── Calendar → Tách loại nội dung: Video / UGC ──
     if data == "run_video_scripts_after_cal":
         await query.edit_message_reply_markup(reply_markup=None)
         duration = session.pending_intake.get("duration") or "Theo Lịch Nội Dung"
@@ -1565,17 +1552,6 @@ async def _handle_callback_inner(update, context, query, session, data, user_id)
             parse_mode=ParseMode.MARKDOWN,
         )
         await _send_single_shot_form(query.message, session, "ugc_brief")
-        return
-
-    if data == "run_ads_after_cal":
-        await query.edit_message_reply_markup(reply_markup=None)
-        session.selected_task = "ads_generator"
-        await save_session(session)
-        await query.message.reply_text(
-            "📢 *Sản Xuất Ads Copy* — chọn tier muốn gen ạ?",
-            parse_mode=ParseMode.MARKDOWN,
-            reply_markup=ADS_COPY_TIER_KEYBOARD,
-        )
         return
 
     if data == "calendar_edit_request":
@@ -3065,7 +3041,7 @@ async def _handle_callback_inner(update, context, query, session, data, user_id)
             return
 
         # ── Content skills: cần Calendar trước ────────────────────
-        if task_type in ("content_generator", "social_posts", "post_batch", "video_script_gen"):
+        if task_type in ("content_generator", "post_batch", "video_script_gen"):
             has_calendar = bool(session.get_latest_result("content_calendar"))
             if not has_calendar:
                 await query.edit_message_reply_markup(reply_markup=None)
@@ -3083,6 +3059,22 @@ async def _handle_callback_inner(update, context, query, session, data, user_id)
                     ]),
                 )
                 return
+
+        # ── ugc_brief: soft-gate — gợi ý chạy Calendar trước, vẫn cho chạy luôn ─
+        if task_type == "ugc_brief" and not session.get_latest_result("content_calendar"):
+            await query.edit_message_reply_markup(reply_markup=None)
+            await save_session(session)
+            await query.message.reply_text(
+                "🤝 *Brief Creator UGC* — em chưa thấy Lịch Nội Dung ạ.\n\n"
+                "Có Calendar trước thì brief sẽ bám đúng kế hoạch (topic/pillar/kênh đã lên lịch). "
+                "Sếp muốn chạy Calendar trước hay làm brief luôn?",
+                parse_mode=ParseMode.MARKDOWN,
+                reply_markup=InlineKeyboardMarkup([
+                    [InlineKeyboardButton("📅 Chạy Lịch Nội Dung trước", callback_data="task_content_calendar")],
+                    [InlineKeyboardButton("▶️ Vẫn làm brief luôn",        callback_data="run_ugc_brief_after_cal")],
+                ]),
+            )
+            return
 
         # ── Sprint 5: Brand Voice lazy gate cho creative ops skills ─
         if task_type in BRAND_VOICE_GATED_SKILLS:
@@ -4552,7 +4544,7 @@ async def _send_ops_result(message: Message, session, task_name: str, result: st
     file_stem = f"{task_name}_{business_slug}" if business_slug else task_name
 
     # Skip HTML: Excel-only skills + action skills (ads_optimizer)
-    SKIP_HTML_SKILLS = {"content_generator", "social_posts", "post_batch", "video_script_gen", "ugc_brief", "ads_optimizer", "ads_intelligence"}
+    SKIP_HTML_SKILLS = {"content_generator", "post_batch", "video_script_gen", "ugc_brief", "ads_optimizer", "ads_intelligence"}
 
     if task_name not in SKIP_HTML_SKILLS:
         # Send HTML always (universal viewable)
@@ -4575,7 +4567,7 @@ async def _send_ops_result(message: Message, session, task_name: str, result: st
             logger.warning("HTML render failed for %s: %s", task_name, e)
 
     # Content Suite v2: skills luôn output MD primary + Excel secondary (Haiku convert)
-    CONTENT_SUITE_V2 = {"post_write", "post_adapt", "post_voice_check", "post_hooks", "post_visual", "post_batch"}
+    CONTENT_SUITE_V2 = {"post_write", "post_adapt", "post_voice_check", "post_hooks", "post_batch"}
 
     # Send primary deliverable per skill config (skip for action skills like ads_optimizer)
     if task_name not in SKIP_HTML_SKILLS and skill.primary_deliverable == PrimaryDeliverable.MARKDOWN:
@@ -5819,7 +5811,7 @@ async def _launch_task_from_advisor(update, context, session, task_name: str):
         return
 
     # Content skills cần Calendar trước
-    if task_name in ("content_generator", "social_posts", "post_batch", "video_script_gen"):
+    if task_name in ("content_generator", "post_batch", "video_script_gen"):
         if not session.get_latest_result("content_calendar"):
             session.pending_followup_skill = task_name
             await save_session(session)

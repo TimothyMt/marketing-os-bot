@@ -37,7 +37,6 @@ SKILL_TEMPLATE_SHEET: dict[str, str] = {
     # (Funnel / Nhóm khách / Topic / Hook angle...) — cột khác hẳn template
     # post 15-cột → ép vào template chỉ ra file rỗng. Dùng dynamic extraction
     # (render_excel_file) để dựng workbook từ chính các bảng kế hoạch của nó.
-    "social_posts":        "📅 Content Calendar",
     "post_batch":          "📅 Content Calendar",   # Content Suite v2
     "ads_generator":       "✍️ Ad Copy",
     "ads_copy":            "✍️ Ad Copy",

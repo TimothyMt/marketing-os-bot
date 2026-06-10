@@ -234,18 +234,7 @@ OPERATIONAL_TASKS: dict[str, TaskConfig] = {
             {"key": "tone_note",        "label": "Tone note đặc biệt?",                    "example": "Tết — vibe ấm áp + urgency mềm",               "required": False},
         ],
     ),
-    "social_posts": TaskConfig(
-        name="social_posts",
-        label="Viết Bài Đăng",
-        button_emoji="📝",
-        category="operational",
-        description="Viết bài đăng Facebook/Zalo/Instagram từ Calendar — output Excel Content Calendar",
-        skill_class_name="SocialPostsSkill",
-        intake_fields=[
-            {"key": "scope",     "label": "Viết cho ngày / tuần nào?",  "example": "Tuần 1 (5-11/01) — 7 bài Facebook + Zalo", "required": True},
-            {"key": "tone_note", "label": "Tone note đặc biệt?",         "example": "Tết — vibe ấm áp + urgency nhẹ",           "required": False},
-        ],
-    ),
+    # "social_posts" — ĐÃ XOÁ (2026-06-10): trùng vai với post_batch (cùng viết bài hữu cơ batch).
     "video_script_gen": TaskConfig(
         name="video_script_gen",
         label="Kịch Bản Video (từ Calendar)",
@@ -342,19 +331,7 @@ OPERATIONAL_TASKS: dict[str, TaskConfig] = {
     # "competitor_comparison" — TẠM TẮT (user không dùng được).
     # Prompt COMPETITOR_COMPARISON_SYSTEM + make_competitor_comparison_skill vẫn còn —
     # muốn bật lại thì thêm lại TaskConfig ở đây + gắn vào owns_skills của persona.
-    "comment_mining": TaskConfig(
-        name="comment_mining",
-        label="Phân Tích Comment",
-        button_emoji="💬",
-        category="operational",
-        description="Khai thác insight từ comments → 7 content idea mới",
-        skill_class_name="CommentMiningSkill",
-        intake_fields=[
-            {"key": "comments_text",  "label": "Paste danh sách comments (1 dòng/comment, càng nhiều càng tốt)", "example": "1. Sản phẩm có gây kích ứng không?\n2. Da khô có dùng được không?\n...", "required": True},
-            {"key": "topic_context",  "label": "Comments này về chủ đề/sản phẩm gì",                              "example": "Skincare cho da nhạy cảm", "required": True},
-            {"key": "platform",       "label": "Comments từ kênh nào",                                            "example": "Facebook Page / TikTok / Shopee / Group", "required": False},
-        ],
-    ),
+    # "comment_mining" — ĐÃ XOÁ (2026-06-10): PROFILE_ONLY, tách biệt hoàn toàn T1-T5.
     "brand_voice": TaskConfig(
         name="brand_voice",
         label="Bộ Quy Tắc Brand Voice",
@@ -471,19 +448,7 @@ OPERATIONAL_TASKS: dict[str, TaskConfig] = {
             {"key": "funnel_stage",  "label": "Funnel stage",                  "example": "TOFU / MOFU / BOFU", "required": True},
         ],
     ),
-    "post_visual": TaskConfig(
-        name="post_visual",
-        label="Visual Brief cho Designer",
-        button_emoji="🎨",
-        category="operational",
-        description="Visual Brief Generator — convert post text → brief chi tiết cho designer/videographer",
-        skill_class_name="PostVisualSkill",
-        intake_fields=[
-            {"key": "post_text",     "label": "Paste post text cần làm visual",  "example": "Hook: Tại sao 80% phụ nữ dùng serum sai cách?\nBody: ...", "required": True},
-            {"key": "format_type",   "label": "Format",                           "example": "Image / Carousel 5 slides / Reel 30s", "required": True},
-            {"key": "channel",       "label": "Channel đăng",                     "example": "Instagram / TikTok / Facebook", "required": True},
-        ],
-    ),
+    # "post_visual" — ĐÃ XOÁ (2026-06-10): trùng section "🎨 Visual Brief" đã có trong post_write.
     "post_batch": TaskConfig(
         name="post_batch",
         label="Batch — Tuần Content",

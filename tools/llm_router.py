@@ -848,7 +848,6 @@ OPS_SKILL_TASK_TYPES: dict[str, TaskType] = {
     "ads_analytics":         TaskType.OPS_ANALYSIS,
     "competitor_spy":        TaskType.OPS_ANALYSIS,
     "competitor_comparison": TaskType.OPS_ANALYSIS,
-    "comment_mining":        TaskType.OPS_ANALYSIS,
 
     # ── GPT-5 primary: creative writing ───────────────────────────
     "ads_generator":         TaskType.OPS_CONTENT_CREATIVE,
@@ -883,5 +882,4 @@ OPS_SKILL_TASK_TYPES: dict[str, TaskType] = {
     # ── Light tasks — cheap providers ─────────────────────────────
     "post_adapt":            TaskType.CHANNEL_ADAPT,      # GPT-5-mini → Haiku
     "post_voice_check":      TaskType.CRITIC_REVIEW,      # Haiku → GPT-5-mini
-    "post_visual":           TaskType.CHANNEL_ADAPT,      # GPT-5-mini → Haiku
 }

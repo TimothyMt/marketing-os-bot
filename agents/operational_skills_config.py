@@ -18,7 +18,6 @@ from agents.operational_prompts import (
     CAMPAIGN_BRIEF_SYSTEM,
     CONTENT_CALENDAR_SYSTEM,
     CONTENT_GENERATOR_SYSTEM,
-    SOCIAL_POSTS_SYSTEM,
     VIDEO_SCRIPT_GEN_SYSTEM,
     UGC_BRIEF_SYSTEM,
     ADS_COPY_SYSTEM,
@@ -27,7 +26,6 @@ from agents.operational_prompts import (
     EMAIL_ZALO_SEQUENCE_SYSTEM,
     COMPETITOR_SPY_SYSTEM,
     COMPETITOR_COMPARISON_SYSTEM,
-    COMMENT_MINING_SYSTEM,
     BRAND_VOICE_SYSTEM,
     CONTENT_REPURPOSE_SYSTEM,
     RETENTION_STRATEGY_SYSTEM,
@@ -41,7 +39,6 @@ from agents.content_suite_prompts import (
     POST_ADAPT_SYSTEM,
     POST_VOICE_CHECK_SYSTEM,
     POST_HOOKS_SYSTEM,
-    POST_VISUAL_SYSTEM,
     POST_BATCH_SYSTEM,
 )
 from agents.task_registry import OPERATIONAL_TASKS
@@ -184,21 +181,6 @@ def make_email_zalo_sequence_skill() -> OperationalSkill:
         max_tokens=8000,  # bumped — multi-day sequence with email + zalo for each
         context_strategy=ContextStrategy.PROFILE_PLUS_CAMPAIGN,
         primary_deliverable=PrimaryDeliverable.EXCEL,  # Template: 📧 Email & Zalo sheet
-    ))
-
-
-def make_social_posts_skill() -> OperationalSkill:
-    """content_gen — bài đăng hữu cơ (Facebook/Zalo/Instagram) → 📅 Content Calendar.
-
-    Industry brain được inject tập trung tại _run_skill (xem INDUSTRY_BRAIN_SKILLS),
-    nên skill này chỉ cần config base — không override build_user_msg.
-    """
-    return OperationalSkill(_config_for(
-        "social_posts",
-        SOCIAL_POSTS_SYSTEM,
-        max_tokens=12000,
-        context_strategy=ContextStrategy.PROFILE_PLUS_CAMPAIGN,
-        primary_deliverable=PrimaryDeliverable.EXCEL,
     ))
 
 
@@ -380,17 +362,6 @@ def make_competitor_comparison_skill() -> OperationalSkill:
     ))
 
 
-def make_comment_mining_skill() -> OperationalSkill:
-    """NEW (test branch): Mine insight từ comments → 7 content ideas."""
-    return OperationalSkill(_config_for(
-        "comment_mining",
-        COMMENT_MINING_SYSTEM,
-        max_tokens=8000,
-        context_strategy=ContextStrategy.PROFILE_ONLY,
-        primary_deliverable=PrimaryDeliverable.MARKDOWN,
-    ))
-
-
 def make_brand_voice_skill() -> OperationalSkill:
     """NEW (test branch): Build bộ quy tắc giọng văn brand."""
     return OperationalSkill(_config_for(
@@ -466,17 +437,6 @@ def make_post_hooks_skill() -> OperationalSkill:
     return OperationalSkill(_config_for(
         "post_hooks",
         POST_HOOKS_SYSTEM,
-        max_tokens=3000,
-        context_strategy=ContextStrategy.PROFILE_ONLY,
-        primary_deliverable=PrimaryDeliverable.MARKDOWN,
-    ))
-
-
-def make_post_visual_skill() -> OperationalSkill:
-    """v2: Visual Brief — convert post text → designer brief."""
-    return OperationalSkill(_config_for(
-        "post_visual",
-        POST_VISUAL_SYSTEM,
         max_tokens=3000,
         context_strategy=ContextStrategy.PROFILE_ONLY,
         primary_deliverable=PrimaryDeliverable.MARKDOWN,
@@ -1035,7 +995,6 @@ OPS_SKILL_FACTORIES: dict[str, callable] = {
     "campaign_brief":      CampaignBriefDynamicSkill,
     "content_calendar":    ContentCalendarDynamicSkill,  # Sprint 3.4 — Pillar dynamic
     "content_generator":   ContentGeneratorPipeline,
-    "social_posts":        make_social_posts_skill,
     "video_script_gen":    make_video_script_gen_skill,
     "ugc_brief":           make_ugc_brief_skill,
     "ads_intelligence":    AdsIntelligencePipeline,
@@ -1050,7 +1009,6 @@ OPS_SKILL_FACTORIES: dict[str, callable] = {
     "video_scripts":       VideoScriptsSkill,
     "viral_video_analyzer": ViralVideoAnalyzerSkill,
     # NEW skills (test branch)
-    "comment_mining":      make_comment_mining_skill,
     "brand_voice":         make_brand_voice_skill,
     "content_repurpose":   make_content_repurpose_skill,
     "retention_strategy":  make_retention_strategy_skill,
@@ -1060,7 +1018,6 @@ OPS_SKILL_FACTORIES: dict[str, callable] = {
     "post_adapt":          make_post_adapt_skill,
     "post_voice_check":    make_post_voice_check_skill,
     "post_hooks":          make_post_hooks_skill,
-    "post_visual":         make_post_visual_skill,
     "post_batch":          make_post_batch_skill,
 }
 

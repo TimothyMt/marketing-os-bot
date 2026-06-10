@@ -370,10 +370,10 @@ async def _run_skill(skill: AgentSkill, session: Session) -> str:
 
     # Sprint 5: Inject Brand Voice nếu user đã setup — chỉ cho creative ops skills
     BV_INJECTED_SKILLS = {
-        "post_write", "post_adapt", "post_batch", "post_hooks", "post_visual",
+        "post_write", "post_adapt", "post_batch", "post_hooks",
         "ads_generator", "ads_copy", "video_scripts", "video_script_gen",
         "sales_inbox_script", "email_zalo_sequence", "content_repurpose",
-        "content_generator", "social_posts", "ugc_brief",
+        "content_generator", "ugc_brief",
     }
     if skill.name in BV_INJECTED_SKILLS:
         try:
@@ -389,7 +389,7 @@ async def _run_skill(skill: AgentSkill, session: Session) -> str:
     # P0 fix: Inject Content Calendar đã duyệt → production skills bám sát kế hoạch
     # (topic/hook/pillar/kênh đã lên lịch) thay vì tự bịa chủ đề mới.
     CALENDAR_DRIVEN_SKILLS = {
-        "post_batch", "video_script_gen", "ugc_brief", "social_posts",
+        "post_batch", "video_script_gen", "ugc_brief",
     }
     if skill.name in CALENDAR_DRIVEN_SKILLS:
         try:
@@ -443,7 +443,7 @@ async def _run_skill(skill: AgentSkill, session: Session) -> str:
     # Industry brain — nạp "bộ não ngành" cho mọi content skill (post/video/ads/email/ugc).
     # 1 nguồn duy nhất, áp đồng nhất — không nhân bản subclass cho từng skill.
     INDUSTRY_BRAIN_SKILLS = {
-        "social_posts", "video_script_gen", "ugc_brief",
+        "post_batch", "video_script_gen", "ugc_brief",
         "ads_generator", "ads_copy", "email_zalo_sequence",
     }
     if skill.name in INDUSTRY_BRAIN_SKILLS and "CHUYÊN MÔN NGÀNH" not in user_msg:

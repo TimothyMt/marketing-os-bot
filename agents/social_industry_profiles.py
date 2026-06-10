@@ -1,9 +1,9 @@
 """
-Bộ não ngành cho social_posts — 1 skill, nhiều persona ngành.
+Bộ não ngành cho content skills — 1 nguồn, nhiều persona ngành.
 
-social_posts là MỘT skill duy nhất; tại runtime nó detect session.profile.industry
-rồi nạp đúng "bộ não ngành" tương ứng vào prompt. Đây là phần biến social_posts
-thành multi-industry skill (1 skill phục vụ nhiều ngành), KHÔNG phải nhiều skill rời.
+Tại runtime, _run_skill (agents/pipeline.py — INDUSTRY_BRAIN_SKILLS) detect
+session.profile.industry rồi nạp đúng "bộ não ngành" tương ứng vào prompt của
+các skill sản xuất content (post_batch, video_script_gen, ugc_brief, ads, email).
 
 Key = KPI library industry key (fnb, health_beauty, tech_saas, ...).
 get_social_industry_profile(industry) trả về block text inject vào user_msg.

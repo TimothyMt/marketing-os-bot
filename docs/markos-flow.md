@@ -309,7 +309,7 @@ raise AllProvidersFailedError(...)
 ### Path A — Template-based (dùng `content_generation_template.xlsx`)
 ```
 Skill có trong SKILL_TEMPLATE_SHEET:
-    post_batch, social_posts, content_generator  → sheet "📅 Content Calendar"
+    post_batch, content_generator  → sheet "📅 Content Calendar"
     ads_generator, ads_copy                       → sheet "✍️ Ad Copy"
     video_scripts, video_script_gen               → sheet "🎬 Video Script"
     ugc_brief                                      → sheet "🤝 UGC Brief"

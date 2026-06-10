@@ -127,7 +127,6 @@ Sản xuất deliverable dùng được ngay. Intake qua single-shot form. Outpu
 | Skill | Menu | Chức năng |
 |---|---|---|
 | `content_generator` | ✍️ Sản Xuất Nội Dung | **Pipeline** 5 skill (xem §7) |
-| `social_posts` | 📝 Viết Bài Đăng | Bài FB/Zalo/IG từ Calendar (6 thành phần/bài) — Excel |
 | `video_script_gen` | 🎬 Kịch Bản Video | Kịch bản video 5-beat (Hook/Pain/Solution/Proof/CTA) đầy đủ thoại — Excel |
 | `ugc_brief` | 🤝 Brief Creator UGC | Creator brief (deal/deadline/don'ts) cho UGC/KOL/EGC — Excel |
 | `ads_generator` | 📢 Sản Xuất Ads | Ads copy Meta+TikTok 3 tầng (TOFU/MOFU/BOFU) — Excel |
@@ -140,7 +139,6 @@ Sản xuất deliverable dùng được ngay. Intake qua single-shot form. Outpu
 | `post_adapt` | 🔄 Adapt sang Channel | 1 bài gốc → FB/TikTok/Zalo/IG (4 format) |
 | `post_voice_check` | ✅ Check Brand Voice | Check draft theo Brand Voice Rules + fix |
 | `post_hooks` | 🪝 Hook Bank | 15 hooks chia 5 nhóm psychological + top 5 |
-| `post_visual` | 🎨 Visual Brief | Post text → brief cho designer/videographer |
 | `post_batch` | 📚 Batch Tuần | Gen 7-14 bài 1 tuần cùng lúc |
 | `video_scripts` | 🎬 Kịch Bản Video | Video TikTok/Reels/Shorts 4 creator type variant |
 | `content_repurpose` | ♻️ Tái Sử Dụng | 1 bài gốc → 5 phiên bản khác audience |
@@ -154,7 +152,6 @@ Sản xuất deliverable dùng được ngay. Intake qua single-shot form. Outpu
 | Skill | Menu | Chức năng |
 |---|---|---|
 | `brand_voice` | 🎙️ Brand Voice Rules | Bộ quy tắc giọng văn cho team dùng nhất quán |
-| `comment_mining` | 💬 Phân Tích Comment | Khai thác insight từ comments → 7 content idea |
 | `competitor_spy` | 🔍 Theo Dõi Đối Thủ | Phân tích FB Ads Library đối thủ — pattern + insight |
 
 > **Lưu ý:** Tất cả content skills tự inject **Industry Brain** (14 ngành) + **Brand
@@ -187,7 +184,7 @@ Pipeline = chạy nhiều skill tuần tự, mỗi skill 1 file output. Phát hi
 ### 7.1 `content_generator` — Full Content Suite
 ```
 content_generator (sau content_calendar)
-├─ social_posts        → 📅 bài viết hữu cơ
+├─ post_batch          → 📅 bài viết hữu cơ
 ├─ video_script_gen    → 🎬 kịch bản video 5-beat
 ├─ ugc_brief           → 🤝 creator brief
 ├─ ads_generator       → ✍️ ad copy

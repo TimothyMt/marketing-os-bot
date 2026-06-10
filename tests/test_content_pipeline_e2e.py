@@ -168,10 +168,10 @@ async def _capture_injected(skill_name: str, session: _FakeSession,
     user_msg = skill.build_user_msg(session)
 
     BV_INJECTED_SKILLS = {
-        "post_write", "post_adapt", "post_batch", "post_hooks", "post_visual",
+        "post_write", "post_adapt", "post_batch", "post_hooks",
         "ads_generator", "ads_copy", "video_scripts", "video_script_gen",
         "sales_inbox_script", "email_zalo_sequence", "content_repurpose",
-        "content_generator", "social_posts", "ugc_brief",
+        "content_generator", "ugc_brief",
     }
     if skill.name in BV_INJECTED_SKILLS and bv_mock is not None:
         try:
@@ -183,7 +183,7 @@ async def _capture_injected(skill_name: str, session: _FakeSession,
             pass
 
     CALENDAR_DRIVEN_SKILLS = {
-        "post_batch", "video_script_gen", "ugc_brief", "social_posts",
+        "post_batch", "video_script_gen", "ugc_brief",
     }
     if skill.name in CALENDAR_DRIVEN_SKILLS:
         calendar = session.get_latest_result("content_calendar")
