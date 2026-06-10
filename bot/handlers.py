@@ -6739,11 +6739,15 @@ async def _handle_brief_edit_text(update, context, session, text: str):
     except Exception as e:
         logger.debug("brief_edited intelligence log skipped: %s", e)
 
-    from bot.html_report import parse_agent_output, build_single_skill_report
+    from bot.html_report import build_single_skill_report
+    from bot.renderers import parse_by_format
     from agents.skills import OutputFormat
 
     try:
-        parsed = parse_agent_output(payload)
+        # Dùng parse_by_format (giống _send_ops_result) — trả key 'deliverable'
+        # đúng với build_single_skill_report(OPERATIONAL_DELIVERABLE). parse_agent_output
+        # trả 'detail' → renderer không tìm thấy → mất sạch nội dung brief.
+        parsed = parse_by_format(payload, OutputFormat.OPERATIONAL_DELIVERABLE)
         html_str = build_single_skill_report(
             "campaign_brief", parsed, OutputFormat.OPERATIONAL_DELIVERABLE,
             business_name=session.profile.business_name or "Business",
