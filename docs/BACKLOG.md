@@ -114,4 +114,39 @@ và T5 (tactical_playbook) qua `ContextStrategy.PROFILE_PLUS_CAMPAIGN`, nhưng
 - `frameworks/industry_context.py` — `resolve_archetype()`, `format_archetype_block()`
 - `agents/funnel_mapper.py` — pattern tham khảo cho archetype injection
 
+### 2.5. Dọn skill của Nam — đã chốt với sếp (2026-06-10)
+
+**a) Xoá hẳn 2 skill** (pattern giống landing_page/performance_audit — gỡ TaskConfig,
+factory, prompt, OPERATIONAL_SYSTEMS, owns_skills, html_report/renderers/llm_router
+mapping, handlers refs, docs; GIỮ TaskType enum trong storage/models.py):
+- **`comment_mining`** — PROFILE_ONLY, không đọc gì từ T1-T5, tách biệt hoàn toàn
+- **`post_visual`** — PROFILE_ONLY + output trùng với section "🎨 Visual Brief"
+  đã có sẵn trong `post_write`
+- Lưu ý khi xoá: cả 2 đang nằm trong `BV_INJECTED_SKILLS` (`agents/pipeline.py:372`,
+  post_visual) — gỡ luôn khỏi set đó. `tests/test_content_pipeline_e2e.py` có
+  reference comment_mining/post_visual — sửa test.
+
+**b) Xoá hẳn `social_posts`** — trùng vai với `post_batch` (cùng là bài đăng hữu cơ
+batch). Lưu ý: `social_posts` đang nằm trong `CALENDAR_DRIVEN_SKILLS`
+(`agents/pipeline.py:391`) và `BV_INJECTED_SKILLS` — gỡ khỏi cả 2 set.
+KHÔNG nằm trong `ContentGeneratorPipeline.SUB_SKILLS` (pipeline dùng post_batch)
+→ xoá không vỡ pipeline.
+
+**c) Chuyển `content_calendar` + `campaign_brief` sang Max (CMO) cầm:**
+- Gỡ 2 skill này khỏi `owns_skills` của Nam → thêm vào `owns_skills` của Max
+  (`agents/manager_personas.py`, persona key="cmo")
+- Lý do: đây là deliverable tầng kế hoạch — Max cầm để Nam/Trang/Linh đều
+  truy cập được output từ session (các skill consume qua
+  `session.get_latest_result("content_calendar")` / `CALENDAR_DRIVEN_SKILLS`
+  và `PROFILE_PLUS_CAMPAIGN` nên KHÔNG phụ thuộc ai own — chỉ đổi người trigger)
+- Cập nhật system_prompt của Nam (bỏ mention calendar/brief ở phần "SKILLS BẠN
+  GỌI ĐƯỢC") + system_prompt của Max (thêm 2 skill mới)
+- Gỡ `campaign_brief` khỏi owns_skills của Hương (marcon_pr, inactive) nếu muốn
+  sạch — hoặc giữ vì persona inactive
+- Check `trigger_keywords` của Nam ("lịch đăng", "content calendar") — chuyển
+  sang Max hoặc giữ ở Nam để route user về đúng chỗ rồi Nam chỉ sang Max
+
+**owns_skills của Nam sau khi dọn:**
+`["content_generator", "post_write", "post_batch", "post_hooks", "post_adapt", "post_voice_check"]`
+
 ---
