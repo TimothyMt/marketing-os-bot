@@ -78,4 +78,40 @@ Flow đã chốt:
 3. Platform cứng trong prompt (Meta/TikTok/Google/Zalo) — chưa đọc wedge
    channels từ synthesis để chỉ gen cho đúng kênh mũi nhọn
 
+### 2.4. Tái cấu trúc `content_calendar` (CONTENT_CALENDAR_SYSTEM) — chống quá tải (2026-06-10)
+
+**Vấn đề:** prompt hiện có 9 section bắt buộc trong 1 output → model dễ làm mỏng
+từng phần. Đồng thời `content_calendar` đã nhận T4 (synthesis + dynamic pillar mix)
+và T5 (tactical_playbook) qua `ContextStrategy.PROFILE_PLUS_CAMPAIGN`, nhưng
+**CHƯA nhận archetype block** (trust_building/demand_gen/impulse) — khác với
+`funnel_mapper` đã archetype-aware.
+
+**Hướng đã thống nhất:**
+1. Rút từ 9 section bắt buộc xuống **5 core**:
+   - 1. Tổng quan kỳ
+   - 2. Story Arc (4-week table)
+   - 3. Pillar breakdown (dùng dynamic pillar mix đã tính sẵn)
+   - 4. Weekly grid per channel (gộp luôn Content Format Guide vào đây thay vì
+     tách section riêng)
+   - 5. Vận hành (rút gọn)
+2. **2 section optional** (chỉ xuất hiện nếu có input phù hợp):
+   - Năng lực team & phân công — chỉ hiện nếu `profile.team_size` có giá trị
+   - AI Content Scoring — optional, không bắt buộc
+3. **Bỏ hẳn Repurpose Matrix 1:7** — thay bằng 1 dòng pointer: "Muốn nhân bản
+   1 bài thành nhiều phiên bản theo audience khác → dùng skill `content_repurpose`"
+4. **Fix gap archetype**: inject ARCHETYPE block (giống cách `funnel_mapper.py`
+   dùng `resolve_archetype()` + `format_archetype_block()` từ
+   `frameworks/industry_context.py`) vào context của `content_calendar`, để
+   weekly grid + pillar mix bám đúng semantic phễu theo archetype (vd
+   trust_building → thiên Industry/Personal content; impulse → thiên Offer/Convert).
+   Cân nhắc luôn: cho `calc_dynamic_pillar_mix()` đọc thêm archetype (hiện chỉ
+   đọc `stage` + `primary_goal`).
+
+**File liên quan:**
+- `agents/operational_prompts.py` — `CONTENT_CALENDAR_SYSTEM`
+- `agents/operational_skills_config.py` — `ContentCalendarDynamicSkill`,
+  `calc_dynamic_pillar_mix()`
+- `frameworks/industry_context.py` — `resolve_archetype()`, `format_archetype_block()`
+- `agents/funnel_mapper.py` — pattern tham khảo cho archetype injection
+
 ---
