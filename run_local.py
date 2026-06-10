@@ -22,6 +22,7 @@ from bot.handlers import (
     cmd_start,
     cmd_reset,
     cmd_help,
+    cmd_dbg_funnel,
     cmd_settings,
     cmd_connect_ads,
     cmd_disconnect_ads,
@@ -69,6 +70,7 @@ def main():
     app.add_handler(CommandHandler("start",        cmd_start))
     app.add_handler(CommandHandler("reset",        cmd_reset))
     app.add_handler(CommandHandler("help",         cmd_help))
+    app.add_handler(CommandHandler("dbgfunnel",    cmd_dbg_funnel))
     app.add_handler(CommandHandler("settings",     cmd_settings))
     app.add_handler(CommandHandler("setting",      cmd_settings))
     app.add_handler(CommandHandler("config",       cmd_settings))

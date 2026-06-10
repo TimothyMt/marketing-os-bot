@@ -387,6 +387,30 @@ async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(HELP_MESSAGE, parse_mode=ParseMode.MARKDOWN)
 
 
+@with_user_lock
+async def cmd_dbg_funnel(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """DEBUG: chạy lại Funnel Map trên session hiện tại, không cần đi lại
+    flow brief. Gõ /dbgfunnel ở bất kỳ đâu."""
+    session = await get_session(update.effective_user.id)
+    campaign_name = (session.pending_intake.get("campaign_name")
+                     or session.pending_intake.get("current_campaign") or "Campaign")
+    campaign_goal = (session.pending_intake.get("campaign_goal")
+                     or session.profile.primary_goal or "")
+    await update.message.reply_text(
+        f"🧪 *Debug: chạy lại Funnel Map cho \"{campaign_name}\"...*",
+        parse_mode=ParseMode.MARKDOWN,
+    )
+    funnel_ok = await _gen_and_show_funnel_map(
+        update.message, session, context, update, campaign_name, campaign_goal,
+    )
+    prompt = (
+        "👆 *Funnel Map (debug re-run) — tóm tắt trên + file HTML + Excel.*\n\n"
+        if funnel_ok else
+        "_(Debug: chưa dựng được funnel map chi tiết.)_\n\n"
+    )
+    await _emit_funnel_approve_prompt(update.message, session, prompt)
+
+
 # ─── Main message handler ─────────────────────────────────────────
 
 @with_user_lock
