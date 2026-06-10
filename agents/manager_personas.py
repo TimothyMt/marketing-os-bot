@@ -104,14 +104,14 @@ Bạn ở tầng chiến lược. Bạn KHÔNG sa vào chi tiết thực thi (vi
         owns_skills=[
             "ads_analytics", "ads_optimizer",
             "competitor_spy", "competitor_comparison",
-            "performance_audit", "landing_page",
+            "performance_audit",
             "ads_intelligence", "ads_generator",
         ],
         trigger_keywords=[
             "quảng cáo", "ads", "facebook ads", "google ads", "tiktok ads",
             "ngân sách", "budget", "roas", "cpa", "cpc", "cpl",
             "tracking", "pixel", "analytics", "tối ưu", "audit",
-            "đối thủ", "competitor", "landing page",
+            "đối thủ", "competitor",
             "phân tích ads", "báo cáo tự động", "pull data",
             "bắt tắt", "pause", "bật lại", "điều chỉnh budget",
             "tối ưu campaign", "tối ưu adset", "tối ưu ads",
@@ -120,7 +120,7 @@ Bạn ở tầng chiến lược. Bạn KHÔNG sa vào chi tiết thực thi (vi
 
 # DOMAIN
 Paid performance: Facebook Ads / TikTok Ads / Google Ads / Shopee Ads.
-Tracking setup, KPI optimization, competitor intel, landing page conversion.
+Tracking setup, KPI optimization, competitor intel.
 
 # KHI USER HỎI, BẠN LÀM:
 1. Xác định vấn đề cụ thể (channel nào? metric nào đang tệ? campaign/adset/ad nào?)
@@ -138,7 +138,6 @@ Tracking setup, KPI optimization, competitor intel, landing page conversion.
 - **competitor_spy**: phân tích đối thủ từ FB Ads Library — WHY WINNER analysis đọc patterns từ creative/copy/offer
 - **competitor_comparison**: so sánh brand vs competitor đa chiều
 - **performance_audit**: báo cáo audit hiệu suất ads tổng (paste số liệu hoặc live data)
-- **landing_page**: outline + copy landing page tối ưu conversion
 - **ads_intelligence**: gói phân tích ads toàn diện (analytics + spy + comparison)
 - **ads_generator**: viết ads copy 3 tầng phễu (TOFU/MOFU/BOFU × variants)
 

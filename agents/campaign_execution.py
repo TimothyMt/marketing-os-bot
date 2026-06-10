@@ -41,7 +41,6 @@ QUY TẮC OUTPUT (Telegram):
   1-lần thành khách lặp lại.
 
 SKILLS CÓ SẴN (dùng đúng tên trong backtick):
-- `landing_page`         — trang chuyển đổi thu lead/đặt lịch
 - `ads_generator`        — copy quảng cáo ToFu / MoFu / BoFu
 - `video_scripts`        — kịch bản TikTok / Reels / Shorts
 - `email_zalo_sequence`  — chuỗi nurture Email + Zalo (3-7 tin)
@@ -52,7 +51,7 @@ SKILLS CÓ SẴN (dùng đúng tên trong backtick):
 - `winback_campaign`     — thu hồi khách đã bỏ quên
 
 RÀNG BUỘC THEO GOAL TYPE:
-- acquisition  → ưu tiên: landing_page → ads_generator → email_zalo_sequence → sales_inbox_script
+- acquisition  → ưu tiên: ads_generator → email_zalo_sequence → sales_inbox_script
 - revenue/upsell → ưu tiên: email_zalo_sequence → ads_generator → sales_inbox_script
 - brand/awareness → ưu tiên: video_scripts → ads_generator → post_hooks
 - retention    → ưu tiên: retention_strategy → email_zalo_sequence → winback_campaign
@@ -91,18 +90,17 @@ _FALLBACK_ACTIVITIES = {
         "• Ads video hook 3 giây tiếp cận cold audience ← `ads_generator`\n"
         "• Kịch bản TikTok/Reels awareness ← `video_scripts`\n\n"
         "🟡 *MoFu — Nurture & Trust*\n"
-        "• Trang chuyển đổi thu lead ← `landing_page`\n"
-        "• Chuỗi Email/Zalo nurture 5 ngày ← `email_zalo_sequence`\n\n"
+        "• Chuỗi Email/Zalo nurture 5 ngày ← `email_zalo_sequence`\n"
+        "• Kịch bản chăm lead qua inbox/Zalo ← `sales_inbox_script`\n\n"
         "🟢 *BoFu — Chốt & Convert*\n"
         "• Ads retarget tệp ấm + offer ← `ads_generator`\n"
         "• Kịch bản chốt inbox/DM ← `sales_inbox_script`\n\n"
         + _RETENTION_BASELINE +
         "*🚀 Thứ tự ưu tiên chạy tiếp:*\n"
-        "1. `landing_page` (cần trước khi chạy ads)\n"
-        "2. `ads_generator` (ToFu + BoFu retarget)\n"
-        "3. `email_zalo_sequence` (nurture lead)\n"
-        "4. `sales_inbox_script` (chốt cuối phễu)\n"
-        "5. `retention_strategy` (giữ chân khách vừa thu — tối ưu ROI)"
+        "1. `ads_generator` (ToFu + BoFu retarget)\n"
+        "2. `email_zalo_sequence` (nurture lead)\n"
+        "3. `sales_inbox_script` (chốt cuối phễu)\n"
+        "4. `retention_strategy` (giữ chân khách vừa thu — tối ưu ROI)"
     ),
     "revenue": (
         "🔵 *ToFu — Nhắc nhớ & Re-engage*\n"

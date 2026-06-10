@@ -87,7 +87,7 @@ class TaskType(str, Enum):
 
     # ─── Operational skills ──────────────────────────────────────
     OPS_CRITICAL              = "ops_critical"          # High-stakes: ads_optimizer, brand_voice — Sonnet locked
-    OPS_BRIEF                 = "ops_brief"             # Campaign Brief, Landing Page — GPT-5 primary
+    OPS_BRIEF                 = "ops_brief"             # Campaign Brief — GPT-5 primary
     OPS_ANALYSIS              = "ops_analysis"          # Audit, Analytics, Spy — GPT-5 primary
     OPS_CONTENT_CREATIVE      = "ops_content_creative"  # Ads copy, video scripts — GPT-5 primary
     OPS_CONTENT_BULK          = "ops_content_bulk"      # Email sequence, post batch — GPT-5-mini primary
@@ -843,7 +843,6 @@ OPS_SKILL_TASK_TYPES: dict[str, TaskType] = {
 
     # ── GPT-5 primary: long structured briefs ─────────────────────
     "campaign_brief":        TaskType.OPS_BRIEF,
-    "landing_page":          TaskType.OPS_BRIEF,
 
     # ── GPT-5 primary: data analysis & diagnosis ──────────────────
     "performance_audit":     TaskType.OPS_ANALYSIS,

@@ -298,20 +298,6 @@ OPERATIONAL_TASKS: dict[str, TaskConfig] = {
             {"key": "highlight",    "label": "Điểm nhấn đặc biệt (nếu có)",                "example": "So sánh với loại bí bách thường gặp / có ưu đãi Tết", "required": False},
         ],
     ),
-    "landing_page": TaskConfig(
-        name="landing_page",
-        label="Thiết Kế Website",
-        button_emoji="🌐",
-        category="operational",
-        description="Brief + HTML landing page hoàn chỉnh cho dev/designer",
-        skill_class_name="LandingPageSkill",
-        intake_fields=[
-            {"key": "page_goal",       "label": "Mục tiêu trang",                    "example": "Thu lead booking / Chốt đơn / Đặt lịch", "required": True},
-            {"key": "traffic_source",  "label": "Traffic từ đâu",                    "example": "Meta Ads / TikTok Ads / Email / Organic", "required": True},
-            {"key": "product_offer",   "label": "Sản phẩm/offer cụ thể và giá",      "example": "Combo Tết 680K (gốc 850K, giảm 20%)", "required": True},
-            {"key": "urgency_deadline","label": "Ưu đãi có deadline không?",          "example": "Hết hạn 04/02/2026", "required": False},
-        ],
-    ),
     "sales_inbox_script": TaskConfig(
         name="sales_inbox_script",
         label="Kịch Bản Sales",

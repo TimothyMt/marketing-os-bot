@@ -23,7 +23,6 @@ from agents.operational_prompts import (
     UGC_BRIEF_SYSTEM,
     ADS_COPY_SYSTEM,
     VIDEO_SCRIPTS_SYSTEM,
-    LANDING_PAGE_SYSTEM,
     SALES_INBOX_SCRIPT_SYSTEM,
     EMAIL_ZALO_SEQUENCE_SYSTEM,
     COMPETITOR_SPY_SYSTEM,
@@ -167,16 +166,6 @@ def calc_dynamic_pillar_mix(profile, synthesis: str = "") -> dict:
             base[k] = 0.05
     total = sum(base.values())
     return {k: round(v / total, 2) for k, v in base.items()}
-
-
-def make_landing_page_skill() -> OperationalSkill:
-    return OperationalSkill(_config_for(
-        "landing_page",
-        LANDING_PAGE_SYSTEM,
-        max_tokens=8000,  # bumped — 7 sections + checklist
-        context_strategy=ContextStrategy.PROFILE_PLUS_CAMPAIGN,
-        primary_deliverable=PrimaryDeliverable.MARKDOWN,
-    ))
 
 
 def make_sales_inbox_script_skill() -> OperationalSkill:
@@ -1065,7 +1054,6 @@ OPS_SKILL_FACTORIES: dict[str, callable] = {
     "ads_intelligence":    AdsIntelligencePipeline,
     "competitor_spy":      make_competitor_spy_skill,
     "competitor_comparison": make_competitor_comparison_skill,
-    "landing_page":        make_landing_page_skill,
     "sales_inbox_script":  make_sales_inbox_script_skill,
     "email_zalo_sequence": make_email_zalo_sequence_skill,
     "performance_audit":   make_performance_audit_skill,

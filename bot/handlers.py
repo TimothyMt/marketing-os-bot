@@ -152,7 +152,7 @@ HELP_MESSAGE = """*Marketing OS — Hướng dẫn sử dụng*
 3. Nhận card tóm tắt + file đầy đủ
 4. Đánh giá output → em note lại để cải thiện
 
-*Mẹo*: Chạy *Nghiên Cứu & Phân Tích Thị Trường* trước → các task sau (Brief Campaign, Content Calendar, Landing Page) sẽ tự động dùng Strategy đó làm base.
+*Mẹo*: Chạy *Nghiên Cứu & Phân Tích Thị Trường* trước → các task sau (Brief Campaign, Content Calendar) sẽ tự động dùng Strategy đó làm base.
 
 *Thời gian*: 30-60s task đơn, 3-5p phân tích toàn diện."""
 
@@ -2983,7 +2983,6 @@ async def _handle_callback_inner(update, context, query, session, data, user_id)
             "campaign_brief":      "📋 Viết Brief Campaign",
             "ads_generator":       "📢 Sản Xuất Nội Dung Ads",
             "video_scripts":       "🎬 Viết Kịch Bản Video",
-            "landing_page":        "🌐 Thiết Kế Website",
             "sales_inbox_script":  "💬 Kịch Bản Sales",
         }
         label = labels.get(skill_key, skill_key)
@@ -3038,7 +3037,7 @@ async def _handle_callback_inner(update, context, query, session, data, user_id)
             return
 
         # ── Smart gating: skill cần Strategy base ─────────────────
-        STRATEGY_GATED_SKILLS = {"campaign_brief", "content_calendar", "landing_page"}
+        STRATEGY_GATED_SKILLS = {"campaign_brief", "content_calendar"}
         if task_type in STRATEGY_GATED_SKILLS:
             await query.edit_message_reply_markup(reply_markup=None)
             # Check session có synthesis result chưa
@@ -3691,7 +3690,7 @@ Output CHỈ JSON object, không markdown, không giải thích."""
 async def _send_strategy_aware_form(message: Message, session, task_name: str):
     """Khi user đã có Strategy (synthesis) — show form rút gọn.
     Form khác nhau theo skill:
-    - campaign_brief / landing_page: cần chọn campaign cụ thể (3 câu)
+    - campaign_brief: cần chọn campaign cụ thể (3 câu)
     - content_calendar: KHÔNG cần chọn campaign — chỉ hỏi duration/channel (2 câu)
     """
     task = get_task(task_name)
@@ -3740,7 +3739,7 @@ async def _send_strategy_aware_form(message: Message, session, task_name: str):
         await message.reply_text("\n".join(lines), parse_mode=ParseMode.MARKDOWN)
         return
 
-    # ── Brief Campaign / Landing Page — cần chọn campaign cụ thể ──
+    # ── Brief Campaign — cần chọn campaign cụ thể ──
     synthesis = session.get_latest_result("synthesis") or session.get_latest_result("strategy") or ""
     campaigns_hint = _extract_campaigns_from_strategy(synthesis)
 
@@ -5720,7 +5719,7 @@ Language: {en_note}
 - task_name AVAILABLE: market / competitor / customer / pricing / strategy / full /
   content_calendar / content_generator / email_zalo_sequence / competitor_spy / performance_audit
 - task_name COMING SOON (KHÔNG được dùng RUN_TASK, chỉ thông báo "sắp ra mắt"):
-  campaign_brief / ads_generator / video_scripts / landing_page / sales_inbox_script
+  campaign_brief / ads_generator / video_scripts / sales_inbox_script
 
 NHIỆM VỤ: User nhắn câu hỏi/yêu cầu free-form ngoài flow skill chuẩn.
 Trả lời như 1 marketing advisor có context business của sếp.
@@ -5826,7 +5825,7 @@ async def _launch_task_from_advisor(update, context, session, task_name: str):
     """Khi advisor detect [RUN_TASK:X] → launch skill flow tương đương click button."""
     from agents.task_registry import OPERATIONAL_TASKS, get_task
     SINGLE_SHOT_STRATEGIC = {"market", "competitor", "customer", "pricing"}
-    STRATEGY_GATED = {"campaign_brief", "content_calendar", "landing_page"}
+    STRATEGY_GATED = {"campaign_brief", "content_calendar"}
 
     msg = update.message
 

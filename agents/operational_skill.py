@@ -46,8 +46,8 @@ class OperationalSkill(AgentSkill):
     Reads context from session.profile + (optionally) session.results based on context_strategy.
     Builds user message by filling template with session.pending_intake answers.
 
-    Used for 6 of 8 ops skills:
-      campaign_brief, content_calendar, landing_page, sales_inbox_script,
+    Used for standard ops skills:
+      campaign_brief, content_calendar, sales_inbox_script,
       email_zalo_sequence, performance_audit
 
     AdsCopySkill + VideoScriptsSkill are custom subclasses (separate file) due to:

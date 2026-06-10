@@ -37,7 +37,6 @@ STAGE_META = {
     "ads_copy":            {"title": "Sản Xuất Nội Dung Ads",       "icon": "📢", "color": "pricing"},
     "ads_generator":       {"title": "Sản Xuất Nội Dung Ads",       "icon": "📢", "color": "pricing"},
     "video_scripts":       {"title": "Viết Kịch Bản Video",         "icon": "🎬", "color": "customer"},
-    "landing_page":        {"title": "Thiết Kế Website",            "icon": "🌐", "color": "competitor"},
     "sales_inbox_script":  {"title": "Kịch Bản Sales",              "icon": "💬", "color": "customer"},
     "email_zalo_sequence": {"title": "Chăm Sóc Khách Hàng",         "icon": "📧", "color": "pricing"},
     "competitor_spy":      {"title": "Theo Dõi Đối Thủ",            "icon": "🔍", "color": "competitor"},

@@ -148,7 +148,6 @@ Sản xuất deliverable dùng được ngay. Intake qua single-shot form. Outpu
 ### Sales & Web
 | Skill | Menu | Chức năng |
 |---|---|---|
-| `landing_page` | 🌐 Thiết Kế Website | Brief + HTML landing page hoàn chỉnh |
 | `sales_inbox_script` | 💬 Kịch Bản Sales | Script chat cho team sales + objection handling |
 
 ### Brand & Insight
