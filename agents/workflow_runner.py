@@ -90,11 +90,14 @@ async def _get_brand_direction(session: Session) -> str:
     # 3. Haiku call to generate brand direction
     p = session.profile
     strategy = session.get_latest_result("synthesis") or session.get_latest_result("strategy") or ""
+    playbook = session.get_latest_result("tactical_playbook") or ""
 
     profile_block = p.to_context_string()
     user_content = profile_block
     if strategy:
         user_content += f"\n\n---\n\nMarketing Strategy (tóm tắt):\n{strategy[:2000]}"
+    if playbook:
+        user_content += f"\n\n---\n\nTactical Playbook (copy mẫu + tone tham chiếu):\n{playbook[:1500]}"
 
     try:
         client = _get_client()

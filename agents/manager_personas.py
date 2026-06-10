@@ -103,7 +103,9 @@ Bạn ở tầng chiến lược. Bạn KHÔNG sa vào chi tiết thực thi (vi
         domain_summary="Paid ads, performance tracking, competitor intel — đo được, tối ưu được",
         owns_skills=[
             "ads_analytics", "ads_optimizer",
-            "competitor_spy",
+            "competitor_spy", "competitor_comparison",
+            "performance_audit", "landing_page",
+            "ads_intelligence", "ads_generator",
         ],
         trigger_keywords=[
             "quảng cáo", "ads", "facebook ads", "google ads", "tiktok ads",
@@ -135,6 +137,10 @@ Tracking setup, KPI optimization, competitor intel, landing page conversion.
 - **ads_optimizer**: pull hierarchy (Campaign → Ad Set → Ad) → đọc CPM/CTR/Frequency → đề xuất + thực thi actions (pause/activate/thay budget). Mọi action chỉ rõ Account→Campaign→AdSet→Ad + ID
 - **competitor_spy**: phân tích đối thủ từ FB Ads Library — WHY WINNER analysis đọc patterns từ creative/copy/offer
 - **competitor_comparison**: so sánh brand vs competitor đa chiều
+- **performance_audit**: báo cáo audit hiệu suất ads tổng (paste số liệu hoặc live data)
+- **landing_page**: outline + copy landing page tối ưu conversion
+- **ads_intelligence**: gói phân tích ads toàn diện (analytics + spy + comparison)
+- **ads_generator**: viết ads copy 3 tầng phễu (TOFU/MOFU/BOFU × variants)
 
 # KHI USER MUỐN AUDIT / PHÂN TÍCH ADS:
 - Hỏi: "Sếp có vấn đề gì đang lo nhất không?" (để trigger Deep Dive Section 6)
@@ -183,6 +189,7 @@ Brand positioning, messaging house, brand voice rulebook, visual identity guidel
 # SKILLS BẠN GỌI ĐƯỢC:
 - **brand_voice**: xây brand voice rulebook (tone, style, do/don't, sample sentences)
 - **content_repurpose**: adapt 1 piece of content → nhiều format giữ nguyên brand voice
+- **post_voice_check**: QA 1 post theo brand voice rulebook — chấm điểm consistency + sửa từng câu lệch tone
 
 # PHONG CÁCH
 - Luôn link mọi quyết định về "sở hữu từ khóa nào trong tâm trí khách"
@@ -243,7 +250,7 @@ communications calendar — những thứ không phải paid nhưng tạo trust 
             "content_calendar", "content_generator",
             "post_write", "post_batch", "post_hooks",
             "post_visual", "post_adapt", "post_voice_check",
-            "comment_mining", "campaign_brief",
+            "comment_mining", "campaign_brief", "social_posts",
         ],
         trigger_keywords=[
             "content", "nội dung", "bài viết", "post", "caption",
@@ -276,6 +283,7 @@ visual brief cho designer, SEO content, content repurposing.
 - **post_voice_check**: QA post theo brand voice rulebook
 - **comment_mining**: khai thác 7 content ideas từ comment section
 - **campaign_brief**: gen brief cho campaign, tích hợp campaign_id vào calendar và từng post
+- **social_posts**: viết nhanh bài đăng social đơn lẻ (khi không cần full Content Suite)
 
 # PHONG CÁCH
 - Luôn hỏi "funnel stage nào?" nếu user không nói rõ
@@ -294,6 +302,7 @@ visual brief cho designer, SEO content, content repurposing.
             "video_scripts", "post_adapt",
             "post_hooks", "post_batch",
             "viral_video_analyzer",
+            "ugc_brief", "video_script_gen",
         ],
         trigger_keywords=[
             "tiktok", "tik tok", "reels", "short video", "video ngắn",
@@ -318,6 +327,9 @@ trending sound direction, hook engineering, TikTok Shop, live strategy.
 - **post_hooks**: 15 TikTok-specific hooks (hook 0-3s là quan trọng nhất)
 - **post_adapt**: adapt post → TikTok caption + hashtag + sound suggestion
 - **post_batch**: batch TikTok content 1 tuần theo content mix
+- **viral_video_analyzer**: mổ xẻ video viral (hook/pacing/structure) → rút công thức áp dụng
+- **ugc_brief**: brief chi tiết cho creator UGC (góc quay, hook, mandatories, do/don't)
+- **video_script_gen**: gen kịch bản video theo từng row trong Content Calendar
 
 # NGUYÊN TẮC TRANG HAY NHẮC:
 - Hook 0-3s quyết định 80% performance — đừng bao giờ bắt đầu bằng "Xin chào sếp"
@@ -590,7 +602,7 @@ _DISPATCH_SUFFIX = """
 Khi đã xác định được 1 skill cụ thể giải quyết đúng vấn đề → kết thúc response bằng đúng marker này (dòng cuối):
 [SKILL_DISPATCH:tên_skill]
 - tên_skill phải là 1 trong danh sách skills bạn owns (snake_case chính xác).
-- VD: [SKILL_DISPATCH:ads_copy]
+- VD: [SKILL_DISPATCH:ads_analytics]
 - KHÔNG dùng marker nếu chỉ tư vấn chung, chưa chắc skill nào phù hợp, hoặc cần hỏi thêm sếp."""
 
 
