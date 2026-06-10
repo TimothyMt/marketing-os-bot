@@ -3818,81 +3818,9 @@ async def _send_strategy_aware_form(message: Message, session, task_name: str):
         await message.reply_text("\n".join(lines), parse_mode=ParseMode.MARKDOWN)
         return
 
-    # ── Brief Campaign — cần chọn campaign cụ thể ──
-    synthesis = session.get_latest_result("synthesis") or session.get_latest_result("strategy") or ""
-    campaigns_hint = _extract_campaigns_from_strategy(synthesis)
-
-    lines = [
-        f"✅ *{task.button_emoji} {task.label}*",
-        "",
-        f"_Em thấy sếp đã có Marketing Strategy rồi. Em dùng strategy đó làm base._",
-        "",
-        "─────────────────────────",
-    ]
-
-    if campaigns_hint:
-        lines.append("📅 *Roadmap của sếp có các campaigns:*")
-        lines.append("")
-        for i, c in enumerate(campaigns_hint, 1):
-            lines.append(f"{i}️⃣ {c}")
-        lines.append("")
-        lines.append("─────────────────────────")
-
-    lines.extend([
-        "*Sếp trả lời 1 lần các ý sau:*",
-        "",
-        "**1️⃣ Chọn campaign nào?**",
-        "  - Gõ số (1/2/3...) để chọn từ roadmap",
-        "  - Hoặc tả campaign mới (ngoài roadmap)",
-        "",
-        "**2️⃣ Có muốn đổi thời gian / ngân sách không?**",
-        "  _Vd: 'kéo 12 tuần thay vì 8, budget 80tr'_",
-        "  _Hoặc 'giữ nguyên theo roadmap'_",
-        "",
-        "**3️⃣ Audience có khác ICP đã định không?**",
-        "  _Nếu không nói gì, em dùng ICP cũ._",
-        "",
-        "─────────────────────────",
-        "💬 *Gửi tin trả lời theo format trên — Max sẽ tự parse và chạy.*",
-    ])
-
-    # Mark session: form này có Strategy context
-    session.pending_intake[OPS_INTAKE_AWAITING] = task_name
-    session.pending_intake["_strategy_aware"] = "1"
-    session.selected_task = task_name
-    session.stage = PipelineStage.INTAKE
-    await save_session(session)
-
-    await message.reply_text("\n".join(lines), parse_mode=ParseMode.MARKDOWN)
-
-
-def _extract_campaigns_from_strategy(synthesis_text: str) -> list[str]:
-    """Best-effort extract campaign names from strategy text.
-    Looks for bullet points / numbered lists in roadmap sections."""
-    if not synthesis_text:
-        return []
-    import re as _re
-    candidates = []
-
-    # Pattern 1: "Q1: xxx" or "Tháng 1: xxx"
-    matches = _re.findall(r"(?:Q[1-4]|Tháng \d+|Week \d+)[:\s-]+([^\n]{10,120})", synthesis_text)
-    candidates.extend(m.strip(' .*-') for m in matches)
-
-    # Pattern 2: Bullet "- Campaign X: ..."
-    matches2 = _re.findall(r"[-*•]\s*Campaign[:\s]+([^\n]{5,120})", synthesis_text, flags=_re.IGNORECASE)
-    candidates.extend(m.strip(' .*-') for m in matches2)
-
-    # Dedupe + cap 5
-    seen = set()
-    result = []
-    for c in candidates:
-        c_low = c.lower()[:50]
-        if c_low not in seen:
-            seen.add(c_low)
-            result.append(c[:120])
-        if len(result) >= 5:
-            break
-    return result
+    # Mọi task strategy-aware khác (vd campaign_brief) đã được route riêng ở handler
+    # (campaign_brief → _show_extracted_campaigns / full A→Z). Fallback an toàn:
+    await _send_single_shot_form(message, session, task_name)
 
 
 async def _run_write_content_workflow_handler(message: Message, session, topic_text: str):
