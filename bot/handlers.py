@@ -4916,7 +4916,7 @@ async def _generate_strategy_questions(session) -> list[dict]:
 7. channels — kênh triển khai chính
 8. timeline — khung thời gian triển khai kế hoạch (sprint nhanh / vừa phải / dài hơi)
 
-🔴 RIÊNG câu 7 (channels): options PHẢI là các KÊNH MẠNG XÃ HỘI / KÊNH NỘI DUNG mà Max có thể trực tiếp sản xuất content (Facebook, TikTok, Instagram, YouTube/Shorts, Zalo OA, Threads, LinkedIn, Google/SEO content...). TUYỆT ĐỐI KHÔNG đưa lựa chọn dạng "hợp tác đối tác", "referral program", "co-marketing", "B2B partnership" — vì đó không phải kênh Max viết nội dung được. Mỗi option nên là 1 platform hoặc combo 2 platform (vd: "TikTok + Facebook", "Zalo OA + Facebook group", "YouTube Shorts + TikTok").
+🔴 RIÊNG câu 7 (channels): user sẽ TỰ GÕ các kênh muốn làm — KHÔNG hiển thị lựa chọn sẵn. Để "options": []. Dồn giá trị vào "context": tóm tắt finding CỤ THỂ từ research về kênh nào tiềm năng nhất cho business này (vd "TikTok organic CAC gần 0 nếu content đúng") để user tham khảo trước khi tự quyết. "question" hỏi mở: kênh nào user muốn triển khai content chính. Chỉ nhắc tới các kênh nội dung Max trực tiếp sản xuất được (Facebook, TikTok, Instagram, YouTube/Shorts, Zalo OA, Threads, LinkedIn, Google/SEO content...) — không nhắc "hợp tác đối tác", "referral", "co-marketing".
 
 🔴 RIÊNG câu 8 (timeline): options là các MỐC THỜI GIAN cụ thể, phù hợp với stage business + resource (vd: "Sprint 90 ngày — kết quả nhanh", "6 tháng — build foundation + scale", "12 tháng — long-game brand building"). Tối đa 3-4 options.
 
@@ -4960,7 +4960,7 @@ def _default_strategy_questions_fallback() -> list[dict]:
         {"key": "positioning",      "question": "Muốn định vị ở góc nào trên thị trường?",       "context": "Dựa vào positioning map.",            "options": ["Premium — chất lượng cao, giá cao", "Value — chất lượng tốt, giá hợp lý", "Niche specialist — chuyên sâu 1 phân khúc", "Challenger — thách thức market leader"]},
         {"key": "pricing_approach", "question": "Approach pricing như thế nào?",                  "context": "Dựa vào pricing strategy.",           "options": ["Premium pricing — cao hơn đối thủ", "Competitive pricing — ngang thị trường", "Value pricing — thấp hơn nhưng rõ giá trị", "Bundle / package pricing"]},
         {"key": "usp_angle",        "question": "USP angle nào muốn lead trong marketing?",       "context": "Dựa vào USP definition.",             "options": ["Emotional angle — cảm xúc, câu chuyện", "Practical angle — lợi ích cụ thể, số liệu", "Social proof angle — review, kết quả khách", "Authority angle — expertise, chứng chỉ"]},
-        {"key": "channels",         "question": "Kênh mạng xã hội nào muốn triển khai content chính?",               "context": "Kênh Max có thể trực tiếp sản xuất nội dung.", "options": ["TikTok + Facebook", "Instagram + Facebook", "YouTube Shorts + TikTok", "Zalo OA + Facebook group"]},
+        {"key": "channels",         "question": "Kênh mạng xã hội nào sếp muốn triển khai content chính?",          "context": "Kênh Max có thể trực tiếp sản xuất nội dung: Facebook, TikTok, Instagram, YouTube/Shorts, Zalo OA, Threads, LinkedIn...", "options": []},
         {"key": "timeline",         "question": "Timeline triển khai kế hoạch sếp muốn?",                            "context": "Quyết định pace của roadmap + KPI checkpoints.", "options": ["Sprint 90 ngày — kết quả nhanh", "6 tháng — foundation + scale", "12 tháng — long-game brand"]},
     ]
 
@@ -5020,6 +5020,23 @@ async def _ask_next_strategy_question(message: Message, session) -> None:
     session.pending_intake["_current_q_options"]   = _json.dumps(q["options"], ensure_ascii=False)
     await save_session(session)
 
+    label = _STRATEGY_Q_LABELS.get(q["key"], q["key"])
+
+    # Câu channels: KHÔNG đưa option sẵn — user tự gõ các kênh muốn làm.
+    if q["key"] == "channels":
+        session.pending_intake["_awaiting_strategy_q_custom"] = "1"
+        await save_session(session)
+        await message.reply_text(
+            f"*{current}/{total} — {label}*\n\n"
+            f"_{q['context']}_\n\n"
+            f"{q['question']}\n\n"
+            f"✏️ _Sếp gõ thẳng các kênh muốn triển khai vào đây "
+            f"(vd: \"TikTok + Zalo OA\" hay \"Facebook, Instagram\"). "
+            f"Bao nhiêu kênh cũng được — nhưng càng tập trung càng dễ làm sâu ạ._",
+            parse_mode=ParseMode.MARKDOWN,
+        )
+        return
+
     _letters = ["A", "B", "C", "D", "E"]
     options_text = "\n".join(
         f"*{_letters[i]}.* *{opt}*" for i, opt in enumerate(q["options"])
@@ -5031,12 +5048,7 @@ async def _ask_next_strategy_question(message: Message, session) -> None:
     buttons.append([InlineKeyboardButton("✏️ Tôi có ý khác", callback_data="strategy_q_custom")])
     kb = InlineKeyboardMarkup(buttons)
 
-    label = _STRATEGY_Q_LABELS.get(q["key"], q["key"])
-    # Câu channels: cho chọn nhiều kênh thoải mái — không nhắc "nên chọn 1".
-    if q["key"] == "channels":
-        hint = "_👉 Sếp chọn các kênh muốn triển khai. Muốn nhiều kênh → bấm \"✏️ Tôi có ý khác\" và gõ tất cả._"
-    else:
-        hint = "_👉 Nên chọn 1 để tập trung. Muốn kết hợp nhiều → bấm \"✏️ Tôi có ý khác\"._"
+    hint = "_👉 Nên chọn 1 để tập trung. Muốn kết hợp nhiều → bấm \"✏️ Tôi có ý khác\"._"
     await message.reply_text(
         f"*{current}/{total} — {label}*\n\n"
         f"_{q['context']}_\n\n"
