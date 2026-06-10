@@ -26,6 +26,7 @@ from agents.operational_prompts import (
     EMAIL_ZALO_SEQUENCE_SYSTEM,
     COMPETITOR_SPY_SYSTEM,
     COMPETITOR_COMPARISON_SYSTEM,
+    BRAND_POSITIONING_SYSTEM,
     BRAND_VOICE_SYSTEM,
     CONTENT_REPURPOSE_SYSTEM,
     RETENTION_STRATEGY_SYSTEM,
@@ -372,6 +373,61 @@ def make_competitor_comparison_skill() -> OperationalSkill:
         context_strategy=ContextStrategy.FULL_PIPELINE,  # Đọc cả competitor + profile
         primary_deliverable=PrimaryDeliverable.HTML,
     ))
+
+
+class BrandPositioningSkill(OperationalSkill):
+    """Backlog 2.2: Messaging House cho Linh (Brand Manager).
+
+    Refine positioning/USP từ T2+T4 thành messaging house — KHÔNG bắt user nhập lại.
+    Hỗ trợ revise loop: handlers set pending_intake["_bp_feedback"] → re-run →
+    bản chốt ghi đè session result "brand_positioning" (các skill content sau
+    ưu tiên đọc bản này thay vì synthesis.positioning gốc — xem pipeline.py).
+    """
+
+    def __init__(self):
+        config = _config_for(
+            "brand_positioning",
+            BRAND_POSITIONING_SYSTEM,
+            max_tokens=8000,
+            context_strategy=ContextStrategy.PROFILE_PLUS_STRATEGY,  # override bên dưới
+            primary_deliverable=PrimaryDeliverable.HTML,
+        )
+        super().__init__(config)
+
+    def build_context(self, session: Session) -> str:
+        parts = [session.profile.to_context_string()]
+        usp = session.get_latest_result("usp_definition")
+        if usp:
+            parts.append(f"## USP đã chốt (T2 — usp_definition)\n{usp[:4000]}")
+        synthesis = session.get_latest_result("synthesis")
+        if synthesis:
+            parts.append(f"## Marketing Strategy nền (T4 — positioning + SAVE)\n{synthesis[:5000]}")
+        customer = session.get_latest_result("customer_insight")
+        if customer:
+            parts.append(f"## Customer Insight (segments cho key messages)\n{customer[:4000]}")
+        # Brand Voice inject tập trung ở pipeline.py (BV_INJECTED_SKILLS) nếu user đã setup
+        return "\n\n---\n\n".join(parts)
+
+    def build_user_msg(self, session: Session) -> str:
+        intake = session.pending_intake or {}
+        extra = (intake.get("extra_note") or "").strip()
+        msg = (
+            "## Yêu cầu: Build Messaging House từ positioning + USP đã có trong context.\n\n"
+            "Refine — không làm lại từ đầu. Output đủ 5 phần theo system prompt."
+        )
+        if extra:
+            msg += f"\n\n**Điểm sếp muốn nhấn mạnh:** {extra}"
+        feedback = (intake.get("_bp_feedback") or "").strip()
+        if feedback:
+            msg += (
+                "\n\n---\n\n**🔄 YÊU CẦU SỬA từ sếp (BẮT BUỘC áp dụng — đây là vòng revise, "
+                f"giữ nguyên phần sếp không nhắc tới):**\n{feedback}"
+            )
+        return msg
+
+
+def make_brand_positioning_skill() -> OperationalSkill:
+    return BrandPositioningSkill()
 
 
 def make_brand_voice_skill() -> OperationalSkill:
@@ -1072,6 +1128,7 @@ OPS_SKILL_FACTORIES: dict[str, callable] = {
     "video_scripts":       VideoScriptsSkill,
     "viral_video_analyzer": ViralVideoAnalyzerSkill,
     # NEW skills (test branch)
+    "brand_positioning":   make_brand_positioning_skill,
     "brand_voice":         make_brand_voice_skill,
     "content_repurpose":   make_content_repurpose_skill,
     "retention_strategy":  make_retention_strategy_skill,

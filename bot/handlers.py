@@ -256,7 +256,7 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "_pending_regen_skill", "_pending_feedback",
         "_monitor_pending_page_id", "_monitor_pending_page_name",
         "_last_image_b64", "_last_image_size", "_img_prompt", "_img_n",
-        "_advisor_mode", "_awaiting_calendar_edit", "_awaiting_week_selection",
+        "_advisor_mode", "_awaiting_calendar_edit", "_awaiting_bp_edit", "_awaiting_week_selection",
         "_content_gen_weekly_mode", "_content_gen_week",
         "_bv_draft", "_bv_resume_weekly",
         "_bv_edit_mode", "_growth_skill",
@@ -713,6 +713,10 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if session.pending_intake.get("_awaiting_calendar_edit"):
         await _handle_calendar_edit_text(update, context, session, text)
+        return
+
+    if session.pending_intake.get("_awaiting_bp_edit"):
+        await _handle_bp_edit_text(update, context, session, text)
         return
 
     if session.pending_intake.get("_awaiting_week_selection"):
@@ -1552,6 +1556,32 @@ async def _handle_callback_inner(update, context, query, session, data, user_id)
             parse_mode=ParseMode.MARKDOWN,
         )
         await _send_single_shot_form(query.message, session, "ugc_brief")
+        return
+
+    # ── Backlog 2.2: brand_positioning revise loop ──────────────
+    if data == "bp_confirm":
+        await query.edit_message_reply_markup(reply_markup=None)
+        session.pending_intake.pop("_awaiting_bp_edit", None)
+        session.pending_intake.pop("_bp_feedback", None)
+        await save_session(session)
+        await query.message.reply_text(
+            "✅ *Đã chốt Messaging House!*\n\n"
+            "Em lưu vào session rồi — từ giờ content Nam/Trang viết, ads copy, "
+            "voice check đều bám thông điệp chuẩn này thay vì positioning gốc.",
+            parse_mode=ParseMode.MARKDOWN,
+        )
+        return
+
+    if data == "bp_edit_request":
+        await query.edit_message_reply_markup(reply_markup=None)
+        session.pending_intake["_awaiting_bp_edit"] = "1"
+        await save_session(session)
+        await query.message.reply_text(
+            "✏️ *Sếp muốn sửa gì trong Messaging House?* Gõ tự do nhé:\n\n"
+            "_Vd: 'tagline 2 hay hơn, bỏ tagline 4' / 'key message tệp mới phải nhấn giá' "
+            "/ 'tone đang trang trọng quá'_",
+            parse_mode=ParseMode.MARKDOWN,
+        )
         return
 
     if data == "calendar_edit_request":
@@ -3012,6 +3042,24 @@ async def _handle_callback_inner(update, context, query, session, data, user_id)
             )
             return
 
+        # ── brand_positioning (Linh): cần T2 USP / T4 synthesis làm input ──
+        if task_type == "brand_positioning" and not (
+            session.get_latest_result("usp_definition")
+            or session.get_latest_result("synthesis")
+        ):
+            await query.edit_message_reply_markup(reply_markup=None)
+            session.pending_followup_skill = task_type
+            await save_session(session)
+            await query.message.reply_text(
+                "🏛️ *Messaging House cần có USP + Strategy nền (T2/T4) làm input.*\n\n"
+                "Em chưa có data của sếp — em refine từ phân tích, không làm lại từ đầu.\n\n"
+                "Em chạy *Nghiên Cứu & Phân Tích Thị Trường* trước nhé. "
+                "_Xong em tự động tiếp tục Messaging House cho sếp._",
+                parse_mode=ParseMode.MARKDOWN,
+                reply_markup=NEEDS_STRATEGY_KEYBOARD,
+            )
+            return
+
         # ── Smart gating: skill cần Strategy base ─────────────────
         STRATEGY_GATED_SKILLS = {"campaign_brief", "content_calendar"}
         if task_type in STRATEGY_GATED_SKILLS:
@@ -4349,6 +4397,20 @@ async def _handle_ops_intake_reply(update: Update, context: ContextTypes.DEFAULT
                 return
 
             await _send_ops_result(update.message, session, task_name, result)
+
+            # Backlog 2.2: brand_positioning — revise loop (sửa đến khi sếp chốt)
+            if task_name == "brand_positioning":
+                await update.message.reply_text(
+                    "🏛️ *Messaging House nháp xong rồi sếp!*\n\n"
+                    "Sếp xem qua — muốn sửa gì không ạ? Chốt rồi thì mọi content "
+                    "Nam/Trang viết sau này đều bám messaging house này.",
+                    parse_mode=ParseMode.MARKDOWN,
+                    reply_markup=InlineKeyboardMarkup([
+                        [InlineKeyboardButton("✅ Chốt bản này", callback_data="bp_confirm")],
+                        [InlineKeyboardButton("✏️ Sửa thêm",     callback_data="bp_edit_request")],
+                    ]),
+                )
+                return
 
             # Sprint 6: Tone Calibration Loop cho content_calendar
             if task_name == "content_calendar":
@@ -5792,6 +5854,21 @@ async def _launch_task_from_advisor(update, context, session, task_name: str):
 
     msg = update.message
 
+    # brand_positioning (Linh): cần T2 USP / T4 synthesis làm input
+    if task_name == "brand_positioning" and not (
+        session.get_latest_result("usp_definition")
+        or session.get_latest_result("synthesis")
+    ):
+        session.pending_followup_skill = task_name
+        await save_session(session)
+        await msg.reply_text(
+            "🏛️ *Messaging House cần USP + Strategy nền (T2/T4).* "
+            "Em chạy *Nghiên Cứu & Phân Tích Thị Trường* trước nhé sếp?",
+            parse_mode=ParseMode.MARKDOWN,
+            reply_markup=NEEDS_STRATEGY_KEYBOARD,
+        )
+        return
+
     # Strategy gating
     if task_name in STRATEGY_GATED:
         has_strategy = bool(
@@ -6421,6 +6498,52 @@ async def _handle_week_selection_text(update, context, session, text: str):
         parse_mode=ParseMode.MARKDOWN,
     )
     await _send_single_shot_form(update.message, session, "content_generator")
+
+
+async def _handle_bp_edit_text(update, context, session, text: str):
+    """Backlog 2.2: User sửa Messaging House — re-run brand_positioning với feedback,
+    bản mới ghi đè session result (vòng lặp đến khi sếp bấm Chốt)."""
+    comment = (text or "").strip()
+    if len(comment) < 4:
+        await update.message.reply_text("⚠️ Sếp nói rõ hơn chút giúp em: cần sửa phần nào ạ?")
+        return
+
+    session.pending_intake.pop("_awaiting_bp_edit", None)
+    old_feedback = session.pending_intake.get("_bp_feedback", "")
+    session.pending_intake["_bp_feedback"] = (
+        (old_feedback + "\n" + comment).strip() if old_feedback else comment
+    )
+    await save_session(session)
+
+    from config import AGENT_TIMEOUT
+    await update.message.reply_text(
+        f"🔄 _Đang sửa Messaging House theo feedback: \"{comment[:80]}\"..._",
+        parse_mode=ParseMode.MARKDOWN,
+    )
+    try:
+        result = await asyncio.wait_for(
+            run_operational_skill("brand_positioning", session),
+            timeout=AGENT_TIMEOUT,
+        )
+    except asyncio.TimeoutError:
+        await update.message.reply_text("⏱ Timeout khi sửa Messaging House. Sếp thử lại nhé.")
+        return
+    except Exception as e:
+        logger.exception("brand_positioning re-edit failed: %s", e)
+        await update.message.reply_text("⚠️ Lỗi khi sửa Messaging House. Sếp thử lại nhé.")
+        return
+
+    session.stage = PipelineStage.TASK_SELECT
+    await save_session(session)
+    await _send_ops_result(update.message, session, "brand_positioning", result)
+    await update.message.reply_text(
+        "🏛️ *Bản sửa xong rồi sếp!* Ổn chưa ạ?",
+        parse_mode=ParseMode.MARKDOWN,
+        reply_markup=InlineKeyboardMarkup([
+            [InlineKeyboardButton("✅ Chốt bản này", callback_data="bp_confirm")],
+            [InlineKeyboardButton("✏️ Sửa tiếp",     callback_data="bp_edit_request")],
+        ]),
+    )
 
 
 async def _handle_calendar_edit_text(update, context, session, text: str):

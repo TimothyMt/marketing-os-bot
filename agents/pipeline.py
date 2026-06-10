@@ -373,7 +373,7 @@ async def _run_skill(skill: AgentSkill, session: Session) -> str:
         "post_write", "post_adapt", "post_batch", "post_hooks",
         "ads_generator", "ads_copy", "video_scripts", "video_script_gen",
         "sales_inbox_script", "email_zalo_sequence", "content_repurpose",
-        "content_generator", "ugc_brief",
+        "content_generator", "ugc_brief", "brand_positioning",
     }
     if skill.name in BV_INJECTED_SKILLS:
         try:
@@ -385,6 +385,28 @@ async def _run_skill(skill: AgentSkill, session: Session) -> str:
                 logger.info("[BV] Injected for skill=%s user=%d", skill.name, session.user_id)
         except Exception as e:
             logger.warning("[BV] Inject failed (non-fatal) skill=%s: %s", skill.name, e)
+
+    # Backlog 2.2: Messaging House (brand_positioning đã chốt với sếp) — nguồn thông điệp
+    # chuẩn cho mọi skill viết content/ads; ưu tiên hơn positioning gốc trong synthesis.
+    MESSAGING_HOUSE_SKILLS = {
+        "post_write", "post_adapt", "post_batch", "post_hooks", "post_voice_check",
+        "ads_generator", "ads_copy", "video_scripts", "video_script_gen",
+        "sales_inbox_script", "email_zalo_sequence", "content_repurpose",
+        "content_generator", "ugc_brief", "content_calendar", "campaign_brief",
+    }
+    if skill.name in MESSAGING_HOUSE_SKILLS:
+        try:
+            mh = session.get_latest_result("brand_positioning")
+            if mh and "MESSAGING HOUSE" not in context:
+                context += (
+                    "\n\n---\n\n"
+                    "## MESSAGING HOUSE (đã chốt với sếp — ƯU TIÊN hơn positioning gốc "
+                    "trong synthesis; headline/hook/key message bám theo đây)\n"
+                    + mh[:4000]
+                )
+                logger.info("[MessagingHouse] Injected for skill=%s", skill.name)
+        except Exception as e:
+            logger.warning("[MessagingHouse] Inject failed (non-fatal) skill=%s: %s", skill.name, e)
 
     # P0 fix: Inject Content Calendar đã duyệt → production skills bám sát kế hoạch
     # (topic/hook/pillar/kênh đã lên lịch) thay vì tự bịa chủ đề mới.

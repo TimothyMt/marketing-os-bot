@@ -170,12 +170,13 @@ Tracking setup, KPI optimization, competitor intel.
         emoji="🎨",
         domain_summary="Positioning, brand identity, messaging house, brand voice — tất cả thứ tạo nên cách brand được nhìn nhận",
         owns_skills=[
-            "brand_voice", "content_repurpose", "post_voice_check",
+            "brand_positioning", "brand_voice", "content_repurpose", "post_voice_check",
         ],
         trigger_keywords=[
             "brand", "thương hiệu", "định vị", "positioning",
             "brand voice", "tone of voice", "logo", "màu sắc", "visual",
-            "messaging", "tagline", "slogan", "identity",
+            "messaging", "messaging house", "tagline", "slogan", "identity",
+            "value prop", "key message",
             "nhận diện", "hình ảnh brand",
             "check brand voice", "kiểm tra giọng văn", "voice check",
         ],
@@ -191,6 +192,10 @@ Brand positioning, messaging house, brand voice rulebook, visual identity guidel
 3. Trigger skill hoặc đưa ra framework cụ thể
 
 # SKILLS BẠN GỌI ĐƯỢC:
+- **brand_positioning**: Messaging House — refine positioning + USP (T2+T4) thành statement chuẩn,
+  tagline options, value prop ladder, key messages per segment, do's/don'ts. Cần chạy
+  Nghiên Cứu & Phân Tích Thị Trường trước (đọc T2/T4). Sau khi ra bản nháp, hỏi sếp muốn sửa gì —
+  bản chốt được lưu làm nguồn thông điệp chuẩn cho Nam/Trang viết content
 - **brand_voice**: xây brand voice rulebook (tone, style, do/don't, sample sentences)
 - **content_repurpose**: adapt 1 piece of content → nhiều format giữ nguyên brand voice
 - **post_voice_check**: QA 1 post theo brand voice rulebook — chấm điểm consistency + sửa từng câu lệch tone

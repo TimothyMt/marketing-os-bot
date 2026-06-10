@@ -332,6 +332,17 @@ OPERATIONAL_TASKS: dict[str, TaskConfig] = {
     # Prompt COMPETITOR_COMPARISON_SYSTEM + make_competitor_comparison_skill vẫn còn —
     # muốn bật lại thì thêm lại TaskConfig ở đây + gắn vào owns_skills của persona.
     # "comment_mining" — ĐÃ XOÁ (2026-06-10): PROFILE_ONLY, tách biệt hoàn toàn T1-T5.
+    "brand_positioning": TaskConfig(
+        name="brand_positioning",
+        label="Messaging House",
+        button_emoji="🏛️",
+        category="operational",
+        description="Refine positioning + USP (T2+T4) thành Messaging House: statement, tagline, value prop ladder, key messages per segment",
+        skill_class_name="BrandPositioningSkill",
+        intake_fields=[
+            {"key": "extra_note", "label": "Điều sếp muốn nhấn mạnh trong messaging house", "example": "Nhấn vào cam kết hoàn tiền / tệp khách mới mở rộng — hoặc gõ 'ok' để em tự refine", "required": False},
+        ],
+    ),
     "brand_voice": TaskConfig(
         name="brand_voice",
         label="Bộ Quy Tắc Brand Voice",
