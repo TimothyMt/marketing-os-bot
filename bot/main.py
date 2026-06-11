@@ -2,8 +2,7 @@
 Entry point — Marketing OS Telegram Bot (Webhook mode).
 Designed for Railway + Supabase deployment.
 
-Dùng starlette + uvicorn trực tiếp (thay vì app.run_webhook) để có thể
-gắn custom route /oauth/fb/callback vào cùng 1 server + 1 port.
+Dùng starlette + uvicorn trực tiếp (thay vì app.run_webhook).
 """
 import asyncio
 import logging
@@ -34,6 +33,8 @@ from bot.handlers import (
     cmd_connect_ads,
     cmd_disconnect_ads,
     cmd_switch_account,
+    cmd_switch_page,
+    cmd_post_fb,
     cmd_ads_settings,
     cmd_ads_analytics,
     cmd_ads_optimizer,
@@ -75,6 +76,8 @@ def _build_app() -> Application:
     app.add_handler(CommandHandler("connect_ads",    cmd_connect_ads))
     app.add_handler(CommandHandler("disconnect_ads", cmd_disconnect_ads))
     app.add_handler(CommandHandler("switch_account", cmd_switch_account))
+    app.add_handler(CommandHandler("switch_page",    cmd_switch_page))
+    app.add_handler(CommandHandler("post_fb",        cmd_post_fb))
     app.add_handler(CommandHandler("ads_settings",   cmd_ads_settings))
     app.add_handler(CommandHandler("ads_analytics",  cmd_ads_analytics))
     app.add_handler(CommandHandler("ads_optimizer",  cmd_ads_optimizer))
@@ -106,12 +109,6 @@ async def telegram_webhook(request: Request) -> PlainTextResponse:
     update = Update.de_json(data, ptb_app.bot)
     await ptb_app.update_queue.put(update)
     return PlainTextResponse("OK")
-
-
-async def oauth_fb_callback(request: Request):
-    """FB OAuth 2.0 callback — exchange code → lưu token → notify user."""
-    from services.fb_oauth import handle_callback
-    return await handle_callback(request, ptb_app.bot)
 
 
 # ── Startup / shutdown lifecycle ─────────────────────────────────
@@ -150,7 +147,6 @@ async def lifespan(app: Starlette):
 starlette_app = Starlette(
     routes=[
         Route(f"/{TELEGRAM_BOT_TOKEN}", telegram_webhook, methods=["POST"]),
-        Route("/oauth/fb/callback",     oauth_fb_callback, methods=["GET"]),
     ],
     lifespan=lifespan,
 )

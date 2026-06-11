@@ -161,19 +161,22 @@ async def _run_alert_monitor(bot) -> None:
 # ── Job D: Token Refresh ─────────────────────────────────────────
 
 async def _run_token_refresh(bot) -> None:
+    """Manual-token system — không tự refresh được (token thuộc app riêng của user).
+    Chỉ kiểm tra token còn dùng được không, tắt connection + báo user nếu hết hạn."""
     from storage.fb_connections import get_all_active_connections
-    from services.fb_oauth import refresh_token_if_needed
+    from services.fb_manual_connect import is_token_valid
+    from tools.crypto import decrypt_token
 
-    logger.info("[AdsScheduler] Running token refresh check")
+    logger.info("[AdsScheduler] Running token validity check")
     connections = await get_all_active_connections()
     for conn in connections:
         user_id = conn["user_id"]
         try:
-            still_valid = await refresh_token_if_needed(user_id)
-            if not still_valid:
+            token = decrypt_token(conn["encrypted_token"])
+            if not await is_token_valid(token):
                 await _handle_token_revoked(bot, conn)
         except Exception as e:
-            logger.warning("[AdsScheduler] token refresh failed user=%d: %s", user_id, e)
+            logger.warning("[AdsScheduler] token validity check failed user=%d: %s", user_id, e)
 
 
 # ── One-time: Snapshot Backfill/Repair ───────────────────────────
@@ -221,8 +224,8 @@ async def _handle_token_revoked(bot, conn: dict) -> None:
     await disable_connection(user_id)
     await send_message_safe(
         bot, user_id,
-        "⚠️ *Kết nối Facebook Ads đã ngắt*\n\n"
+        "⚠️ *Kết nối Facebook đã ngắt*\n\n"
         "Token hết hạn hoặc quyền bị thu hồi.\n"
-        "Gõ `/connect_ads` để kết nối lại — settings cũ vẫn giữ nguyên."
+        "Gõ `/connect_ads` để lấy token mới và kết nối lại — settings cũ vẫn giữ nguyên."
     )
     logger.info("[AdsScheduler] Token revoked, disabled connection for user=%d", user_id)

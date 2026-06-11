@@ -1,4 +1,4 @@
-"""CRUD cho user_fb_connections, oauth_states, ads_snapshots, ads_alert_cooldowns.
+"""CRUD cho user_fb_connections, ads_snapshots, ads_alert_cooldowns.
 
 Dùng async supabase client (init tại startup) — pattern giống brand_voice.py.
 """
@@ -28,8 +28,11 @@ async def save_connection(
     encrypted_token: str,
     ad_account_id: str,
     account_name: str,
-    expires_at: datetime,
+    expires_at: datetime | None,
     available_accounts: list | None = None,
+    pages: list | None = None,
+    active_page_id: str | None = None,
+    active_page_name: str | None = None,
 ) -> None:
     import json
     client = _client()
@@ -41,7 +44,7 @@ async def save_connection(
         "encrypted_token":  encrypted_token,
         "ad_account_id":    ad_account_id,
         "account_name":     account_name,
-        "expires_at":       expires_at.isoformat(),
+        "expires_at":       expires_at.isoformat() if expires_at else None,
         "connected_at":     _now().isoformat(),
         "notification_enabled": True,
     }
@@ -54,6 +57,12 @@ async def save_connection(
             }
             for a in available_accounts
         ])
+    if pages is not None:
+        payload["pages"] = json.dumps(pages)
+    if active_page_id is not None:
+        payload["active_page_id"] = active_page_id
+    if active_page_name is not None:
+        payload["active_page_name"] = active_page_name
     await client.table("user_fb_connections").upsert(payload, on_conflict="user_id").execute()
 
 
@@ -83,6 +92,34 @@ async def get_available_accounts(user_id: int) -> list[dict]:
         except Exception:
             return []
     return raw if isinstance(raw, list) else []
+
+
+async def get_pages(user_id: int) -> list[dict]:
+    """Trả list Pages đã lưu: [{'id','name','encrypted_token'}]."""
+    import json
+    conn = await get_connection(user_id)
+    if not conn:
+        return []
+    raw = conn.get("pages")
+    if not raw:
+        return []
+    if isinstance(raw, str):
+        try:
+            raw = json.loads(raw)
+        except Exception:
+            return []
+    return raw if isinstance(raw, list) else []
+
+
+async def update_active_page(user_id: int, page_id: str, page_name: str) -> None:
+    """Đổi Page dùng để đăng bài (không cần kết nối lại)."""
+    client = _client()
+    if client is None:
+        return
+    await client.table("user_fb_connections").update({
+        "active_page_id":   page_id,
+        "active_page_name": page_name,
+    }).eq("user_id", user_id).execute()
 
 
 async def get_connection(user_id: int) -> Optional[dict]:
@@ -117,16 +154,6 @@ async def update_last_pull(user_id: int) -> None:
     }).eq("user_id", user_id).execute()
 
 
-async def update_token(user_id: int, encrypted_token: str, expires_at: datetime) -> None:
-    client = _client()
-    if client is None:
-        return
-    await client.table("user_fb_connections").update({
-        "encrypted_token": encrypted_token,
-        "expires_at":      expires_at.isoformat(),
-    }).eq("user_id", user_id).execute()
-
-
 async def update_notification_settings(user_id: int, **kwargs) -> None:
     """Cập nhật: notification_enabled, notify_time, timezone, tracked_metrics, alert thresholds."""
     allowed = {
@@ -157,41 +184,6 @@ async def disable_connection(user_id: int) -> None:
     await client.table("user_fb_connections").update({
         "notification_enabled": False
     }).eq("user_id", user_id).execute()
-
-
-# ─── oauth_states ───────────────────────────────────────────────
-
-async def save_oauth_state(state_token: str, user_id: int) -> None:
-    client = _client()
-    if client is None:
-        return
-    expires = _now() + timedelta(minutes=15)
-    await client.table("oauth_states").upsert({
-        "state_token": state_token,
-        "user_id":     user_id,
-        "expires_at":  expires.isoformat(),
-    }).execute()
-
-
-async def consume_oauth_state(state_token: str) -> Optional[int]:
-    """Validate + delete state (one-use). Returns user_id or None nếu invalid/expired."""
-    client = _client()
-    if client is None:
-        return None
-    res = (
-        await client.table("oauth_states")
-        .select("*").eq("state_token", state_token).limit(1).execute()
-    )
-    if not res.data:
-        return None
-    row = res.data[0]
-    await client.table("oauth_states").delete().eq("state_token", state_token).execute()
-    expires = datetime.fromisoformat(row["expires_at"])
-    if expires.tzinfo is None:
-        expires = expires.replace(tzinfo=timezone.utc)
-    if _now() > expires:
-        return None
-    return row["user_id"]
 
 
 # ─── ads_snapshots ──────────────────────────────────────────────

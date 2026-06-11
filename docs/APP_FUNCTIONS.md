@@ -61,7 +61,10 @@ Telegram (webhook) ─→ bot/handlers.py ─→ agents/pipeline.py ─→ LLM R
 ### Lệnh Ads Scheduler
 | Lệnh | Chức năng |
 |---|---|
-| `/connect_ads` | Kết nối FB Ad Account qua OAuth |
+| `/connect_ads` | Kết nối Facebook bằng Manual Token (Ad Account + Page) |
+| `/switch_account` | Đổi Ad Account active (báo cáo/tối ưu ads) |
+| `/switch_page` | Đổi Page active (đăng bài) |
+| `/post_fb` | Đăng bài (text/ảnh+caption) lên Page active |
 | `/ads_settings` | Chọn chỉ số theo dõi + ngưỡng alert + bật/tắt báo cáo |
 | `/disconnect_ads` | Ngắt kết nối, xóa token |
 

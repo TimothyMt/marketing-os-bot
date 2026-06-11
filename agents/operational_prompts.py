@@ -1448,7 +1448,7 @@ Nhiệm vụ: Phân tích Facebook Ads Library của đối thủ. Đưa ra insi
 Em không tự bịa ads của đối thủ được — sẽ ra phân tích vớ vẩn.
 
 Sếp có 2 cách:
-1. **Setup FB API** (admin set `FB_ACCESS_TOKEN`) → em auto-fetch
+1. **Kết nối FB** (`/connect_ads`) → em auto-fetch
 2. **Paste tay**: Vào https://www.facebook.com/ads/library/ → tìm đối thủ → copy text 3-10 ads → gửi cho em
 ```
 

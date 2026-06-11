@@ -26,6 +26,9 @@ from bot.handlers import (
     cmd_settings,
     cmd_connect_ads,
     cmd_disconnect_ads,
+    cmd_switch_account,
+    cmd_switch_page,
+    cmd_post_fb,
     cmd_ads_settings,
     cmd_ads_analytics,
     cmd_ads_optimizer,
@@ -76,6 +79,9 @@ def main():
     app.add_handler(CommandHandler("config",       cmd_settings))
     app.add_handler(CommandHandler("connect_ads",  cmd_connect_ads))
     app.add_handler(CommandHandler("disconnect_ads", cmd_disconnect_ads))
+    app.add_handler(CommandHandler("switch_account", cmd_switch_account))
+    app.add_handler(CommandHandler("switch_page",  cmd_switch_page))
+    app.add_handler(CommandHandler("post_fb",      cmd_post_fb))
     app.add_handler(CommandHandler("ads_settings", cmd_ads_settings))
     app.add_handler(CommandHandler("ads_analytics", cmd_ads_analytics))
     app.add_handler(CommandHandler("ads_optimizer", cmd_ads_optimizer))

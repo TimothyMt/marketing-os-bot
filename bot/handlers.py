@@ -527,9 +527,11 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     # ─── Secret Paste Detector ───────────────────────────────────────
-    # User có thể paste FB token / API key vào chat (sau khi đọc gate
-    # message). KHÔNG được route vào advisor (sẽ lộ secret trong log
-    # và user confused). Detect → từ chối + hướng dẫn đúng cách.
+    # User có thể paste FB token / API key vào chat ngoài luồng /connect_ads
+    # (sau khi đọc gate message). KHÔNG được route vào advisor (sẽ lộ secret
+    # trong log và user confused). Detect → từ chối + hướng dẫn đúng cách.
+    # Nếu đang trong luồng /connect_ads (_awaiting_fb_token) → token là EXPECTED,
+    # bỏ qua guard này và xử lý ở dispatch _awaiting_fb_token bên dưới.
     _stripped = text.strip()
     _looks_like_fb_token = (
         _stripped.startswith("EAA")
@@ -543,7 +545,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         and "\n" not in _stripped
         and sum(1 for c in _stripped if c.isalnum()) > len(_stripped) * 0.9
     )
-    if _looks_like_fb_token or _looks_like_long_key:
+    if (_looks_like_fb_token or _looks_like_long_key) and not session.pending_intake.get("_awaiting_fb_token"):
         logger.warning(
             "User %d pasted what looks like a secret (len=%d, prefix=%s...) — refusing",
             session.user_id, len(_stripped), _stripped[:6],
@@ -557,12 +559,11 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             chat_id=update.effective_chat.id,
             text=(
                 "🛡️ *Em đã xoá tin nhắn vừa rồi — trông giống API token/secret.*\n\n"
-                "⚠️ KHÔNG paste token vào chat:\n"
+                "Nếu sếp đang muốn kết nối Facebook Ads/Page → gõ `/connect_ads` trước, "
+                "em sẽ hướng dẫn rồi mới nhận token.\n\n"
+                "Nếu không phải → *KHÔNG paste token vào chat* ngoài luồng đó:\n"
                 "• Telegram lưu lại toàn bộ history\n"
-                "• Token có thể bị log lại bên server\n"
-                "• Bot không có cách dùng token gửi qua chat\n\n"
-                "*Cách đúng:* Admin set env var trên Railway dashboard "
-                "(Service → Variables → New Variable → `FB_ACCESS_TOKEN`).\n\n"
+                "• Token có thể bị log lại bên server\n\n"
                 "_Nếu token này đã lộ → vào https://developers.facebook.com/tools/debug/accesstoken/ để revoke + tạo mới._"
             ),
             parse_mode=ParseMode.MARKDOWN,
@@ -774,6 +775,16 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await _handle_ads_threshold_text(update, session, text)
         return
 
+    # Manual-token connect: user paste FB Access Token
+    if session.pending_intake.get("_awaiting_fb_token"):
+        await _handle_fb_token_text(update, session, text)
+        return
+
+    # /post_fb: user gửi nội dung muốn đăng lên Page
+    if session.pending_intake.get("_awaiting_fb_post"):
+        await _handle_fb_post_text(update, session, text)
+        return
+
     # Post A→Z: Bot hỏi nhu cầu (mục tiêu/dịp/ngân sách) → parse → đề xuất campaign options
     if session.pending_intake.get("_awaiting_campaign_needs"):
         await _handle_campaign_needs_text(update, context, session, text)
@@ -870,6 +881,10 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Sprint 5 v2: User upload ảnh mẫu để bot làm theo style."""
     user_id = update.effective_user.id
     session = await get_session(user_id)
+
+    if session.pending_intake.get("_awaiting_fb_post"):
+        await _handle_fb_post_photo(update, context, session)
+        return
 
     if not session.pending_intake.get("_awaiting_image_reference"):
         await update.message.reply_text(
@@ -1272,27 +1287,21 @@ async def _handle_callback_inner(update, context, query, session, data, user_id)
     if data == "noop":
         return
 
-    if data.startswith("fb_acct:"):
-        account_id = data.split(":", 1)[1]
-        from services.fb_oauth import _pending_connections, _norm_id, _notify_connected
-        from storage.fb_connections import save_connection
-
-        pending = _pending_connections.pop(user_id, None)
-        if not pending:
-            await query.answer("Link đã hết hạn. Vui lòng /connect_ads lại.", show_alert=True)
-            return
-
-        accounts = pending["accounts"]
-        chosen = next((a for a in accounts if _norm_id(a) == account_id), None)
+    if data.startswith("fb_page_pick:"):
+        page_id = data.split(":", 1)[1]
+        from storage.fb_connections import get_pages, update_active_page
+        pages = await get_pages(user_id)
+        chosen = next((p for p in pages if p["id"] == page_id), None)
         if not chosen:
-            await query.answer("Tài khoản không hợp lệ.", show_alert=True)
+            await query.answer("Page không tìm thấy.", show_alert=True)
             return
-
-        account_name = chosen.get("name") or account_id
-        await save_connection(user_id, pending["encrypted_token"], account_id, account_name,
-                              pending["expires_at"], available_accounts=accounts)
-        await query.edit_message_text(f"⏳ Đang lưu kết nối với *{account_name}*...", parse_mode=ParseMode.MARKDOWN)
-        await _notify_connected(context.bot, user_id, account_name, account_id, accounts)
+        page_name = chosen.get("name") or page_id
+        await update_active_page(user_id, page_id, page_name)
+        safe = _escape_md(page_name)
+        await query.edit_message_text(
+            f"✅ Đã chuyển sang Page *{safe}*\n\nGõ `/post_fb` để đăng bài lên Page này.",
+            parse_mode=ParseMode.MARKDOWN,
+        )
         return
 
     if data.startswith("aud_pick:"):
@@ -4392,7 +4401,7 @@ async def _handle_ops_intake_reply(update: Update, context: ContextTypes.DEFAULT
                 await update.message.reply_text(
                     "🛑 *Không có data để phân tích.*\n\n"
                     f"{api_note}\n\n"
-                    "*Cách 1 — Kết nối FB API:* Admin set `FB_ACCESS_TOKEN` + `FB_AD_ACCOUNT_ID` trên Railway.\n\n"
+                    "*Cách 1 — Kết nối FB:* Gõ `/connect_ads` để kết nối Ad Account của sếp.\n\n"
                     "*Cách 2 — Paste số tay:* Chạy lại skill, điền vào ô *Paste số liệu thủ công*.\n"
                     "Ví dụ: `Meta: 800 mess, CPMess 19K, CTR 1.2%, Frequency 3.8`",
                     parse_mode=ParseMode.MARKDOWN,
@@ -6092,14 +6101,13 @@ async def _abort_with_fb_error(message: Message, session, task_name: str, fb_sta
     if reason == "no_token":
         body = (
             "🛑 *FB API chưa hoạt động.*\n\n"
-            "Server chưa có `FB_ACCESS_TOKEN`. ⚠️ *KHÔNG paste token vào chat* — "
-            "admin set trên Railway dashboard → Variables."
+            "Sếp chưa kết nối Facebook. Gõ `/connect_ads` để kết nối (~5 phút, không cần chờ duyệt)."
         )
     elif reason == "no_account":
         body = (
             "🛑 *FB Ad Account chưa cấu hình.*\n\n"
-            "Server chưa có `FB_AD_ACCOUNT_ID` env var. Admin set trên Railway "
-            "(dạng `act_1234567890`)."
+            "Token của sếp chưa có Ad Account nào. Gõ `/connect_ads` để kết nối lại với "
+            "token có quyền `ads_read`/`ads_management`."
         )
     elif reason == "page_not_found":
         body = (
@@ -6263,7 +6271,7 @@ async def _prefetch_competitor_ads(message: Message, session) -> dict:
 
 async def _prefetch_performance_data(message: Message, session) -> dict:
     """Pre-fetch FB Marketing API data cho ads_analytics / ads_intelligence skill.
-    Ưu tiên token per-user (OAuth), fallback về global env var.
+    Ưu tiên token per-user (manual /connect_ads), fallback về global env var.
 
     Returns dict: {"ok": bool, "reason": str, "detail": str}
       reason ∈ {"ok", "no_token", "no_account", "no_insights", "api_error"}
@@ -6275,7 +6283,7 @@ async def _prefetch_performance_data(message: Message, session) -> dict:
     from storage.fb_connections import get_connection
     from config import FB_ACCESS_TOKEN, FB_AD_ACCOUNT_ID
 
-    # ── Ưu tiên per-user OAuth token ────────────────────────────
+    # ── Ưu tiên per-user token (manual /connect_ads) ─────────────
     user_token = None
     user_account_id = None
     user_account_name = None
@@ -9011,7 +9019,7 @@ async def _handle_basic_business_text(update, context, session, text: str):
 
 
 # ─────────────────────────────────────────────────────────────────
-# FB ADS SCHEDULER — /connect_ads · /disconnect_ads · /ads_settings
+# FB MANUAL TOKEN — /connect_ads · /disconnect_ads · /ads_settings · /post_fb
 # ─────────────────────────────────────────────────────────────────
 
 def _build_metric_keyboard(tracked: list, with_done: bool = False, extra_rows: list = None):
@@ -9046,19 +9054,9 @@ def _build_metric_keyboard(tracked: list, with_done: bool = False, extra_rows: l
 
 
 async def cmd_connect_ads(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """/connect_ads — bắt đầu OAuth flow để kết nối FB Ad Account."""
+    """/connect_ads — kết nối Facebook bằng Access Token tự tạo (manual token,
+    không cần chờ App Review)."""
     user_id = update.effective_user.id
-    from config import FB_APP_ID, FB_APP_SECRET, WEBHOOK_BASE_URL
-
-    if not FB_APP_ID or not FB_APP_SECRET:
-        await update.message.reply_text(
-            "⚠️ *FB App chưa được cấu hình.*\n\n"
-            "Admin cần set các env vars:\n"
-            "`FB_APP_ID`, `FB_APP_SECRET`, `ENCRYPTION_KEY`\n\n"
-            "Sau khi admin setup xong, sếp dùng lại lệnh này nhé.",
-            parse_mode=ParseMode.MARKDOWN,
-        )
-        return
 
     from config import ENCRYPTION_KEY
     if not ENCRYPTION_KEY:
@@ -9076,39 +9074,298 @@ async def cmd_connect_ads(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     existing = await get_connection(user_id)
     if existing and existing.get("notification_enabled"):
         name = (existing.get("account_name") or existing.get("ad_account_id") or "?").replace("*", "").replace("_", "-")
+        page = (existing.get("active_page_name") or "chưa chọn").replace("*", "").replace("_", "-")
         await update.message.reply_text(
-            f"✅ *Đã kết nối:* {name}\n\n"
-            "Có nhiều Ad Account muốn xem? Dùng `/switch_account` để đổi — không cần kết nối lại.\n"
-            "Muốn đổi sang tài khoản FB khác hẳn? Dùng `/disconnect_ads` trước.",
+            f"✅ *Đã kết nối:*\n"
+            f"📊 Ad Account: {name}\n"
+            f"📄 Page đăng bài: {page}\n\n"
+            "Có nhiều Ad Account/Page muốn đổi? Dùng `/switch_account` hoặc `/switch_page`.\n"
+            "Muốn kết nối lại bằng token khác? Dùng `/disconnect_ads` trước.",
             parse_mode=ParseMode.MARKDOWN,
         )
         return
 
+    session = await get_session(user_id)
+    session.pending_intake["_awaiting_fb_token"] = True
+    await save_session(session)
+
     await update.message.reply_text(
-        "🔗 *Kết nối Facebook Ads*\n\n"
-        "Em đang tạo link OAuth... (hết hạn sau 15 phút)",
+        "🔗 *Kết nối Facebook (Manual Token)*\n\n"
+        "Để tránh phải chờ Facebook duyệt app (App Review), sếp tự tạo 1 app FB của riêng mình "
+        "và lấy Access Token — chỉ mất ~5 phút:\n\n"
+        "*Bước 1 — Tạo App:*\n"
+        "1. Vào [developers.facebook.com/apps](https://developers.facebook.com/apps) → "
+        "*Create App* → chọn loại *Business*\n"
+        "2. Đặt tên app tuỳ ý → Create\n\n"
+        "*Bước 2 — Lấy Access Token:*\n"
+        "1. Vào [Graph API Explorer](https://developers.facebook.com/tools/explorer/)\n"
+        "2. Ở dropdown *Facebook App* → chọn app vừa tạo\n"
+        "3. Ở dropdown *User or Page* → chọn *User Token*\n"
+        "4. Bấm *Permissions* (hoặc *Add a Permission*) → tick các quyền sau:\n"
+        "   `ads_read`, `ads_management`, `read_insights`, "
+        "`pages_show_list`, `pages_read_engagement`, `pages_manage_posts`\n"
+        "5. Bấm *Generate Access Token* → đăng nhập + đồng ý cấp quyền\n"
+        "6. Copy chuỗi token (dài, bắt đầu `EAA...`)\n\n"
+        "*Bước 3 —* Paste token đó vào đây cho em 👇\n\n"
+        "_Lưu ý: token này em sẽ mã hoá trước khi lưu, chỉ dùng để báo cáo/tối ưu ads "
+        "và đăng bài lên Page của sếp._",
+        parse_mode=ParseMode.MARKDOWN,
+        disable_web_page_preview=True,
+    )
+
+
+async def _handle_fb_token_text(update: Update, session, text: str) -> None:
+    """Nhận Access Token user paste sau /connect_ads — validate + lưu connection."""
+    user_id = session.user_id
+    token = text.strip()
+
+    session.pending_intake.pop("_awaiting_fb_token", None)
+
+    if len(token) < 30 or " " in token:
+        session.pending_intake["_awaiting_fb_token"] = True
+        await save_session(session)
+        await update.message.reply_text(
+            "⚠️ Chuỗi này không giống Access Token (quá ngắn hoặc có khoảng trắng). "
+            "Sếp copy lại đúng chuỗi token từ Graph API Explorer rồi paste lại nhé."
+        )
+        return
+
+    await update.message.reply_text("⏳ Em đang kiểm tra token...")
+
+    from services.fb_manual_connect import fetch_token_info, norm_account_id
+    from tools.crypto import encrypt_token
+    from storage.fb_connections import save_connection
+
+    try:
+        info = await fetch_token_info(token)
+    except ValueError as e:
+        session.pending_intake["_awaiting_fb_token"] = True
+        await save_session(session)
+        await update.message.reply_text(
+            f"❌ Token không hợp lệ: {str(e)[:200]}\n\nSếp tạo lại token (đủ quyền) rồi paste lại nhé."
+        )
+        return
+    except Exception as e:
+        session.pending_intake["_awaiting_fb_token"] = True
+        await save_session(session)
+        logger.error("fetch_token_info failed user=%d: %s", user_id, e)
+        await update.message.reply_text(f"❌ Lỗi kiểm tra token: {str(e)[:200]}. Sếp thử lại nhé.")
+        return
+
+    await save_session(session)
+
+    encrypted = encrypt_token(token)
+    ad_accounts = info["ad_accounts"]
+    pages = info["pages"]
+
+    active_account_id = ""
+    active_account_name = ""
+    if ad_accounts:
+        chosen = ad_accounts[0]
+        active_account_id = norm_account_id(chosen)
+        active_account_name = chosen.get("name") or active_account_id
+
+    saved_pages = [
+        {"id": p["id"], "name": p.get("name") or p["id"], "encrypted_token": encrypt_token(p["access_token"])}
+        for p in pages if p.get("access_token")
+    ]
+    active_page_id = saved_pages[0]["id"] if saved_pages else None
+    active_page_name = saved_pages[0]["name"] if saved_pages else None
+
+    await save_connection(
+        user_id, encrypted, active_account_id, active_account_name,
+        expires_at=None,
+        available_accounts=ad_accounts,
+        pages=saved_pages,
+        active_page_id=active_page_id,
+        active_page_name=active_page_name,
+    )
+
+    me_name = info["me"].get("name") or "?"
+    lines = [f"✅ *Đã kết nối Facebook — {_escape_md(me_name)}*\n"]
+
+    if ad_accounts:
+        lines.append(f"📊 *Ad Account:* {_escape_md(active_account_name)} (`{active_account_id}`)")
+        if len(ad_accounts) > 1:
+            lines.append(f"_Có {len(ad_accounts)} Ad Account — dùng `/switch_account` để đổi._")
+    else:
+        lines.append(
+            "📊 *Ad Account:* không tìm thấy — token cần quyền `ads_read`/`ads_management` "
+            "để dùng báo cáo/tối ưu ads."
+        )
+
+    if saved_pages:
+        lines.append(f"\n📄 *Page đăng bài:* {_escape_md(active_page_name)}")
+        if len(saved_pages) > 1:
+            lines.append(f"_Có {len(saved_pages)} Page — dùng `/switch_page` để đổi._")
+        lines.append("\nGõ `/post_fb` để đăng bài lên Page này.")
+    else:
+        lines.append(
+            "\n📄 *Page:* không tìm thấy — token cần quyền `pages_show_list` + sếp phải là "
+            "admin của ít nhất 1 Page để đăng bài."
+        )
+
+    if ad_accounts:
+        lines.append("\nEm sẽ báo cáo ads lúc *8:00 sáng* mỗi ngày. Tiếp theo: chọn chỉ số muốn theo dõi 👇")
+
+    keyboard = None
+    if ad_accounts:
+        keyboard = InlineKeyboardMarkup([[
+            InlineKeyboardButton("⚙️ Chọn chỉ số & ngưỡng cảnh báo", callback_data="ads_setup_metrics"),
+            InlineKeyboardButton("✅ Dùng mặc định", callback_data="ads_setup_default"),
+        ]])
+
+    await update.message.reply_text(
+        "\n".join(lines), parse_mode=ParseMode.MARKDOWN, reply_markup=keyboard,
+    )
+
+
+async def cmd_post_fb(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """/post_fb — đăng bài lên Facebook Page đã kết nối."""
+    user_id = update.effective_user.id
+    from storage.fb_connections import get_connection
+
+    conn = await get_connection(user_id)
+    if not conn or not conn.get("active_page_id"):
+        await update.message.reply_text(
+            "⚠️ Sếp chưa kết nối Page nào để đăng bài. Gõ `/connect_ads` để kết nối "
+            "(token cần quyền `pages_manage_posts`).",
+            parse_mode=ParseMode.MARKDOWN,
+        )
+        return
+
+    page_name = (conn.get("active_page_name") or "Page").replace("*", "").replace("_", "-")
+    session = await get_session(user_id)
+    session.pending_intake["_awaiting_fb_post"] = True
+    await save_session(session)
+    await update.message.reply_text(
+        f"📝 Gửi nội dung muốn đăng lên *{page_name}* — gửi text, hoặc gửi ảnh kèm caption.",
         parse_mode=ParseMode.MARKDOWN,
     )
-    try:
-        from services.fb_oauth import build_oauth_url
-        from telegram import InlineKeyboardButton, InlineKeyboardMarkup
-        url = await build_oauth_url(user_id)
-        keyboard = InlineKeyboardMarkup([[
-            InlineKeyboardButton("🔗 Kết nối Facebook Ads", url=url)
-        ]])
+
+
+async def _get_active_page_or_warn(update: Update, user_id: int):
+    """Helper dùng chung cho post text/photo — trả (conn, page) hoặc None nếu chưa sẵn sàng."""
+    from storage.fb_connections import get_connection, get_pages
+
+    conn = await get_connection(user_id)
+    if not conn or not conn.get("active_page_id"):
         await update.message.reply_text(
-            "Bấm nút bên dưới để authorize FB Ads của sếp.\n\n"
-            "Bot sẽ yêu cầu quyền `ads_read` + `read_insights` + `ads_management`.",
-            reply_markup=keyboard,
+            "⚠️ Chưa có Page kết nối. Gõ `/connect_ads`.", parse_mode=ParseMode.MARKDOWN
+        )
+        return None
+
+    pages = await get_pages(user_id)
+    page = next((p for p in pages if p["id"] == conn["active_page_id"]), None)
+    if not page:
+        await update.message.reply_text("⚠️ Không tìm thấy Page. Gõ `/connect_ads` để kết nối lại.")
+        return None
+    return conn, page
+
+
+async def _handle_fb_post_text(update: Update, session, text: str) -> None:
+    """User gửi text sau /post_fb — đăng bài lên Page active."""
+    user_id = session.user_id
+    session.pending_intake.pop("_awaiting_fb_post", None)
+    await save_session(session)
+
+    from tools.crypto import decrypt_token
+    from tools.fb_posting import post_to_page
+
+    found = await _get_active_page_or_warn(update, user_id)
+    if not found:
+        return
+    conn, page = found
+
+    await update.message.reply_text("⏳ Đang đăng bài...")
+    try:
+        page_token = decrypt_token(page["encrypted_token"])
+        result = await post_to_page(page["id"], page_token, text)
+        post_id = result.get("post_id") or result.get("id") or "?"
+        await update.message.reply_text(
+            f"✅ Đã đăng lên *{_escape_md(conn.get('active_page_name'))}*!\nPost ID: `{post_id}`",
             parse_mode=ParseMode.MARKDOWN,
         )
     except Exception as e:
-        logger.error("cmd_connect_ads failed user=%d: %s", user_id, e)
-        await update.message.reply_text("❌ Lỗi tạo link OAuth. Admin kiểm tra log.")
+        logger.warning("post_to_page failed user=%d: %s", user_id, e)
+        await update.message.reply_text(f"❌ Đăng bài thất bại: {str(e)[:300]}")
+
+
+async def _handle_fb_post_photo(update: Update, context: ContextTypes.DEFAULT_TYPE, session) -> None:
+    """User gửi ảnh (kèm caption) sau /post_fb — đăng bài lên Page active."""
+    user_id = session.user_id
+    session.pending_intake.pop("_awaiting_fb_post", None)
+    await save_session(session)
+
+    from tools.crypto import decrypt_token
+    from tools.fb_posting import post_to_page
+
+    found = await _get_active_page_or_warn(update, user_id)
+    if not found:
+        return
+    conn, page = found
+
+    caption = update.message.caption or ""
+    await update.message.reply_text("⏳ Đang đăng bài...")
+    try:
+        photo = update.message.photo[-1]
+        file = await context.bot.get_file(photo.file_id)
+        import io as _io
+        buf = _io.BytesIO()
+        await file.download_to_memory(out=buf)
+        image_bytes = buf.getvalue()
+
+        page_token = decrypt_token(page["encrypted_token"])
+        result = await post_to_page(page["id"], page_token, caption, image_bytes=image_bytes)
+        post_id = result.get("post_id") or result.get("id") or "?"
+        await update.message.reply_text(
+            f"✅ Đã đăng lên *{_escape_md(conn.get('active_page_name'))}*!\nPost ID: `{post_id}`",
+            parse_mode=ParseMode.MARKDOWN,
+        )
+    except Exception as e:
+        logger.warning("post_to_page (photo) failed user=%d: %s", user_id, e)
+        await update.message.reply_text(f"❌ Đăng bài thất bại: {str(e)[:300]}")
+
+
+async def cmd_switch_page(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """/switch_page — chọn Page khác để đăng bài (không cần kết nối lại)."""
+    user_id = update.effective_user.id
+    from storage.fb_connections import get_connection, get_pages
+
+    conn = await get_connection(user_id)
+    if not conn:
+        await update.message.reply_text(
+            "⚠️ Sếp chưa kết nối Facebook. Dùng `/connect_ads` trước.",
+            parse_mode=ParseMode.MARKDOWN,
+        )
+        return
+
+    pages = await get_pages(user_id)
+    if len(pages) <= 1:
+        current = conn.get("active_page_name") or "chưa có"
+        await update.message.reply_text(
+            f"ℹ️ Sếp chỉ có 1 Page: *{_escape_md(current)}*\n\n"
+            "Để thêm Page khác, cấp quyền admin cho user FB ở Page đó rồi `/connect_ads` lại.",
+            parse_mode=ParseMode.MARKDOWN,
+        )
+        return
+
+    active_id = conn.get("active_page_id", "")
+    buttons = []
+    for p in pages[:10]:
+        is_active = (p["id"] == active_id)
+        label = f"{'✅' if is_active else '○'} {p.get('name') or p['id']}"
+        buttons.append([InlineKeyboardButton(label, callback_data=f"fb_page_pick:{p['id']}")])
+
+    await update.message.reply_text(
+        "🔄 *Chọn Page muốn đăng bài:*",
+        parse_mode=ParseMode.MARKDOWN,
+        reply_markup=InlineKeyboardMarkup(buttons),
+    )
 
 
 async def cmd_switch_account(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """/switch_account — chọn Ad Account khác (không cần re-OAuth)."""
+    """/switch_account — chọn Ad Account khác (không cần kết nối lại)."""
     user_id = update.effective_user.id
     from storage.fb_connections import get_connection, get_available_accounts
     from telegram import InlineKeyboardButton, InlineKeyboardMarkup

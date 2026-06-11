@@ -15,8 +15,6 @@ ADMIN_IDS: set[int] = {
 
 # Facebook APIs
 FB_ACCESS_TOKEN    = os.getenv("FB_ACCESS_TOKEN", "")   # User/System token (ads_read, read_insights)
-FB_APP_ID          = os.getenv("FB_APP_ID", "")         # App ID
-FB_APP_SECRET      = os.getenv("FB_APP_SECRET", "")     # App Secret
 FB_AD_ACCOUNT_ID   = os.getenv("FB_AD_ACCOUNT_ID", "")  # act_XXXXXXXXXX (để pull data ads của sếp)
 GRAPH_API_VERSION  = os.getenv("GRAPH_API_VERSION", "v19.0")  # FB Graph API version (from three-tier)
 
@@ -78,8 +76,6 @@ USE_DB_V2 = DB_V2_READ  # backward-compat nếu code khác đang đọc
 
 STAGES = ["idea", "mvp", "growth", "scale"]
 
-# FB OAuth per-user — Ads Scheduler
+# Manual-token FB connections — Ads Scheduler + đăng bài Page (/connect_ads)
 # ENCRYPTION_KEY: Fernet 32-byte key base64. Gen: python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
 ENCRYPTION_KEY   = os.getenv("ENCRYPTION_KEY", "")
-# Base URL của server (no trailing slash) — dùng cho OAuth redirect_uri
-WEBHOOK_BASE_URL = WEBHOOK_URL  # dùng lại WEBHOOK_URL đã có
