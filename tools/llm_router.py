@@ -721,6 +721,13 @@ async def call(
     """
     providers = ROUTING_TABLE.get(task_type, [Provider.ANTHROPIC_SONNET])
 
+    # Test mode — force toàn bộ task type chạy 1 provider rẻ trước (vẫn giữ
+    # fallback chain gốc phía sau nếu forced provider fail). Bật bằng env var:
+    #   LLM_FORCE_PROVIDER=anthropic_haiku
+    forced = _forced_test_provider()
+    if forced:
+        providers = [forced] + [p for p in providers if p != forced]
+
     last_error: Optional[Exception] = None
 
     for provider in providers:
@@ -797,6 +804,20 @@ async def call(
 # ─────────────────────────────────────────────────────────────────
 # Helpers
 # ─────────────────────────────────────────────────────────────────
+
+def _forced_test_provider() -> Optional[Provider]:
+    """Đọc env var LLM_FORCE_PROVIDER — nếu set, mọi task_type ưu tiên chạy
+    provider này trước (test mode, để giảm chi phí khi test). Unset env var
+    để trở về routing table gốc."""
+    val = os.getenv("LLM_FORCE_PROVIDER", "").strip().lower()
+    if not val:
+        return None
+    try:
+        return Provider(val)
+    except ValueError:
+        logger.warning(f"[router] LLM_FORCE_PROVIDER={val!r} không hợp lệ, bỏ qua")
+        return None
+
 
 def is_provider_available(provider: Provider) -> bool:
     """Check provider khả dụng (API key setup)."""
