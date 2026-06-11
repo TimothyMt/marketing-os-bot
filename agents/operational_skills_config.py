@@ -736,6 +736,17 @@ class ContentCalendarDynamicSkill(OperationalSkill):
             + (", archetype = " + archetype_primary if archetype_primary else "")
             + ")_"
         )
+        # Per-channel cadence do user chốt — mỗi kênh là 1 tuyến nội dung độc lập
+        cadence = (session.pending_intake.get("channel_cadence") or "").strip()
+        if cadence:
+            msg += (
+                "\n\n---\n\n**SỐ BÀI/TUẦN MỖI KÊNH DO SẾP CHỐT (BẮT BUỘC dùng đúng số này):**\n"
+                + cadence
+                + "\n_(Mỗi kênh = 1 tuyến nội dung ĐỘC LẬP, đi theo campaign brief chung nhưng "
+                "có topic/angle riêng, BỔ TRỢ lẫn nhau — KHÔNG có khái niệm kênh chính/kênh phụ. "
+                "Section 4: mỗi sub-section kênh có ĐÚNG (số bài/tuần × số tuần) bài cho kênh đó.)_"
+            )
+
         # Inject calendar edit feedback nếu có
         feedback = session.pending_intake.get("_calendar_feedback", "")
         if feedback:
@@ -809,6 +820,16 @@ class AdsCopySkill(AgentSkill):
         else:
             format_instruction = "Chưa chọn format — viết copy dùng được cho cả ảnh lẫn video."
 
+        # Layer 3: chạy từng kênh 1 — chỉ gen ads cho kênh đang chọn
+        channel_focus = (intake.get("channel_focus") or "").strip()
+        channel_instruction = (
+            f"CHỈ viết ads copy cho kênh **{channel_focus}** — bỏ qua các kênh khác."
+            if channel_focus else
+            "Nếu context có Strategy nền/Tactical Playbook chỉ rõ kênh mũi nhọn (wedge channels) → "
+            "CHỈ viết platform block cho các kênh đó, KHÔNG gen đủ 4 platform mặc định. "
+            "Chưa có wedge → mặc định Meta + TikTok."
+        )
+
         return f"""## Yêu cầu: Viết Ads Copy cho campaign
 
 **Sản phẩm/giá:** {intake.get('product', 'chưa có')}
@@ -825,8 +846,7 @@ class AdsCopySkill(AgentSkill):
 
 **Scope:** {scope_instruction}
 
-**Kênh:** Nếu context có Strategy nền/Tactical Playbook chỉ rõ kênh mũi nhọn (wedge channels) →
-CHỈ viết platform block cho các kênh đó, KHÔNG gen đủ 4 platform mặc định. Chưa có wedge → mặc định Meta + TikTok.
+**Kênh:** {channel_instruction}
 
 Viết copy thật sự dùng được ngay, không generic. Headline/hook bám USP đã chốt trong context (nếu có)."""
 

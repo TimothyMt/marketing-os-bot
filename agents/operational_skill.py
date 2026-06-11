@@ -220,6 +220,18 @@ class OperationalSkill(AgentSkill):
                 f"{calendar[:6000]}"
             )
 
+        # Layer 3: chạy từng kênh 1 — chỉ sản xuất cho kênh đang chọn
+        channel_focus = (session.pending_intake.get("channel_focus") or "").strip()
+        if channel_focus and self._config.name in ("post_batch", "video_script_gen", "ugc_brief"):
+            msg += (
+                "\n\n---\n\n"
+                f"**🔴 KÊNH ĐANG SẢN XUẤT: {channel_focus}**\n"
+                f"CHỈ sản xuất content cho kênh **{channel_focus}** trong scope đã chọn — "
+                "BỎ QUA slot của các kênh khác trong Calendar. "
+                f"Nếu Calendar không có slot nào cho kênh **{channel_focus}** trong scope này, "
+                "nói rõ điều đó (KHÔNG tự bịa thêm slot)."
+            )
+
         # Universal directive — bot KHÔNG được hỏi user trong output
         msg += (
             "\n\n---\n\n"

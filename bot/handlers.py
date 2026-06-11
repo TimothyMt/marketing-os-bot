@@ -263,7 +263,8 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "_monitor_pending_page_id", "_monitor_pending_page_name",
         "_last_image_b64", "_last_image_size", "_img_prompt", "_img_n",
         "_advisor_mode", "_awaiting_calendar_edit", "_awaiting_bp_edit", "_awaiting_week_selection",
-        "_content_gen_weekly_mode", "_content_gen_week",
+        "_awaiting_calendar_cadence", "_content_gen_weekly_mode", "_content_gen_week",
+        "_content_channels_remaining", "_content_gen_mode", "channel_focus",
         "_bv_draft", "_bv_resume_weekly",
         "_bv_edit_mode", "_growth_skill",
     ]
@@ -751,6 +752,10 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if session.pending_intake.get("_awaiting_week_selection"):
         await _handle_week_selection_text(update, context, session, text)
+        return
+
+    if session.pending_intake.get("_awaiting_calendar_cadence"):
+        await _handle_calendar_cadence_text(update, context, session, text)
         return
 
     # Layer 2b: User mô tả phần cần sửa trong campaign brief → surgical edit
@@ -1511,7 +1516,7 @@ async def _handle_callback_inner(update, context, query, session, data, user_id)
                     reply_markup=BRAND_VOICE_PROMPT_KEYBOARD,
                 )
                 return
-        await _prompt_week_selection(query.message, session)
+        await _start_content_generation(query.message, session, weekly=True)
         return
 
     if data == "run_content_gen_after_cal":
@@ -1544,11 +1549,43 @@ async def _handle_callback_inner(update, context, query, session, data, user_id)
         session.pending_intake.pop("_content_gen_weekly_mode", None)
         session.pending_intake.pop("scope", None)
         await save_session(session)
-        await query.message.reply_text(
-            "✍️ *Tiếp tục Sản Xuất Nội Dung từ Calendar...*",
-            parse_mode=ParseMode.MARKDOWN,
-        )
-        await _send_single_shot_form(query.message, session, "content_generator")
+        await _start_content_generation(query.message, session, weekly=False)
+        return
+
+    # ── Layer 3: chọn kênh sản xuất content (từng kênh 1) ─────────
+    if data.startswith("cgch_"):
+        await query.edit_message_reply_markup(reply_markup=None)
+        choice = data[len("cgch_"):]
+        weekly = session.pending_intake.get("_content_gen_mode") == "weekly"
+
+        if choice == "done":
+            session.pending_intake["_content_channels_remaining"] = []
+            await save_session(session)
+            session.pending_intake["_awaiting_rating_for"] = "content_calendar"
+            await save_session(session)
+            await query.message.reply_text(
+                "OK ạ! Sếp đánh giá nội dung em vừa làm thế nào ạ?",
+                reply_markup=RATING_KEYBOARD,
+            )
+            return
+
+        remaining = _content_remaining_channels(session)
+        try:
+            idx = int(choice)
+            channel = remaining.pop(idx)
+        except (ValueError, IndexError):
+            channel = remaining.pop(0) if remaining else ""
+
+        session.pending_intake["channel_focus"] = channel
+        session.pending_intake["_content_channels_remaining"] = remaining
+        await save_session(session)
+
+        if channel:
+            await query.message.reply_text(
+                f"✅ *Kênh: {channel}* — em tập trung sản xuất nội dung cho kênh này trước.",
+                parse_mode=ParseMode.MARKDOWN,
+            )
+        await _run_content_generation_for_channel(query.message, session, weekly)
         return
 
     if data == "skip_content_gen_after_cal":
@@ -2685,7 +2722,7 @@ async def _handle_callback_inner(update, context, query, session, data, user_id)
         session.selected_task = "content_generator"
         session.pending_intake = {}
         await save_session(session)
-        await _send_single_shot_form(query.message, session, "content_generator")
+        await _start_content_generation(query.message, session, weekly=False)
         return
 
     if data == "nam_mode_fresh":
@@ -4429,6 +4466,20 @@ async def _handle_ops_intake_reply(update: Update, context: ContextTypes.DEFAULT
             if task_name == "content_calendar":
                 await _start_tone_calibration(update.message, session, result)
                 return
+
+            # Layer 3: sau khi xong 1 kênh — hỏi tiếp kênh khác (chạy từng kênh 1)
+            if task_name == "content_generator":
+                remaining = session.pending_intake.get("_content_channels_remaining") or []
+                channel_done = session.pending_intake.get("channel_focus")
+                if remaining:
+                    done_label = f" cho kênh *{channel_done}*" if channel_done else ""
+                    await update.message.reply_text(
+                        f"✅ Xong nội dung{done_label}!\n\n"
+                        "Sếp muốn tiếp tục kênh nào tiếp theo?",
+                        parse_mode=ParseMode.MARKDOWN,
+                        reply_markup=_channel_pick_keyboard(remaining, extra_done_button=True),
+                    )
+                    return
 
             # Sprint 5: Show Brand Voice draft for user approval before persisting.
             # Deliverable (card + files) đã gửi xong ở trên — now ask to approve.
@@ -6472,6 +6523,74 @@ def _calendar_max_week(session) -> int:
     return max(weeks) if weeks else 4
 
 
+def _content_remaining_channels(session) -> list[str]:
+    """List kênh CHƯA sản xuất content trong lượt này — init từ field `channels`."""
+    pi = session.pending_intake
+    remaining = pi.get("_content_channels_remaining")
+    if remaining is None:
+        remaining = _parse_channels_list(
+            pi.get("channels") or session.profile.current_channels or ""
+        )
+        pi["_content_channels_remaining"] = remaining
+    return remaining
+
+
+def _channel_pick_keyboard(channels: list[str], extra_done_button: bool = False) -> InlineKeyboardMarkup:
+    buttons = [
+        [InlineKeyboardButton(f"📌 {ch}", callback_data=f"cgch_{i}")]
+        for i, ch in enumerate(channels)
+    ]
+    if extra_done_button:
+        buttons.append([InlineKeyboardButton("⏭️ Dừng ở đây", callback_data="cgch_done")])
+    return InlineKeyboardMarkup(buttons)
+
+
+async def _start_content_generation(message, session, weekly: bool) -> None:
+    """Layer 3 entry point — KHÔNG chạy hết các kênh 1 lượt.
+    Hỏi user muốn sản xuất content cho kênh nào trước (trong các kênh đã chốt
+    lúc setup campaign), rồi chạy TỪNG KÊNH 1."""
+    remaining = _content_remaining_channels(session)
+    session.pending_intake["_content_gen_mode"] = "weekly" if weekly else "full"
+
+    if len(remaining) <= 1:
+        # 0 hoặc 1 kênh — không cần hỏi, chạy thẳng
+        if remaining:
+            session.pending_intake["channel_focus"] = remaining[0]
+            session.pending_intake["_content_channels_remaining"] = []
+        await save_session(session)
+        await _run_content_generation_for_channel(message, session, weekly)
+        return
+
+    await save_session(session)
+    await message.reply_text(
+        "✍️ *Sản xuất nội dung — em làm từng kênh 1 cho chất lượng tốt nhất.*\n\n"
+        "Sếp muốn làm kênh nào trước?",
+        parse_mode=ParseMode.MARKDOWN,
+        reply_markup=_channel_pick_keyboard(remaining),
+    )
+
+
+async def _run_content_generation_for_channel(message, session, weekly: bool) -> None:
+    """Chạy content_generator cho channel_focus đã chọn."""
+    if weekly:
+        await _prompt_week_selection(message, session)
+        return
+
+    session.selected_task = "content_generator"
+    session.pending_intake.pop("_content_gen_week", None)
+    session.pending_intake.pop("_content_gen_weekly_mode", None)
+    session.pending_intake.pop("scope", None)
+    await save_session(session)
+    channel_focus = session.pending_intake.get("channel_focus")
+    intro = (
+        f"✍️ *Tiếp tục Sản Xuất Nội Dung — kênh {channel_focus}...*"
+        if channel_focus
+        else "✍️ *Tiếp tục Sản Xuất Nội Dung từ Calendar...*"
+    )
+    await message.reply_text(intro, parse_mode=ParseMode.MARKDOWN)
+    await _send_single_shot_form(message, session, "content_generator")
+
+
 async def _prompt_week_selection(message, session) -> None:
     """Hiện prompt 'chạy tuần mấy?' cho chế độ content-gen từng tuần.
     Dùng chung cho cả đường vào trực tiếp lẫn đường resume sau Brand Voice."""
@@ -7167,10 +7286,72 @@ async def _emit_funnel_approve_prompt(message, session, prompt: str):
     )
 
 
-async def _gen_content_calendar_after_approval(message, session, context, update):
-    """User đã duyệt funnel/execution plan → dựng Content Calendar."""
-    session.pending_intake.pop("_awaiting_funnel_approve", None)
+def _parse_channels_list(channels_str: str) -> list[str]:
+    """Tách field `channels` (vd 'Facebook + TikTok + Zalo OA') thành list tên kênh."""
+    if not channels_str:
+        return []
+    parts = re.split(r"\s*[+,/]\s*|\s+và\s+", channels_str.strip())
+    return [p.strip() for p in parts if p.strip()]
 
+
+async def _gen_content_calendar_after_approval(message, session, context, update):
+    """User đã duyệt funnel/execution plan → hỏi cadence/kênh trước khi dựng Content Calendar."""
+    session.pending_intake.pop("_awaiting_funnel_approve", None)
+    await _prompt_calendar_cadence(message, session)
+
+
+async def _prompt_calendar_cadence(message, session):
+    """Hỏi user muốn bao nhiêu bài/tuần cho mỗi kênh — mỗi kênh là 1 tuyến nội dung
+    riêng, bổ trợ lẫn nhau (không phân biệt kênh chính/phụ)."""
+    channels = _parse_channels_list(
+        session.pending_intake.get("channels") or session.profile.current_channels or ""
+    )
+    if not channels:
+        channels = ["Facebook", "TikTok"]
+
+    lines = [
+        "📅 *Trước khi dựng Lịch Nội Dung — mỗi kênh sếp muốn bao nhiêu bài/tuần?*",
+        "",
+        "_Mỗi kênh sẽ có tuyến nội dung riêng theo campaign brief, bổ trợ lẫn nhau "
+        "(không phân biệt kênh chính/phụ)._",
+        "",
+        "Gõ mỗi kênh 1 dòng, theo format:",
+    ]
+    for ch in channels:
+        lines.append(f"`{ch}: <số bài/tuần>`")
+    lines.append("")
+    lines.append("_Vd: " + " · ".join(f"{ch}: 3" for ch in channels) + "_")
+
+    session.pending_intake["_awaiting_calendar_cadence"] = "1"
+    session.stage = PipelineStage.TASK_SELECT
+    await save_session(session)
+
+    await message.reply_text("\n".join(lines), parse_mode=ParseMode.MARKDOWN)
+
+
+async def _handle_calendar_cadence_text(update, context, session, text: str):
+    """User trả lời 'Kênh: X bài/tuần' từng dòng → lưu cadence → dựng Content Calendar."""
+    session.pending_intake.pop("_awaiting_calendar_cadence", None)
+
+    raw = (text or "").strip()
+    cadence_lines = []
+    for line in raw.split("\n"):
+        line = line.strip().strip("`").lstrip("-•").strip()
+        if not line:
+            continue
+        m = re.match(r"^([^:：]+)[:：]\s*(\d+)", line)
+        if m:
+            cadence_lines.append(f"{m.group(1).strip()}: {m.group(2).strip()} bài/tuần")
+
+    # Không match được format → lưu nguyên text, để LLM tự suy
+    session.pending_intake["channel_cadence"] = "; ".join(cadence_lines) if cadence_lines else raw
+    await save_session(session)
+
+    await _run_content_calendar(update.message, session, context, update)
+
+
+async def _run_content_calendar(message, session, context, update):
+    """Dựng Content Calendar theo channel_cadence đã chốt."""
     addr = _addr(session)
     await message.reply_text(
         f"📅 *Em dựng Lịch Nội Dung theo kế hoạch cho {addr}...*\n"

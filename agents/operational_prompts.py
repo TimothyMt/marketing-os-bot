@@ -130,6 +130,15 @@ Nhiệm vụ: Build content calendar theo **Marketing OS Content Pillar Framewor
 - Trong "Pillar Breakdown", cột "Kênh chính" CHỈ chứa các kênh từ field channels.
 - Trong "Weekly grid", cột Kênh CHỈ chứa các kênh từ field channels.
 
+**🔴 KHÔNG CÓ KÊNH CHÍNH/PHỤ — MỖI KÊNH LÀ 1 TUYẾN NỘI DUNG ĐỘC LẬP, BỔ TRỢ NHAU:**
+- Mỗi kênh trong `channels` đi theo CÙNG campaign brief / story arc / pillar mix, nhưng có
+  topic, format, hook angle RIÊNG phù hợp đặc tính kênh đó — KHÔNG copy 1-1 nội dung giữa các kênh.
+- Các kênh BỔ TRỢ lẫn nhau (cross-promote, cùng xây story arc chung theo tuần) — TUYỆT ĐỐI
+  KHÔNG dồn phần lớn bài vào 1 "kênh chủ lực" rồi để kênh còn lại chỉ repurpose/amplify.
+- Nếu user message có block **"SỐ BÀI/TUẦN MỖI KÊNH DO SẾP CHỐT"** → dùng ĐÚNG số bài/tuần
+  cho từng kênh đó (số bài/kỳ = số bài/tuần × số tuần). KHÔNG tự chia tổng số bài theo tỉ lệ
+  kênh chính/phụ; mỗi kênh có cadence riêng theo đúng số sếp chốt.
+
 **🆕 Audience Segmentation (4 nhóm) — BẮT BUỘC trong calendar:**
 
 | Nhóm khách | % bài/tháng | Mục tiêu | Content phù hợp |
@@ -201,6 +210,10 @@ _Lý do: content writer chỉ cần đọc section kênh của mình; script wri
 Mở đầu MỖI section kênh: 2-4 dòng **format guide theo ngành** cho kênh đó
 (tên format → ai làm → thời lượng → tần suất/tuần — vd F&B TikTok: "before/after chế biến — founder — 45s — 2/tuần").
 KHÔNG liệt kê UGC/EGC/FGC cứng nhắc — suy tuyến content từ ngành trước, ai thực hiện tính sau.
+
+🔴 Số bài/tuần mỗi kênh = đúng theo block "SỐ BÀI/TUẦN MỖI KÊNH DO SẾP CHỐT" (nếu có) —
+KHÔNG tự ý cho kênh này nhiều hơn kênh kia ngoài con số đã chốt. Mỗi kênh viết tuyến nội
+dung riêng (topic/angle khác nhau theo đặc tính kênh) nhưng cùng bám story arc/pillar mix chung.
 
 **Kênh text/ảnh (Facebook / Zalo OA / Instagram / LinkedIn):**
 Tiêu đề section: `#### 📘 [Tên Kênh] — X bài/kỳ`
