@@ -203,7 +203,7 @@ async def generate_execution_plan(
             task_type=TaskType.CRITIC_REVIEW,   # Haiku → GPT-5-mini → GPT-5
             system=EXECUTION_SYSTEM,
             user=user_msg,
-            max_tokens=800,
+            max_tokens=1500,
         )
         text = (result.get("output") or "").strip()
         provider = result.get("provider", "unknown")
