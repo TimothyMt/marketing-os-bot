@@ -4926,6 +4926,9 @@ async def _generate_strategy_questions(session) -> list[dict]:
     """LLM call — read 5 research results, generate 7 targeted questions with options."""
     import json as _json, re as _re
     from tools.llm_router import call as router_call, TaskType
+    from frameworks.pricing_segment_library import format_pricing_segments_for_prompt
+
+    industry = session.profile.industry
 
     g = session.get_latest_result
     parts = []
@@ -4941,7 +4944,9 @@ async def _generate_strategy_questions(session) -> list[dict]:
             parts.append(f"## {label}\n{val[:2000]}")
 
     if not parts:
-        return _default_strategy_questions_fallback()
+        return _default_strategy_questions_fallback(industry)
+
+    parts.append(format_pricing_segments_for_prompt(industry))
 
     system = """Bạn là marketing strategist senior. Dựa vào kết quả nghiên cứu, tạo 8 câu hỏi chiến lược để hỏi business owner — mỗi câu về 1 chiều quyết định.
 
@@ -4950,10 +4955,12 @@ async def _generate_strategy_questions(session) -> list[dict]:
 2. target_segment — segment/ICP nào muốn focus
 3. competitor_gap — gap đối thủ nào muốn đánh (messaging/channel/segment/product)
 4. positioning — định vị trên positioning map — quadrant/góc nào
-5. pricing_approach — pricing model + vị trí (premium/mid/value)
+5. pricing_approach — định vị PHÂN KHÚC GIÁ (không hỏi giá từng sản phẩm)
 6. usp_angle — USP angle muốn lead (emotional/practical/social proof)
 7. channels — kênh triển khai chính
 8. timeline — khung thời gian triển khai kế hoạch (sprint nhanh / vừa phải / dài hơi)
+
+🔴 RIÊNG câu 5 (pricing_approach): KHÔNG hỏi pricing model generic (premium/competitive/value/bundle) và KHÔNG hỏi giá từng sản phẩm. Hỏi founder muốn ĐỊNH VỊ Ở PHÂN KHÚC GIÁ nào. "options" PHẢI lấy NGUYÊN VĂN từ block "## Phân khúc giá tham khảo — ngành ..." được cung cấp trong Nghiên cứu (mỗi option = 1 phân khúc, gồm tên phân khúc + khoảng giá + kênh bán điển hình) — KHÔNG tự bịa khoảng giá hay kênh khác. "context": nếu research có đề cập giá/kênh bán hiện tại của business → so sánh và gợi ý phân khúc gần nhất phù hợp; nếu không có thì tóm tắt ngắn vì sao phân khúc này hợp với positioning/customer insight đã research.
 
 🔴 RIÊNG câu 7 (channels): user sẽ TỰ GÕ các kênh muốn làm — KHÔNG hiển thị lựa chọn sẵn. Để "options": []. Dồn giá trị vào "context": tóm tắt finding CỤ THỂ từ research về kênh nào tiềm năng nhất cho business này (vd "TikTok organic CAC gần 0 nếu content đúng") để user tham khảo trước khi tự quyết. "question" hỏi mở: kênh nào user muốn triển khai content chính. Chỉ nhắc tới các kênh nội dung Max trực tiếp sản xuất được (Facebook, TikTok, Instagram, YouTube/Shorts, Zalo OA, Threads, LinkedIn, Google/SEO content...) — không nhắc "hợp tác đối tác", "referral", "co-marketing".
 
@@ -4982,22 +4989,29 @@ Output JSON array (chỉ JSON, không markdown):
             questions = _json.loads(match.group())
             if isinstance(questions, list) and len(questions) >= 6:
                 # Ensure all 8 keys present, fill missing with fallback
-                fallback = {q["key"]: q for q in _default_strategy_questions_fallback()}
+                fallback = {q["key"]: q for q in _default_strategy_questions_fallback(industry)}
                 result_map = {q["key"]: q for q in questions if q.get("key") in _STRATEGY_Q_KEYS}
                 return [result_map.get(k, fallback[k]) for k in _STRATEGY_Q_KEYS]
     except Exception:
         logger.warning("_generate_strategy_questions LLM failed, using fallback")
 
-    return _default_strategy_questions_fallback()
+    return _default_strategy_questions_fallback(industry)
 
 
-def _default_strategy_questions_fallback() -> list[dict]:
+def _default_strategy_questions_fallback(industry: str | None = None) -> list[dict]:
+    from frameworks.pricing_segment_library import get_pricing_segments
+
+    pricing_options = [
+        f"{seg['segment']} ({seg['price_range']}) — kênh: {seg['channels']}"
+        for seg in get_pricing_segments(industry)
+    ]
+
     return [
         {"key": "market_gap",       "question": "Market gap nào sếp muốn khai thác?",           "context": "Dựa vào nghiên cứu thị trường.",       "options": ["Khoảng trống phân khúc cao cấp", "Khoảng trống digital/online", "Khoảng trống địa lý", "Khoảng trống sản phẩm mới"]},
         {"key": "target_segment",   "question": "Segment / ICP nào muốn tập trung?",             "context": "Dựa vào customer insight.",            "options": ["Khách hàng trẻ 18-30", "Khách hàng trung niên 30-45", "Doanh nghiệp nhỏ SME", "Phụ huynh / gia đình"]},
         {"key": "competitor_gap",   "question": "Gap đối thủ nào muốn khai thác?",               "context": "Dựa vào phân tích đối thủ.",           "options": ["Messaging gap — góc chưa ai nói", "Channel gap — kênh đối thủ bỏ ngỏ", "Segment gap — nhóm khách bị bỏ qua", "Product gap — tính năng còn thiếu"]},
         {"key": "positioning",      "question": "Muốn định vị ở góc nào trên thị trường?",       "context": "Dựa vào positioning map.",            "options": ["Premium — chất lượng cao, giá cao", "Value — chất lượng tốt, giá hợp lý", "Niche specialist — chuyên sâu 1 phân khúc", "Challenger — thách thức market leader"]},
-        {"key": "pricing_approach", "question": "Approach pricing như thế nào?",                  "context": "Dựa vào pricing strategy.",           "options": ["Premium pricing — cao hơn đối thủ", "Competitive pricing — ngang thị trường", "Value pricing — thấp hơn nhưng rõ giá trị", "Bundle / package pricing"]},
+        {"key": "pricing_approach", "question": "Sếp muốn định vị ở phân khúc giá nào?",         "context": "Mỗi phân khúc đi kèm khoảng giá tham khảo + kênh bán điển hình theo ngành.", "options": pricing_options},
         {"key": "usp_angle",        "question": "USP angle nào muốn lead trong marketing?",       "context": "Dựa vào USP definition.",             "options": ["Emotional angle — cảm xúc, câu chuyện", "Practical angle — lợi ích cụ thể, số liệu", "Social proof angle — review, kết quả khách", "Authority angle — expertise, chứng chỉ"]},
         {"key": "channels",         "question": "Kênh mạng xã hội nào sếp muốn triển khai content chính?",          "context": "Kênh Max có thể trực tiếp sản xuất nội dung: Facebook, TikTok, Instagram, YouTube/Shorts, Zalo OA, Threads, LinkedIn...", "options": []},
         {"key": "timeline",         "question": "Timeline triển khai kế hoạch sếp muốn?",                            "context": "Quyết định pace của roadmap + KPI checkpoints.", "options": ["Sprint 90 ngày — kết quả nhanh", "6 tháng — foundation + scale", "12 tháng — long-game brand"]},
