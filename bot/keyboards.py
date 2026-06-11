@@ -293,6 +293,14 @@ CONFIRM_STRATEGY_KEYBOARD = InlineKeyboardMarkup([
     [InlineKeyboardButton("🏠 Về menu chính",                  callback_data="menu_main")],
 ])
 
+# Sau khi T4-T5 (Synthesis + Tactical Playbook) xong — đi tiếp tuần tự sang Campaign,
+# KHÔNG cho lựa chọn nhảy thẳng Content Calendar (Calendar phải dựa trên Campaign Brief).
+CONFIRM_STRATEGY_TO_CAMPAIGN_KEYBOARD = InlineKeyboardMarkup([
+    [InlineKeyboardButton("✅ Ổn rồi — chọn Campaign",        callback_data="strategy_confirm")],
+    [InlineKeyboardButton("✏️ Cần điều chỉnh kế hoạch",       callback_data="strategy_edit")],
+    [InlineKeyboardButton("🏠 Về menu chính",                  callback_data="menu_main")],
+])
+
 # Sau khi Campaign Brief xong — XÁC NHẬN brief trước khi gen calendar
 CONFIRM_BRIEF_KEYBOARD = InlineKeyboardMarkup([
     [InlineKeyboardButton("✅ Duyệt — tạo Lịch Nội Dung", callback_data="brief_confirm")],

@@ -46,6 +46,7 @@ from bot.keyboards import (
     MONITOR_INTERVAL_KEYBOARD,
     POST_AZ_CAMPAIGN_KEYBOARD,
     CONFIRM_STRATEGY_KEYBOARD,
+    CONFIRM_STRATEGY_TO_CAMPAIGN_KEYBOARD,
     CONFIRM_BRIEF_KEYBOARD,
     CAMPAIGN_OPTION_KEYBOARD,
     CAMPAIGN_IDEA_CONFIRM_KEYBOARD,
@@ -5215,10 +5216,10 @@ async def _run_strategy_plan(message: Message, session, direction: str) -> None:
         f"─────────────────────\n"
         f"📋 *{addr.capitalize()} xem qua giúp em:* kế hoạch trên ổn chưa, "
         f"hay cần điều chỉnh gì không ạ?\n\n"
-        f"• *Ổn rồi* → em lên Lịch Nội Dung theo kế hoạch luôn\n"
+        f"• *Ổn rồi* → em trích Campaign từ Roadmap để {addr} chốt, rồi mới lên Lịch Nội Dung theo Campaign Brief\n"
         f"• *Cần điều chỉnh* → {addr} nói rõ đổi hướng nào, em chỉnh và chạy lại",
         parse_mode=ParseMode.MARKDOWN,
-        reply_markup=CONFIRM_STRATEGY_KEYBOARD,
+        reply_markup=CONFIRM_STRATEGY_TO_CAMPAIGN_KEYBOARD,
     )
 
 
