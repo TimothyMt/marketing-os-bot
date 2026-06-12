@@ -5240,19 +5240,22 @@ async def _run_strategy_plan(message: Message, session, direction: str) -> None:
     if pipeline_aborted:
         return
 
-    # Build báo cáo HTML đầy đủ A→Z (8 tab: research T1-T3 + synthesis T4 + playbook T5)
-    # — research report trước đó chỉ có 6 tab vì pipeline dừng sau phase research.
+    # Build báo cáo HTML chỉ phase synthesis (2 tab: T4 Synthesis + T5 Tactical
+    # Playbook) — research T1-T3 đã gửi report riêng ở cuối phase research,
+    # không cần gửi lại.
     try:
         from bot.html_report import build_report, generate_archetype_banner_html
         from agents.pipeline import PIPELINE_DEF
 
-        full_stages: list[tuple[str, dict]] = []
+        synthesis_stages: list[tuple[str, dict]] = []
         for stage_def in PIPELINE_DEF:
+            if stage_def.phase != "synthesis":
+                continue
             content = session.get_latest_result(stage_def.result_key)
             if content and not content.strip().startswith("⚠️"):
-                full_stages.append((stage_def.result_key, parse_agent_output(content)))
+                synthesis_stages.append((stage_def.result_key, parse_agent_output(content)))
 
-        if full_stages:
+        if synthesis_stages:
             signal_text = " ".join(filter(None, [
                 session.profile.product_service or "",
                 session.profile.target_customer or "",
@@ -5261,19 +5264,19 @@ async def _run_strategy_plan(message: Message, session, direction: str) -> None:
                 business_name=session.profile.business_name or "Business",
                 industry=session.profile.industry or "",
                 signal_text=signal_text,
-                parsed_stages=full_stages,
+                parsed_stages=synthesis_stages,
             )
             html_str = build_report(
                 business_name=session.profile.business_name or "Business",
                 industry=session.profile.industry or "",
                 stage=session.profile.stage or "",
-                parsed_stages=full_stages,
+                parsed_stages=synthesis_stages,
                 archetype_signal_text=signal_text,
                 archetype_banner_html=archetype_banner_html,
             )
             await _send_html_report(
                 message, html_str, session,
-                caption="📊 *Báo cáo đầy đủ A→Z* — research + SWOT + kế hoạch + tactical playbook trong 1 file.",
+                caption="📊 *Kế hoạch chiến lược + Tactical Playbook* (T4-T5).",
             )
     except Exception as e:
         logger.warning("Full HTML report after synthesis failed (cards đã gửi đủ): %s", e)

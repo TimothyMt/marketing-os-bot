@@ -127,9 +127,42 @@ mapping, handlers refs, docs; GIỮ TaskType enum trong storage/models.py):
   post_visual) — gỡ luôn khỏi set đó. `tests/test_content_pipeline_e2e.py` có
   reference comment_mining/post_visual — sửa test.
 
+**b) Xoá hẳn `social_posts`** — trùng vai với `post_batch` (cùng là bài đăng hữu cơ
+batch). Lưu ý: `social_posts` đang nằm trong `CALENDAR_DRIVEN_SKILLS`
+(`agents/pipeline.py:391`) và `BV_INJECTED_SKILLS` — gỡ khỏi cả 2 set.
+KHÔNG nằm trong `ContentGeneratorPipeline.SUB_SKILLS` (pipeline dùng post_batch)
+→ xoá không vỡ pipeline.
+
+**c) Chuyển `content_calendar` + `campaign_brief` sang Max (CMO) cầm:**
+- Gỡ 2 skill này khỏi `owns_skills` của Nam → thêm vào `owns_skills` của Max
+  (`agents/manager_personas.py`, persona key="cmo")
+- Lý do: đây là deliverable tầng kế hoạch — Max cầm để Nam/Trang/Linh đều
+  truy cập được output từ session (các skill consume qua
+  `session.get_latest_result("content_calendar")` / `CALENDAR_DRIVEN_SKILLS`
+  và `PROFILE_PLUS_CAMPAIGN` nên KHÔNG phụ thuộc ai own — chỉ đổi người trigger)
+- Cập nhật system_prompt của Nam (bỏ mention calendar/brief ở phần "SKILLS BẠN
+  GỌI ĐƯỢC") + system_prompt của Max (thêm 2 skill mới)
+- Gỡ `campaign_brief` khỏi owns_skills của Hương (marcon_pr, inactive) nếu muốn
+  sạch — hoặc giữ vì persona inactive
+- Check `trigger_keywords` của Nam ("lịch đăng", "content calendar") — chuyển
+  sang Max hoặc giữ ở Nam để route user về đúng chỗ rồi Nam chỉ sang Max
+
+**owns_skills của Nam sau khi dọn:**
+`["content_generator", "post_write", "post_batch", "post_hooks", "post_adapt", "post_voice_check"]`
+
+**d) Soft-gate khi chưa có content_calendar/campaign_brief:**
+Nếu user gọi thẳng skill của Nam/Trang (vd `post_batch`, `video_script_gen`,
+`ugc_brief`, `video_scripts`) khi `session.results` CHƯA có `content_calendar`
+(hoặc `campaign_brief`), context vẫn chạy bình thường (chỉ mỏng hơn — chỉ có
+profile + synthesis) — không chặn cứng, nhưng nên thêm 1 dòng gợi ý mềm kiểu:
+"Chưa có Content Calendar — chạy với Max trước (`content_calendar`) thì kết quả
+sẽ bám đúng kế hoạch hơn. Vẫn muốn chạy luôn không?"
+Vị trí thêm: `build_user_msg`/`build_context` của các `CALENDAR_DRIVEN_SKILLS`
+(`agents/pipeline.py:391`) hoặc handler trước khi dispatch.
+
 ---
 
-## 3. TODO — Làm "8 câu hỏi chiến lược" (sau T1-T3) thành flow phụ thuộc nhau
+## 3. TODO (2026-06-12) — Làm "8 câu hỏi chiến lược" (sau T1-T3) thành flow phụ thuộc nhau
 
 **Vấn đề hiện tại:**
 `bot/handlers.py:4931` (`_generate_strategy_questions`) sinh CẢ 8 câu trong
@@ -184,37 +217,71 @@ trả lời Q3 và Q4), nhưng đổi lại Q4-6 thực sự "ăn theo" lựa ch
 chiến lược nhất quán hơn (positioning suy từ gap analysis, pricing + USP
 angle suy từ positioning).
 
-**b) Xoá hẳn `social_posts`** — trùng vai với `post_batch` (cùng là bài đăng hữu cơ
-batch). Lưu ý: `social_posts` đang nằm trong `CALENDAR_DRIVEN_SKILLS`
-(`agents/pipeline.py:391`) và `BV_INJECTED_SKILLS` — gỡ khỏi cả 2 set.
-KHÔNG nằm trong `ContentGeneratorPipeline.SUB_SKILLS` (pipeline dùng post_batch)
-→ xoá không vỡ pipeline.
+---
 
-**c) Chuyển `content_calendar` + `campaign_brief` sang Max (CMO) cầm:**
-- Gỡ 2 skill này khỏi `owns_skills` của Nam → thêm vào `owns_skills` của Max
-  (`agents/manager_personas.py`, persona key="cmo")
-- Lý do: đây là deliverable tầng kế hoạch — Max cầm để Nam/Trang/Linh đều
-  truy cập được output từ session (các skill consume qua
-  `session.get_latest_result("content_calendar")` / `CALENDAR_DRIVEN_SKILLS`
-  và `PROFILE_PLUS_CAMPAIGN` nên KHÔNG phụ thuộc ai own — chỉ đổi người trigger)
-- Cập nhật system_prompt của Nam (bỏ mention calendar/brief ở phần "SKILLS BẠN
-  GỌI ĐƯỢC") + system_prompt của Max (thêm 2 skill mới)
-- Gỡ `campaign_brief` khỏi owns_skills của Hương (marcon_pr, inactive) nếu muốn
-  sạch — hoặc giữ vì persona inactive
-- Check `trigger_keywords` của Nam ("lịch đăng", "content calendar") — chuyển
-  sang Max hoặc giữ ở Nam để route user về đúng chỗ rồi Nam chỉ sang Max
+## 4. ✅ DONE (2026-06-12) — Report sau T4-T5 chỉ gửi 2 tab (không gửi lại T1-T3)
 
-**owns_skills của Nam sau khi dọn:**
-`["content_generator", "post_write", "post_batch", "post_hooks", "post_adapt", "post_voice_check"]`
+**Vấn đề:** `_run_strategy_plan` (`bot/handlers.py:5189`) sau khi chạy xong
+T4 Synthesis + T5 Tactical Playbook, build lại HTML report "đầy đủ A→Z" gồm
+8 tab (T1-T3 + T4 + T5) — nhưng T1-T3 đã được gửi 1 lần ở report cuối phase
+research rồi → user nhận trùng lặp.
 
-**d) Soft-gate khi chưa có content_calendar/campaign_brief:**
-Nếu user gọi thẳng skill của Nam/Trang (vd `post_batch`, `video_script_gen`,
-`ugc_brief`, `video_scripts`) khi `session.results` CHƯA có `content_calendar`
-(hoặc `campaign_brief`), context vẫn chạy bình thường (chỉ mỏng hơn — chỉ có
-profile + synthesis) — không chặn cứng, nhưng nên thêm 1 dòng gợi ý mềm kiểu:
-"Chưa có Content Calendar — chạy với Max trước (`content_calendar`) thì kết quả
-sẽ bám đúng kế hoạch hơn. Vẫn muốn chạy luôn không?"
-Vị trí thêm: `build_user_msg`/`build_context` của các `CALENDAR_DRIVEN_SKILLS`
-(`agents/pipeline.py:391`) hoặc handler trước khi dispatch.
+**Đã fix:** Lọc `PIPELINE_DEF` theo `stage_def.phase == "synthesis"` → chỉ
+build report 2 tab (T4 Synthesis + T5 Tactical Playbook). Caption đổi từ
+"Báo cáo đầy đủ A→Z" → "Kế hoạch chiến lược + Tactical Playbook (T4-T5)".
+
+---
+
+## 5. TODO (2026-06-12) — Hỏi Budget/Team TRƯỚC khi đề xuất campaign (sau T4-T5)
+
+**Vấn đề hiện tại:**
+`_show_extracted_campaigns` (`bot/handlers.py:5296`) gọi
+`extract_campaigns_from_synthesis` ngay sau khi confirm strategy — trích
+2-3 campaign từ Roadmap mà KHÔNG biết Budget/Team của user. Card hiện tại
+ghi chú "💰 Budget / 👥 Team / 📆 Ngày bắt đầu / 🎟 % giảm — sếp quyết ở bước
+sau" (`bot/handlers.py:5348`) — nghĩa là campaign đề xuất có thể quá tải so
+với quy mô thực tế (vd campaign cần outsource UGC + đa kênh nhưng user chỉ
+có 1 người làm content).
+
+**Thay đổi muốn làm:**
+1. Trước khi gọi `extract_campaigns_from_synthesis`, hỏi user 2 câu:
+   💰 Budget marketing/tháng (hoặc cho campaign này) + 👥 Team size (số người,
+   vai trò — vd "1 content + thuê ngoài video").
+   - Nếu profile đã có `monthly_marketing_budget`/`team_size`
+     (`agents/discovery.py` — xem `bot/handlers.py:3770-3773`) thì show lại
+     cho user confirm/sửa thay vì hỏi từ đầu.
+2. Inject Budget/Team vào prompt của `extract_campaigns_from_synthesis`
+   (`agents/campaign_ideation.py:373`) — campaign đề xuất phải fit quy mô
+   (số kênh, tần suất, có cần outsource hay không).
+3. Sau khi show campaign(s) fit nhất, thêm dòng: *"Đây là campaign Max thấy
+   phù hợp với quy mô hiện tại của sếp. Nếu sếp muốn xem thêm hướng khác
+   (tham vọng hơn / cần thêm resource), bấm nút bên dưới"* — thêm nút
+   "🔍 Xem thêm phương án khác" trong cùng bước chọn campaign (không phải
+   bước riêng).
+   - Phương án "khác" có thể là campaign tham vọng hơn mà
+     `extract_campaigns_from_synthesis` đã trích nhưng bị filter ra vì
+     vượt quy mô — giữ lại trong `_extracted_campaigns` (không discard),
+     chỉ ẩn ban đầu.
+
+---
+
+## 6. TODO (2026-06-12) — Câu 2-3 trong offer-preferences (sau khi chốt campaign) đang generic, không theo ngành
+
+**Vấn đề hiện tại:**
+`_ask_offer_preferences` (`bot/handlers.py:7632`) hỏi 3 câu về offer:
+1️⃣ "mồi" khách (đã có `generate_bait_hint` — đặc thù theo ngành, OK)
+2️⃣ "cho đi tới đâu mà vẫn lời" — ví dụ hardcode: "giảm tối đa 20%", "tặng được
+   món < 15k", "miễn phí 1 buổi trải nghiệm" (`bot/handlers.py:7649`)
+3️⃣ "bắt buộc phải giữ" — ví dụ hardcode: "giá gốc vẫn hiển thị trên menu",
+   "không phá giá thị trường", "không tặng tiền mặt" (`bot/handlers.py:7651`)
+
+Ví dụ câu 2-3 nghiêng retail/F&B/dịch vụ ("menu", "món", "buổi trải nghiệm") —
+KHÔNG hợp với ngành B2B/SaaS/sản xuất/giáo dục trong 15 ngành của data.
+
+**Thay đổi muốn làm:**
+Mở rộng `generate_bait_hint` (hoặc thêm hàm tương tự) thành sinh CẢ 3 ví dụ
+(câu 1-2-3) đặc thù theo ngành trong 1 LLM call — dùng cùng `_build_industry_levers_context`
+(`agents/campaign_ideation.py:489`) đã có sẵn. Giữ fallback hardcode hiện tại
+cho trường hợp thiếu ngành / LLM lỗi.
 
 ---
