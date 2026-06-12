@@ -28,8 +28,8 @@ TASK_SELECT_KEYBOARD = MAIN_MENU_KEYBOARD  # alias
 
 QUICK_MENU_KEYBOARD = ReplyKeyboardMarkup(
     [
-        ["🛍 Dịch vụ", "💬 Hỗ trợ"],
-        ["👛 Ví token"],
+        ["▶️ Tiếp tục", "🛍 Dịch vụ"],
+        ["💬 Hỗ trợ", "👛 Ví token"],
     ],
     resize_keyboard=True,
     input_field_placeholder="Chọn menu nhanh bên dưới",

@@ -453,6 +453,16 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     # Quick-menu (persistent reply keyboard) — bấm nút gửi về plain text trùng label
+    if text == "▶️ Tiếp tục":
+        synthesis = (session.get_latest_result("synthesis") or "").strip()
+        if synthesis and not session.pending_intake.get("_extracted_campaigns"):
+            await _show_extracted_campaigns(update.message, session)
+        else:
+            await update.message.reply_text(
+                "Sếp gõ /start để xem các lựa chọn tiếp theo nhé ạ 👇",
+                reply_markup=MAIN_MENU_KEYBOARD,
+            )
+        return
     if text == "🛍 Dịch vụ":
         await update.message.reply_text(
             "Đây là các dịch vụ Max có thể giúp sếp 👇",
