@@ -5080,6 +5080,21 @@ async def _ask_next_strategy_question(message: Message, session) -> None:
     if current_key and current_key not in answers and current_full:
         q = _json.loads(current_full)
         current = total - len(questions)
+    elif current_key and current_key not in answers and not current_full:
+        # Session cũ trước khi có _current_q_full (vd crash giữa câu pricing_approach
+        # do bug dict-options) — không còn lưu full question, reconstruct từ fallback
+        # theo industry để hỏi lại đúng câu này.
+        fallback = {fq["key"]: fq for fq in _default_strategy_questions_fallback(session.profile.industry)}
+        q = fallback.get(current_key, {
+            "key": current_key,
+            "question": _STRATEGY_Q_LABELS.get(current_key, current_key),
+            "context": "",
+            "options": [],
+        })
+        q = {**q, "options": [_strategy_opt_to_str(o) for o in q.get("options", [])]}
+        session.pending_intake["_current_q_full"] = _json.dumps(q, ensure_ascii=False)
+        await save_session(session)
+        current = total - len(questions)
     elif not questions:
         # All answered → run synthesis
         session.pending_intake.pop("_strategy_questions", None)
