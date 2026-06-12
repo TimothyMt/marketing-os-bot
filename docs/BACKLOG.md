@@ -127,6 +127,63 @@ mapping, handlers refs, docs; GIỮ TaskType enum trong storage/models.py):
   post_visual) — gỡ luôn khỏi set đó. `tests/test_content_pipeline_e2e.py` có
   reference comment_mining/post_visual — sửa test.
 
+---
+
+## 3. TODO — Làm "8 câu hỏi chiến lược" (sau T1-T3) thành flow phụ thuộc nhau
+
+**Vấn đề hiện tại:**
+`bot/handlers.py:4931` (`_generate_strategy_questions`) sinh CẢ 8 câu trong
+1 LLM call duy nhất, dựa trên 5 research result — TRƯỚC KHI user trả lời câu
+nào. Vì vậy câu 4 (`positioning`) không thể gợi ý dựa trên 3 câu trả lời đầu
+(`market_gap`, `target_segment`, `competitor_gap`), và câu 5-6
+(`pricing_approach`, `usp_angle`) không thể suy ra từ `positioning` user đã chọn.
+
+8 câu hiện tại (`_STRATEGY_Q_KEYS` / `_STRATEGY_Q_LABELS`,
+`bot/handlers.py:4908-4928`):
+1. `market_gap` — Market Gap
+2. `target_segment` — Target Segment
+3. `competitor_gap` — Gap Đối Thủ
+4. `positioning` — Định Vị
+5. `pricing_approach` — Pricing
+6. `usp_angle` — USP Angle
+7. `channels` — Kênh Triển Khai
+8. `timeline` — Timeline Triển Khai
+
+**Thay đổi muốn làm:**
+
+1. **Đổi label `competitor_gap`**: "Gap Đối Thủ" → "Messaging Gap"
+   (sửa `_STRATEGY_Q_LABELS` ở `bot/handlers.py:4922` và `label_map` ở
+   `agents/campaign_ideation.py:395`).
+
+2. **Sinh câu hỏi theo lô (batch) thay vì 1 lần cho cả 8:**
+   - Batch 1 (giữ nguyên, sinh ngay từ research): `market_gap`,
+     `target_segment`, `competitor_gap` (Q1-3).
+   - Sau khi user trả lời xong Q1-3 → gọi LLM thêm 1 lần để sinh `positioning`
+     (Q4), inject 3 câu trả lời vào prompt → options/gợi ý positioning bám
+     theo market_gap + target_segment + messaging_gap đã chọn.
+   - Sau khi user trả lời `positioning` (Q4) → gọi LLM thêm 1 lần để sinh
+     `pricing_approach` + `usp_angle` (Q5-6), inject câu trả lời positioning
+     vào prompt → pricing segment + USP angle phải nhất quán với định vị
+     đã chọn.
+   - `channels` (Q7) và `timeline` (Q8) giữ nguyên — không phụ thuộc gì.
+
+3. **Implementation:**
+   - Sửa `_generate_strategy_questions` (`bot/handlers.py:4931`) thành 3 hàm
+     nhỏ hơn (hoặc 1 hàm với tham số `batch`): `_gen_q1_3()`, `_gen_q4_positioning(answers)`,
+     `_gen_q5_6_pricing_usp(answers)`.
+   - Sửa `_ask_next_strategy_question` (`bot/handlers.py:5075`) — sau khi lưu
+     answer cho `competitor_gap` (Q3) thì gọi `_gen_q4_positioning` và append
+     vào `_strategy_questions`; sau khi lưu answer cho `positioning` (Q4) thì
+     gọi `_gen_q5_6_pricing_usp` và append.
+   - Giữ fallback (`_default_strategy_questions_fallback`) cho từng batch nếu
+     LLM call fail — hiện tại fallback đã có sẵn full 8 câu, chỉ cần tách theo
+     batch tương ứng.
+
+**Trade-off:** thêm 2 LLM call giữa flow (latency tăng nhẹ ngay sau khi user
+trả lời Q3 và Q4), nhưng đổi lại Q4-6 thực sự "ăn theo" lựa chọn trước —
+chiến lược nhất quán hơn (positioning suy từ gap analysis, pricing + USP
+angle suy từ positioning).
+
 **b) Xoá hẳn `social_posts`** — trùng vai với `post_batch` (cùng là bài đăng hữu cơ
 batch). Lưu ý: `social_posts` đang nằm trong `CALENDAR_DRIVEN_SKILLS`
 (`agents/pipeline.py:391`) và `BV_INJECTED_SKILLS` — gỡ khỏi cả 2 set.
