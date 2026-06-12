@@ -559,7 +559,7 @@ field này ở đây là TRÙNG → xoá ở content_generator, giữ ở (b). K
 `ContentGeneratorPipeline` xem các field này có được dùng để branch logic
 không trước khi xoá (tránh lỗi field-not-found).
 
-### (f) TODO — video_script_gen: cấu trúc 13-cột cứng (Hook/Problem/Solution/
+### (f) ✅ DONE (2026-06-12) — video_script_gen: cấu trúc 13-cột cứng (Hook/Problem/Solution/
 ### Proof/CTA theo PAS) → thay theo "tuyến content" đã chọn ở (b)
 `VIDEO_SCRIPT_GEN_SYSTEM` (`agents/operational_prompts.py:1369-1426`) ép mọi
 video vào khung 5-beat PAS cố định (Hook 3s/Problem 10s/Solution 20s/Proof
@@ -570,6 +570,25 @@ angle/Pillar đã gán trong Calendar) — PAS chỉ là 1 trong nhiều framewo
 khả dụng (xem `agents/content_suite_prompts.py:344-352` đã có sẵn 5
 frameworks: PAS/BAB/AIDA/FAB/Star-Story — video script nên theo đúng
 framework đã gán cho slot đó trong Calendar, không hard-code PAS).
+
+**Đã làm:** Viết lại toàn bộ `VIDEO_SCRIPT_GEN_SYSTEM`
+(`agents/operational_prompts.py:1369+`):
+- Thêm bảng 7 FRAMEWORK với nhịp beat + timing riêng: PAS, BAB, AIDA, FAB,
+  Star-Story (từ `content_suite_prompts.py`) + 2 framework mới đặc thù video
+  ngắn: Storytime/Day-in-life, Listicle/Tips.
+- BƯỚC 1: LLM chọn framework match nhất cho TỪNG slot dựa trên "tuyến content"
+  (từ section TIKTOK — TUYẾN CONTENT DO SẾP CHỐT của (b)) hoặc Hook
+  angle/Pillar/Funnel trong Calendar — không ép PAS, đa dạng framework nếu
+  ≥3 video.
+- BƯỚC 2: viết lời thoại thật cho từng beat của framework đã chọn, kèm timing.
+- Table output đổi từ 13 cột cứng (Hook/Problem/Solution/Proof/CTA riêng) →
+  8 cột: Version | Creator Type | Platform | Framework | Beat Breakdown (kèm
+  timing) | Visual Direction | Caption Hook + Hashtags | Ghi chú — cột "Beat
+  Breakdown" chứa số beat ĐỘNG tùy framework (không cố định 5), mỗi beat ghi
+  "Tên beat Xs: lời thoại" nối bằng " / ". Giữ nguyên rule "1 bảng duy nhất"
+  để Excel extraction không bị lỗi (không có hardcode tên cột nào ở
+  bot/excel_reader.py hay bot/renderers.py phụ thuộc cấu trúc cũ, nên đổi an
+  toàn).
 
 ### (g) TODO — Sau Content Calendar, không tự cascade chạy hết content_generator
 (post + video script + UGC brief + ads cùng lúc) — chỉ chạy phần user chọn
