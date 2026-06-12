@@ -581,16 +581,19 @@ async def _call_openai_generic(model: str, system: str, user: str, max_tokens: i
     }
 
     if is_gpt5_reasoning:
-        # Auto-pick reasoning effort: lower max_tokens → minimal reasoning để giữ output
-        # max < 500: minimal (no reasoning)
-        # max 500-3000: low
-        # max 3000-10000: medium (default)
-        # max > 10000: medium (chuyển high khi cần)
+        # Auto-pick reasoning effort: lower max_tokens → minimal reasoning để giữ output.
+        # "low" áp dụng cho hầu hết task — "medium" (default khi omit) có thể ăn
+        # hết budget reasoning trước khi sinh output, gây cắt giữa câu (finish_reason=length)
+        # ngay cả khi max_tokens khá lớn (vd SWOT max_tokens=6000 vẫn bị cắt).
         if max_tokens < 500:
             request_args["reasoning_effort"] = "minimal"
-        elif max_tokens < 3000:
+        elif max_tokens < 12000:
             request_args["reasoning_effort"] = "low"
-        # else: omit → OpenAI default = medium
+        # else: omit → OpenAI default = medium (task output rất dài, cần reasoning kỹ hơn)
+
+        # reasoning tokens tính vào max_completion_tokens nhưng KHÔNG nằm trong output
+        # trả về → cộng buffer để reasoning không ăn vào budget dành cho output.
+        request_args["max_completion_tokens"] = max_tokens + 1500
 
     response = await client.chat.completions.create(**request_args)
     choice = response.choices[0]
@@ -599,6 +602,11 @@ async def _call_openai_generic(model: str, system: str, user: str, max_tokens: i
         raise RuntimeError(
             f"OpenAI {model} returned empty output (finish_reason={choice.finish_reason}, "
             f"max_tokens={max_tokens}). GPT-5 reasoning models cần max_tokens lớn hơn (~500+)."
+        )
+    if choice.finish_reason == "length":
+        raise RuntimeError(
+            f"OpenAI {model} output bị cắt giữa câu (finish_reason=length, max_tokens={max_tokens}) "
+            f"— failover sang provider khác để có output đầy đủ."
         )
     usage = response.usage
     return {
