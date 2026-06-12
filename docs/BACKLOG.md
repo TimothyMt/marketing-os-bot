@@ -413,7 +413,7 @@ thì fallback `_chosen_campaign["channels"]`, rồi prefill vào `prefilled` +
 
 ---
 
-## 9. TODO (2026-06-12) — "Vớt khách chưa convert" theo từng campaign — KHÔNG tạo retention_strategy riêng cho campaign
+## 9. ✅ DONE (2026-06-12) — "Vớt khách chưa convert" theo từng campaign — KHÔNG tạo retention_strategy riêng cho campaign
 
 **Câu hỏi gốc:** Có nên có `retention_strategy` riêng cho từng campaign,
 mục đích tối ưu ROI + vớt khách đã hứng thú với campaign đó nhưng chưa
@@ -443,6 +443,22 @@ chuyển đổi?
 
 **Phụ thuộc:** không phụ thuộc backlog #5/#6 (Budget/Team, offer packages) —
 có thể làm độc lập.
+
+**Đã làm:**
+- Nút mới "🎯 Vớt khách chưa convert" trong `FUNNEL_APPROVE_KEYBOARD`
+  (`bot/keyboards.py`), hiện ngay sau khi gửi Funnel Map + Execution Plan
+  (cùng bước với "✅ Duyệt kế hoạch").
+- Callback `rescue_nonconvert` → `_rescue_nonconvert_action` (`bot/handlers.py`)
+  — chạy thẳng `email_zalo_sequence` (không hỏi form, bypass qua
+  `_handle_ops_intake_reply(..., "ok")`):
+  - `audience_segment` = mô tả stage BOFU (Convert) lấy từ
+    `_funnel_map_json` (`bofu.goal` + `stage_labels.bofu` + `bofu.cta`),
+    fallback "Khách đã quan tâm/inbox campaign ... nhưng chưa chuyển đổi".
+  - `sequence_goal` = "Vớt khách chưa convert từ campaign ... — nurture quay
+    lại với offer: {key_offer}" (key_offer từ `_chosen_campaign`).
+  - `channel_preference` = channels của campaign, fallback "Zalo OA + Email".
+- Không tạo skill `retention_strategy` riêng cho campaign — giữ nguyên hệ
+  thống retention toàn business như đã chốt.
 
 ---
 

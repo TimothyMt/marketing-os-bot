@@ -1801,6 +1801,13 @@ async def _handle_callback_inner(update, context, query, session, data, user_id)
         await _gen_content_calendar_after_approval(query.message, session, context, update)
         return
 
+    # BACKLOG #9 — "Vớt khách chưa convert": chạy email_zalo_sequence prefill
+    # từ campaign vừa chốt (key_offer + BOFU chưa convert + channels).
+    if data == "rescue_nonconvert":
+        await query.edit_message_reply_markup(reply_markup=None)
+        await _rescue_nonconvert_action(update, context, session)
+        return
+
     # DEBUG: re-run funnel_map với session hiện tại, không tạo session mới
     if data == "dbg_funnel":
         campaign_name = (session.pending_intake.get("campaign_name")
@@ -7673,6 +7680,63 @@ async def _gen_and_show_funnel_map(
         logger.warning("funnel_map/execution_plan block skipped: %s", _fe)
 
     return funnel_ok
+
+
+async def _rescue_nonconvert_action(update, context, session):
+    """BACKLOG #9 — 'Vớt khách chưa convert' cho campaign vừa chốt: chạy thẳng
+    email_zalo_sequence với intake prefill từ campaign (key_offer, segment
+    BOFU chưa convert lấy từ Funnel Map, channels của campaign) — 1 chuỗi
+    nurture tập trung vào nhóm "warm nhưng chưa chốt" của riêng campaign này."""
+    import json as _json
+
+    try:
+        campaign = _json.loads(session.pending_intake.get("_chosen_campaign", "{}"))
+    except _json.JSONDecodeError:
+        campaign = {}
+
+    campaign_name = (
+        campaign.get("name")
+        or session.pending_intake.get("campaign_name")
+        or session.pending_intake.get("current_campaign")
+        or "Campaign"
+    )
+    key_offer = (campaign.get("key_offer") or session.pending_intake.get("key_offer") or "").strip()
+    channels  = (campaign.get("channels") or session.pending_intake.get("channels") or "").strip()
+
+    # Lấy mô tả stage BOFU (Convert) từ Funnel Map đã gen — đúng nhóm "đã vào
+    # BOFU nhưng chưa mua" để chuỗi nurture bám sát.
+    bofu_desc = ""
+    try:
+        funnel_map = _json.loads(session.pending_intake.get("_funnel_map_json") or "[]")
+        if funnel_map:
+            bofu = funnel_map[0].get("bofu") or {}
+            stage_label = (funnel_map[0].get("stage_labels") or {}).get("bofu", "Convert")
+            if bofu.get("goal"):
+                bofu_desc = f"Đã ở giai đoạn {stage_label} (BOFU) — {bofu['goal']}, nhưng chưa {bofu.get('cta', 'chốt')}"
+    except Exception:
+        pass
+
+    audience_segment = (
+        bofu_desc
+        or f"Khách đã quan tâm/inbox campaign \"{campaign_name}\" nhưng chưa chuyển đổi"
+    )
+    sequence_goal = f"Vớt khách chưa convert từ campaign \"{campaign_name}\""
+    if key_offer:
+        sequence_goal += f" — nurture quay lại với offer: {key_offer}"
+
+    session.pending_intake["audience_segment"]  = audience_segment
+    session.pending_intake["sequence_goal"]     = sequence_goal
+    session.pending_intake["channel_preference"] = channels or "Zalo OA + Email"
+    session.pending_intake[OPS_INTAKE_AWAITING] = "email_zalo_sequence"
+    session.selected_task = "email_zalo_sequence"
+    session.stage = PipelineStage.INTAKE
+    await save_session(session)
+
+    await update.message.reply_text(
+        f"🎯 *Em dựng chuỗi nurture \"vớt khách chưa convert\" cho campaign \"{campaign_name}\"...*",
+        parse_mode=ParseMode.MARKDOWN,
+    )
+    await _handle_ops_intake_reply(update, context, session, "ok")
 
 
 async def _emit_funnel_approve_prompt(message, session, prompt: str):
