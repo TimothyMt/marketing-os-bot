@@ -265,23 +265,51 @@ có 1 người làm content).
 
 ---
 
-## 6. TODO (2026-06-12) — Câu 2-3 trong offer-preferences (sau khi chốt campaign) đang generic, không theo ngành
+## 6. TODO (2026-06-12) — Đổi 3 câu offer-preferences thành 1 bước chọn "gói ưu đãi" (package)
 
 **Vấn đề hiện tại:**
-`_ask_offer_preferences` (`bot/handlers.py:7632`) hỏi 3 câu về offer:
+`_ask_offer_preferences` (`bot/handlers.py:7632`) hỏi 3 câu mở về offer:
 1️⃣ "mồi" khách (đã có `generate_bait_hint` — đặc thù theo ngành, OK)
 2️⃣ "cho đi tới đâu mà vẫn lời" — ví dụ hardcode: "giảm tối đa 20%", "tặng được
    món < 15k", "miễn phí 1 buổi trải nghiệm" (`bot/handlers.py:7649`)
 3️⃣ "bắt buộc phải giữ" — ví dụ hardcode: "giá gốc vẫn hiển thị trên menu",
    "không phá giá thị trường", "không tặng tiền mặt" (`bot/handlers.py:7651`)
 
-Ví dụ câu 2-3 nghiêng retail/F&B/dịch vụ ("menu", "món", "buổi trải nghiệm") —
-KHÔNG hợp với ngành B2B/SaaS/sản xuất/giáo dục trong 15 ngành của data.
+Ví dụ câu 2-3 nghiêng retail/F&B/dịch vụ ("menu", "món", "buổi trải nghiệm",
+"<15k") — KHÔNG hợp với ngành B2B/SaaS/giáo dục/real estate (chênh lệch quy mô
+tiền: vài chục nghìn vs vài tỷ). 3 câu mở trừu tượng cũng dễ khiến user bấm
+"để em tự đề xuất" → mất input thật.
 
-**Thay đổi muốn làm:**
-Mở rộng `generate_bait_hint` (hoặc thêm hàm tương tự) thành sinh CẢ 3 ví dụ
-(câu 1-2-3) đặc thù theo ngành trong 1 LLM call — dùng cùng `_build_industry_levers_context`
-(`agents/campaign_ideation.py:489`) đã có sẵn. Giữ fallback hardcode hiện tại
-cho trường hợp thiếu ngành / LLM lỗi.
+**Quyết định đã chốt — thay 3 câu mở bằng 1 bước chọn gói:**
+
+Max sinh 3 "gói ưu đãi" trọn (mechanism + mức cho đi + constraint trong 1 gói,
+đặc thù theo ngành + `pricing_approach` đã chốt ở 8 câu chiến lược + Budget/Team
+từ backlog #5), show dạng nút bấm — user chọn 1 hoặc bấm "✏️ Tự định nghĩa" để
+gõ tay như flow cũ. Xem ví dụ minh hoạ (spa/clinic, agency B2B, giáo dục,
+real estate) đã thảo luận trong session 2026-06-12.
+
+**KHÔNG thêm câu hỏi mới** (vd margin/giá vốn thật) — lý do: mục tiêu là giảm
+tải, không tăng. Capacity vận hành lấy từ Budget/Team (backlog #5, đã hỏi
+trước khi đề xuất campaign). Margin/giá vốn thật không hỏi — mỗi gói ghi
+"mức cho đi" dạng tương đối (% hoặc trần) để founder tự đối chiếu và sửa qua
+"✏️ Tự định nghĩa" nếu lệch.
+
+**Implementation:**
+- Thêm hàm sinh package (vd `propose_offer_packages(session, campaign)` trong
+  `agents/campaign_ideation.py`, cạnh `propose_offer_levers` hiện có) — dùng
+  `_build_industry_levers_context` (`agents/campaign_ideation.py:489`) +
+  inject `pricing_approach` (từ `_strategy_answers`) + Budget/Team (backlog #5).
+  Output 3 gói, mỗi gói có: `name`, `mechanism`, `give_away` (mức tương đối),
+  `constraint`.
+- Sửa `_ask_offer_preferences` (`bot/handlers.py:7632`) — thay message 3 câu
+  bằng card hiển thị 3 gói + nút chọn (`1️⃣`/`2️⃣`/`3️⃣`/`✏️ Tự định nghĩa`).
+- Sửa `_handle_offer_prefs_text` / `propose_offer_levers`
+  (`agents/campaign_ideation.py:729`) — nhánh "✏️ Tự định nghĩa" giữ nguyên
+  flow 3-câu cũ làm fallback; nhánh chọn gói đi thẳng vào
+  `format_levers_card` với gói đã chọn.
+- Giữ `generate_bait_hint` làm nguồn data cho mechanism của các gói (không bỏ).
+
+**Phụ thuộc:** nên làm SAU backlog #5 (Budget/Team) vì cần info đó để gói
+phù hợp quy mô.
 
 ---
