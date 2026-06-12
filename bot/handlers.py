@@ -4088,6 +4088,27 @@ async def _send_single_shot_form(message: Message, session, task_name: str, _ski
     for k, v in prefilled.items():
         session.pending_intake[k] = v
 
+    # ── content_calendar "channels": đã chốt ở câu 7/8 chiến lược
+    # (_strategy_answers["channels"]) hoặc trong campaign đã chọn — không hỏi lại.
+    if task_name == "content_calendar" and "channels" not in prefilled:
+        import json as _json
+
+        channels_val = ""
+        try:
+            _strat = _json.loads(session.pending_intake.get("_strategy_answers", "{}"))
+            channels_val = (_strat.get("channels") or "").strip()
+        except (_json.JSONDecodeError, AttributeError):
+            pass
+        if not channels_val:
+            try:
+                _camp = _json.loads(session.pending_intake.get("_chosen_campaign", "{}"))
+                channels_val = (_camp.get("channels") or "").strip()
+            except (_json.JSONDecodeError, AttributeError):
+                pass
+        if channels_val:
+            prefilled["channels"] = channels_val
+            session.pending_intake["channels"] = channels_val
+
     # ── Campaign Brief pre-fill: nếu đã có brief thì dùng làm base ──
     if task_name == "content_generator":
         brief_result = session.get_latest_result("campaign_brief")

@@ -340,3 +340,19 @@ tự parse thời lượng (`_parse_duration_days`, default 28 ngày nếu khôn
   "Ngày bắt đầu" thành "Thời lượng"
 
 ---
+
+## 8. ✅ DONE (2026-06-12) — Content Calendar "Kênh": tái dùng từ 8/8 chiến lược / campaign đã chọn, không hỏi lại
+
+**Vấn đề cũ:** `content_calendar` intake có field `"channels"` ("Kênh", vd
+"TikTok + Facebook + Zalo OA") nhưng thông tin này đã được chốt ở câu 7/8
+chiến lược (`_strategy_answers["channels"]` — "Kênh Triển Khai") và/hoặc nằm
+trong `channels` của campaign đã chọn (`_chosen_campaign`) — hỏi lại là hỏi
+trùng.
+
+**Đã sửa:** Trong `_send_single_shot_form` (`bot/handlers.py`), sau bước
+Smart Pre-fill, nếu `task_name == "content_calendar"` và `"channels"` chưa
+được prefill từ profile → tự lấy `_strategy_answers["channels"]`, nếu rỗng
+thì fallback `_chosen_campaign["channels"]`, rồi prefill vào `prefilled` +
+`pending_intake["channels"]` → field "Kênh" không hiện lại trong form.
+
+---
