@@ -603,7 +603,7 @@ def format_options_card(options: list[dict]) -> str:
         lines.append(f"💭 *Vì sao phù hợp:* {opt.get('why_fit', '?')}\n")
 
     lines.append(f"━━━━━━━━━━━━━━━━━━━━")
-    lines.append("\n_💰 Budget / 👥 Team / 📆 Ngày bắt đầu / 🎟 % giảm — sếp sẽ quyết ở bước sau._\n")
+    lines.append("\n_💰 Budget / 👥 Team / 📅 Thời lượng / 🎟 % giảm — sếp sẽ quyết ở bước sau._\n")
     lines.append("👇 *Sếp chọn option nào để em làm Brief Campaign?*")
     return "\n".join(lines)
 
@@ -648,7 +648,7 @@ def format_refined_card(refined_data: dict) -> str:
         lines.append("")
 
     lines.append("━━━━━━━━━━━━━━━━━━━━")
-    lines.append("\n_💰 Budget / 👥 Team / 📆 Ngày bắt đầu / 🎟 % giảm — sếp sẽ quyết ở bước sau._\n")
+    lines.append("\n_💰 Budget / 👥 Team / 📅 Thời lượng / 🎟 % giảm — sếp sẽ quyết ở bước sau._\n")
     lines.append("👇 *Sếp OK với campaign này không?*")
     return "\n".join(lines)
 
@@ -719,11 +719,28 @@ QUY TẮC LEVERS:
 """
 
 
-# Common fields — chỉ giữ 2 fields THỜI GIAN cho Content Calendar
+# Common field — chỉ 1 field THỜI LƯỢNG cho Content Calendar (ngày bắt đầu mặc
+# định = hôm nay, ngày kết thúc tự tính từ thời lượng — xem merge_to_brief_fields)
 COMMON_FINALIZE_FIELDS = [
-    {"label": "Ngày bắt đầu",  "example": "15/01/2026 / Thứ 2 tuần sau"},
-    {"label": "Ngày kết thúc", "example": "28/02/2026 / Sau 6 tuần"},
+    {"label": "Thời lượng campaign", "example": "4 tuần / 6 tuần / 2 tháng"},
 ]
+
+
+def _parse_duration_days(text: str) -> int:
+    """Parse '4 tuần' / '6 tuần' / '2 tháng' / '30 ngày' → số ngày.
+    Default 28 ngày (4 tuần) nếu không parse được."""
+    if not text:
+        return 28
+    m = re.search(r"(\d+)\s*tu[aầ]n", text, re.IGNORECASE)
+    if m:
+        return int(m.group(1)) * 7
+    m = re.search(r"(\d+)\s*th[aá]ng", text, re.IGNORECASE)
+    if m:
+        return int(m.group(1)) * 30
+    m = re.search(r"(\d+)\s*ng[aà]y", text, re.IGNORECASE)
+    if m:
+        return int(m.group(1))
+    return 28
 
 
 async def propose_offer_levers(session: Session, campaign: dict) -> Optional[list[dict]]:
@@ -814,14 +831,15 @@ def format_levers_card(campaign: dict, levers: list[dict]) -> str:
 
 
 def get_finalize_fields(lever: dict) -> list[dict]:
-    """Build full finalize field list = lever params + 2 common date fields."""
+    """Build full finalize field list = lever params + common duration field."""
     fields = list(lever.get("parameters", []) or [])
     fields.extend(COMMON_FINALIZE_FIELDS)
     return fields
 
 
 def format_dynamic_finalize_form(campaign: dict, lever: dict) -> str:
-    """Form động dựa trên lever đã chọn: lever params + Ngày bắt đầu + Ngày kết thúc."""
+    """Form động dựa trên lever đã chọn: lever params + Thời lượng campaign
+    (ngày bắt đầu mặc định = hôm nay, ngày kết thúc tự tính)."""
     fields = get_finalize_fields(lever)
 
     lines = [
@@ -841,12 +859,22 @@ def format_dynamic_finalize_form(campaign: dict, lever: dict) -> str:
         lines.append("")
 
     lines.append("━━━━━━━━━━━━━━━━━━━━")
-    lines.append("*📅 Timeline (cần cho Content Calendar):*")
+    lines.append("*📅 Thời lượng (cần cho Content Calendar):*")
     lines.append("")
+    suggestion = campaign.get("duration_suggestion") or campaign.get("duration")
     for f in COMMON_FINALIZE_FIELDS:
         lines.append(f"*{f['label']}:*")
-        lines.append(f"_Vd: {f.get('example', '...')}_")
+        example = f.get("example", "...")
+        if suggestion:
+            lines.append(f"_Vd: {example} — gợi ý AI cho campaign này: {suggestion}_")
+        else:
+            lines.append(f"_Vd: {example}_")
         lines.append("")
+    lines.append(
+        "_Ngày bắt đầu mặc định là hôm nay — em tự tính ngày kết thúc theo "
+        "thời lượng sếp chọn._"
+    )
+    lines.append("")
 
     lines.append("━━━━━━━━━━━━━━━━━━━━")
     lines.append(
@@ -927,13 +955,19 @@ def merge_to_brief_fields(
 
     campaign_brief consume 4 keys: campaign_name, campaign_goal, duration, key_offer
     """
-    start_date = user_inputs.get("Ngày bắt đầu", "chưa rõ")
-    end_date = user_inputs.get("Ngày kết thúc", "chưa rõ")
+    from datetime import date, timedelta
 
-    # Lever parameters (loại 2 common fields)
+    duration_text = user_inputs.get("Thời lượng campaign", "")
+    duration_days = _parse_duration_days(duration_text)
+    start = date.today()
+    end = start + timedelta(days=duration_days)
+    start_date = start.strftime("%d/%m/%Y")
+    end_date = end.strftime("%d/%m/%Y")
+
+    # Lever parameters (loại field thời lượng)
     lever_params = {
         k: v for k, v in user_inputs.items()
-        if k not in {"Ngày bắt đầu", "Ngày kết thúc"}
+        if k != "Thời lượng campaign"
     }
 
     lever_params_text = "\n".join(
@@ -947,6 +981,7 @@ def merge_to_brief_fields(
             f"**Target segment:** {campaign.get('target_segment', 'chưa rõ')}"
         ),
         "duration": (
+            f"**Thời lượng:** {duration_text or f'{duration_days} ngày'}\n"
             f"**Ngày bắt đầu:** {start_date}\n"
             f"**Ngày kết thúc:** {end_date}\n"
             f"_(Gợi ý từ AI: {campaign.get('duration_suggestion') or campaign.get('duration', 'N/A')})_"

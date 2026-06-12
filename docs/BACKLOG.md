@@ -313,3 +313,30 @@ trước khi đề xuất campaign). Margin/giá vốn thật không hỏi — m
 phù hợp quy mô.
 
 ---
+
+## 7. ✅ DONE (2026-06-12) — Content Calendar timeline: hỏi "Thời lượng" thay vì "Ngày bắt đầu/Ngày kết thúc"
+
+**Vấn đề cũ:** `COMMON_FINALIZE_FIELDS` (`agents/campaign_ideation.py`) hỏi 2
+field "Ngày bắt đầu" + "Ngày kết thúc" — Timeline 8/8 ("Sprint 90 ngày" / "6
+tháng"...) là độ dài TOÀN ROADMAP (chứa nhiều campaign), còn campaign đang
+finalize chỉ là 1 slice trong đó (`duration_suggestion`, vd "4-6 tuần") —
+không thể tái dùng trực tiếp Timeline 8/8 cho 2 field này.
+
+**Đã chốt + fix:** Ngày bắt đầu có default tốt (hôm nay) → không hỏi. Thời
+lượng có signal thật từ founder (test nhanh 4 tuần vs full 6 tuần) → hỏi 1
+field duy nhất **"Thời lượng campaign"** (gợi ý "4 tuần / 6 tuần / 2 tháng",
+kèm gợi ý AI = `duration_suggestion` của campaign đã chọn). `merge_to_brief_fields`
+tự parse thời lượng (`_parse_duration_days`, default 28 ngày nếu không parse
+được) → tính `start_date = hôm nay`, `end_date = start + duration`.
+
+**Đã sửa:**
+- `COMMON_FINALIZE_FIELDS` → 1 field "Thời lượng campaign"
+- `_parse_duration_days()` — parse "X tuần/tháng/ngày" → số ngày
+- `format_dynamic_finalize_form` — hiển thị gợi ý AI theo `duration_suggestion`
+- `merge_to_brief_fields` — tự tính start/end date từ thời lượng
+- `_haiku_extract_finalize` system prompt (`bot/handlers.py`) — map "X tuần/tháng"
+  vào field "Thời lượng campaign" thay vì NGÀY BẮT ĐẦU/KẾT THÚC
+- Các card note "Budget/Team/Ngày bắt đầu/% giảm — quyết ở bước sau" → đổi
+  "Ngày bắt đầu" thành "Thời lượng"
+
+---

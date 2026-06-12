@@ -5348,7 +5348,7 @@ async def _show_extracted_campaigns(message: Message, session):
         lines.append(f"📅 *Độ dài gợi ý:* {c.get('duration_suggestion', '?')}")
         lines.append(f"💭 *Vì sao hợp:* {c.get('why_fit', '?')}\n")
     lines.append("━━━━━━━━━━━━━━━━━━━━")
-    lines.append("\n_💰 Budget / 👥 Team / 📆 Ngày bắt đầu / 🎟 % giảm — sếp quyết ở bước sau._\n")
+    lines.append("\n_💰 Budget / 👥 Team / 📅 Thời lượng / 🎟 % giảm — sếp quyết ở bước sau._\n")
     lines.append("👇 *Sếp chọn campaign nào để em làm Brief Campaign?*")
 
     rows = []
@@ -7743,7 +7743,7 @@ async def _show_offer_lever_selection(message: Message, session, campaign: dict)
 
 
 async def _show_dynamic_finalize_form(message: Message, session, campaign: dict, lever: dict):
-    """Show form động: lever params + Ngày bắt đầu + Ngày kết thúc."""
+    """Show form động: lever params + Thời lượng campaign (cho Content Calendar)."""
     from agents.campaign_ideation import format_dynamic_finalize_form
     import json as _json
 
@@ -7782,8 +7782,7 @@ async def _haiku_extract_finalize(text: str, fields: list, session) -> dict:
         "  · Số kèm 'suất/slot/phần' → field SỐ LƯỢNG\n"
         "  · Số có '%' → field mức DISCOUNT\n"
         "  · Điều kiện/cách nhận biết (vd 'khách tự khai', 'nhân viên hỏi') → field ĐIỀU KIỆN\n"
-        "  · 'thứ 2 tuần sau', '15/01' → NGÀY BẮT ĐẦU\n"
-        "  · 'trong 1 tuần', 'sau 6 tuần', '1 tháng', '28/02' → NGÀY KẾT THÚC\n"
+        "  · '4 tuần', '6 tuần', '2 tháng', '30 ngày' → field THỜI LƯỢNG CAMPAIGN\n"
         "- Nếu 1 câu chứa NHIỀU field (vd 'tặng sốt phô mai 8k') → tách ra đúng từng field.\n"
         "- Field nào user KHÔNG nhắc → bỏ qua, TUYỆT ĐỐI không bịa.\n"
         "Output CHỈ JSON object, key = label CHÍNH XÁC, value = string. Không markdown, không giải thích."
