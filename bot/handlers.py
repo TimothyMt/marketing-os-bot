@@ -5045,6 +5045,21 @@ async def _start_strategic_consultation(message: Message, session) -> None:
     await _ask_next_strategy_question(message, session)
 
 
+def _strategy_opt_to_str(opt) -> str:
+    """LLM đôi khi trả 'options' dạng object (vd pricing segment
+    {"segment","price_range","channels"}) thay vì string thuần — chuẩn hóa
+    về string để tránh crash khi slice/format/lưu answer."""
+    if isinstance(opt, dict):
+        seg = opt.get("segment") or opt.get("name") or ""
+        price = opt.get("price_range") or ""
+        channels = opt.get("channels") or ""
+        s = " ".join(p for p in [seg, f"({price})" if price else ""] if p)
+        if channels:
+            s += f" — kênh: {channels}"
+        return s or str(opt)
+    return str(opt)
+
+
 async def _ask_next_strategy_question(message: Message, session) -> None:
     """Pop and show next strategy question, or run synthesis if all answered."""
     import json as _json
@@ -5068,9 +5083,11 @@ async def _ask_next_strategy_question(message: Message, session) -> None:
     total     = len(_STRATEGY_Q_KEYS)
     current   = total - len(remaining)  # 1-based index
 
+    norm_options = [_strategy_opt_to_str(o) for o in q["options"]]
+
     session.pending_intake["_strategy_questions"]  = _json.dumps(remaining, ensure_ascii=False)
     session.pending_intake["_current_q_key"]       = q["key"]
-    session.pending_intake["_current_q_options"]   = _json.dumps(q["options"], ensure_ascii=False)
+    session.pending_intake["_current_q_options"]   = _json.dumps(norm_options, ensure_ascii=False)
     await save_session(session)
 
     label = _STRATEGY_Q_LABELS.get(q["key"], q["key"])
@@ -5092,11 +5109,11 @@ async def _ask_next_strategy_question(message: Message, session) -> None:
 
     _letters = ["A", "B", "C", "D", "E"]
     options_text = "\n".join(
-        f"*{_letters[i]}.* *{opt}*" for i, opt in enumerate(q["options"])
+        f"*{_letters[i]}.* *{opt}*" for i, opt in enumerate(norm_options)
     )
     buttons = [
         [InlineKeyboardButton(f"{_letters[i]}. {opt[:55]}", callback_data=f"strategy_q_{i}")]
-        for i, opt in enumerate(q["options"])
+        for i, opt in enumerate(norm_options)
     ]
     buttons.append([InlineKeyboardButton("✏️ Tôi có ý khác", callback_data="strategy_q_custom")])
     kb = InlineKeyboardMarkup(buttons)
