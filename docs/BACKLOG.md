@@ -356,3 +356,36 @@ thì fallback `_chosen_campaign["channels"]`, rồi prefill vào `prefilled` +
 `pending_intake["channels"]` → field "Kênh" không hiện lại trong form.
 
 ---
+
+## 9. TODO (2026-06-12) — "Vớt khách chưa convert" theo từng campaign — KHÔNG tạo retention_strategy riêng cho campaign
+
+**Câu hỏi gốc:** Có nên có `retention_strategy` riêng cho từng campaign,
+mục đích tối ưu ROI + vớt khách đã hứng thú với campaign đó nhưng chưa
+chuyển đổi?
+
+**Đã chốt — KHÔNG tạo skill mới:**
+- `retention_strategy` hiện tại là hệ thống TOÀN BUSINESS (3 giai đoạn kinh
+  doanh + 4 nhóm khách dùng chung cho mọi campaign) — tách riêng theo từng
+  campaign sẽ vụn data (1 khách có thể đến từ nhiều campaign).
+- Mục tiêu "vớt khách đã hứng thú campaign X nhưng chưa convert" **đã có
+  sẵn** ở bullet 2 của `♻️ Retention` baseline (`agents/campaign_execution.py`
+  → `_RETENTION_BASELINE`) — gợi ý dùng `email_zalo_sequence` cho "lead chưa
+  convert". Hiện tại bullet này CHỈ LÀ TEXT GỢI Ý trong Execution Plan,
+  chưa có action nào chạy thật.
+
+**Hướng làm (chưa implement):**
+- Thêm 1 action sau Execution Plan (hoặc sau khi campaign chạy 1-2 tuần):
+  "🎯 Vớt khách chưa convert — [campaign_name]"
+- Action này chạy `email_zalo_sequence` với intake **prefill từ campaign**:
+  - `key_offer`/lever đã chốt của campaign → làm offer trong chuỗi nurture
+  - Segment = đúng nhóm "đã vào BOFU (Convert stage trong Funnel Map) nhưng
+    chưa mua" — lấy từ `_chosen_campaign`/funnel_map context
+  - `channel_preference` = channels của campaign (Zalo/Email)
+- Output: 1 chuỗi nurture 3-7 tin tập trung 100% vào nhóm "warm nhưng chưa
+  chốt" của riêng campaign này — không cần dựng lại retention_strategy
+  toàn business.
+
+**Phụ thuộc:** không phụ thuộc backlog #5/#6 (Budget/Team, offer packages) —
+có thể làm độc lập.
+
+---
