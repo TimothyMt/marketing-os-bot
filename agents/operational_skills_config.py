@@ -274,8 +274,13 @@ class ContentGeneratorPipeline:
         from agents.pipeline import run_operational_skill as _run_ops
         import logging
         self._prefill_intake(session)
+        # BACKLOG #10g: chỉ chạy đúng loại nội dung user đã chọn (qua
+        # CONTENT_TYPE_SCOPE_KEYBOARD) — không tự cascade hết 4 loại.
+        # Không có lựa chọn (gọi pipeline trực tiếp, vd path cũ) → chạy hết.
+        types = session.pending_intake.get("_content_gen_types")
+        sub_skills = [s for s in self.SUB_SKILLS if s in types] if types else self.SUB_SKILLS
         ran: list[str] = []
-        for skill_name in self.SUB_SKILLS:
+        for skill_name in sub_skills:
             try:
                 await _run_ops(skill_name, session)
                 ran.append(skill_name)

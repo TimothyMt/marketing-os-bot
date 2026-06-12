@@ -35,6 +35,7 @@ from bot.keyboards import (
     REGEN_PROMPT_KEYBOARD,
     FEEDBACK_PROMPT_KEYBOARD,
     CALENDAR_TO_CONTENT_GEN_KEYBOARD,
+    CONTENT_TYPE_SCOPE_KEYBOARD,
     FUNNEL_APPROVE_KEYBOARD,
     ADS_FORMAT_KEYBOARD,
     IMAGE_REFERENCE_KEYBOARD,
@@ -1506,6 +1507,25 @@ async def _handle_callback_inner(update, context, query, session, data, user_id)
         await _handle_adapt_channel_callback(query, session)
         return
 
+
+    # ── BACKLOG #10g: chọn loại nội dung trước khi sản xuất ───────
+    if data.startswith("ctype_"):
+        await query.edit_message_reply_markup(reply_markup=None)
+        choice = data[len("ctype_"):]
+        if choice == "all":
+            from agents.operational_skills_config import ContentGeneratorPipeline
+            session.pending_intake["_content_gen_types"] = list(ContentGeneratorPipeline.SUB_SKILLS)
+        else:
+            session.pending_intake["_content_gen_types"] = [choice]
+        weekly = session.pending_intake.get("_content_gen_mode") == "weekly"
+        if not weekly:
+            session.pending_intake.pop("_content_gen_week", None)
+            session.pending_intake.pop("_content_gen_weekly_mode", None)
+            session.pending_intake.pop("scope", None)
+        session.pending_intake.pop("_bv_pending_skill", None)
+        await save_session(session)
+        await _start_content_generation(query.message, session, weekly=weekly)
+        return
 
     # ── Calendar → Content Gen chain ─────────────────────────────
     if data == "run_content_gen_weekly_after_cal":
@@ -6954,7 +6974,22 @@ def _channel_pick_keyboard(channels: list[str], extra_done_button: bool = False)
 async def _start_content_generation(message, session, weekly: bool) -> None:
     """Layer 3 entry point — KHÔNG chạy hết các kênh 1 lượt.
     Hỏi user muốn sản xuất content cho kênh nào trước (trong các kênh đã chốt
-    lúc setup campaign), rồi chạy TỪNG KÊNH 1."""
+    lúc setup campaign), rồi chạy TỪNG KÊNH 1.
+
+    BACKLOG #10g: trước tiên hỏi LOẠI nội dung (bài đăng/video/UGC/ads/tất cả)
+    — không tự cascade hết 4 loại như ContentGeneratorPipeline cũ.
+    """
+    if not session.pending_intake.get("_content_gen_types"):
+        session.pending_intake["_content_gen_mode"] = "weekly" if weekly else "full"
+        await save_session(session)
+        await message.reply_text(
+            "✍️ *Sếp cần sản xuất loại nội dung nào trước?*\n\n"
+            "_Em chỉ chạy đúng loại sếp chọn — không tự kèm thêm loại khác._",
+            parse_mode=ParseMode.MARKDOWN,
+            reply_markup=CONTENT_TYPE_SCOPE_KEYBOARD,
+        )
+        return
+
     remaining = _content_remaining_channels(session)
     session.pending_intake["_content_gen_mode"] = "weekly" if weekly else "full"
 
@@ -8469,7 +8504,7 @@ async def _continue_after_brand_voice(message: Message, session) -> None:
             "✅ *Brand Voice đã lưu!* Giờ mình chạy nội dung từng tuần nhé.",
             parse_mode=ParseMode.MARKDOWN,
         )
-        await _prompt_week_selection(message, session)
+        await _start_content_generation(message, session, weekly=True)
         return
 
     pending_label = (
@@ -8873,13 +8908,14 @@ async def cmd_history(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
 
 async def _start_tone_calibration(message, session, calendar_result: str) -> None:
     """
-    Khởi động Tone Calibration Loop sau khi content_calendar gen xong.
-    Hỏi Brand Voice trước nếu chưa setup, rồi gen sample post để check tone.
+    Sau khi content_calendar gen xong: hỏi Brand Voice trước nếu chưa setup
+    (gate giữ nguyên thứ tự), rồi đi THẲNG vào menu sản xuất content với BV
+    đã có — KHÔNG còn bước "Bài mẫu đầu tiên" / tone calibration loop
+    (BACKLOG #10d).
     """
-    from agents.tone_calibration import parse_first_post, generate_sample_post
-    from bot.keyboards import TONE_CHECK_KEYBOARD
+    from agents.post_actions import parse_calendar_to_posts
 
-    # Brand Voice gate: hỏi BV trước khi check tone
+    # Brand Voice gate: hỏi BV trước khi sản xuất content
     skipped_bv = session.pending_intake.get("_bv_skipped_session")
     if not skipped_bv:
         try:
@@ -8893,7 +8929,7 @@ async def _start_tone_calibration(message, session, calendar_result: str) -> Non
             session.pending_intake["_bv_pending_skill"] = "tone_calibration"
             await save_session(session)
             await message.reply_text(
-                "🎙 *Trước khi check tone — sếp có muốn setup Brand Voice không?*\n\n"
+                "🎙 *Trước khi sản xuất content — sếp có muốn setup Brand Voice không?*\n\n"
                 "Brand Voice giúp em viết đúng *tone & từ ngữ* của brand — "
                 "bài viết sẽ nhất quán hơn nhiều khi sản xuất content sau này.\n\n"
                 "_Chỉ cần setup 1 lần, áp dụng cho mọi nội dung. "
@@ -8903,39 +8939,32 @@ async def _start_tone_calibration(message, session, calendar_result: str) -> Non
             )
             return
 
-    first = parse_first_post(calendar_result)
-    if not first:
-        return
-
-    # Gen sample post từ row metadata (Haiku, ~5s)
-    await message.reply_text(
-        "🎨 _Đang viết thử bài đầu tiên để sếp check tone..._",
-        parse_mode=ParseMode.MARKDOWN,
-    )
-    row_meta = first.get("row_meta", {})
-    sample_post = await generate_sample_post(session, row_meta, calendar_result)
-
-    # Lưu state — post1_content là bài viết thật, không phải raw table row
-    session.tone_calibration = {
-        "stage":           "checking_tone",
-        "rejection_count": 0,
-        "post1_content":   sample_post,
-        "calendar_full":   calendar_result,
-        "locked_signals":  {},
-    }
+    # Parse calendar → gán POST-XXX IDs ngay, dùng BV đã có (không cần sample post)
+    campaign_id = session.pending_intake.get("campaign_name", "")
+    posts = parse_calendar_to_posts(calendar_result, campaign_id=campaign_id)
+    if posts:
+        session.content_outputs.update(posts)
+    session.tone_calibration = {"stage": "done"}
     await save_session(session)
 
-    meta_line = first["preview"]  # "📅 21/06 | Facebook\n🎯 Hook: ...\n📝 Topic: ..."
-    await send_long_message(
-        message,
-        "🎨 *Kiểm tra Tone — Bài mẫu đầu tiên*\n\n"
-        f"_{meta_line}_\n\n"
-        "Em đã viết thử 1 bài từ Calendar để sếp check tone:\n\n"
-        f"{sample_post}\n\n"
-        "─────────────────────\n"
-        "Tone ổn chưa sếp? Nếu muốn chỉnh, gõ feedback sau khi bấm *Chỉnh tone*.",
+    if posts:
+        post_count = len(posts)
+        await message.reply_text(
+            f"📋 *{post_count} bài đã được gán ID*\n\n"
+            + "\n".join([f"`{pid}` — {p.get('channel','').capitalize()} · Tuần {p.get('week',1)}"
+                        for pid, p in list(posts.items())[:10]])
+            + ("\n..." if post_count > 10 else "")
+            + "\n\n💡 _Dùng /post \\<ID\\> để xem + quản lý từng bài_",
+            parse_mode=ParseMode.MARKDOWN,
+        )
+
+    await message.reply_text(
+        "✅ *Lịch Nội Dung xong rồi sếp!*\n\n"
+        "💡 *Gợi ý để có chất lượng tốt nhất:* Chạy từng tuần một — "
+        "mỗi lần em tập trung sâu hơn vào từng bài thay vì chia token cho cả tháng.\n\n"
+        "Sếp chọn cách nào ạ?",
         parse_mode=ParseMode.MARKDOWN,
-        reply_markup=TONE_CHECK_KEYBOARD,
+        reply_markup=CALENDAR_TO_CONTENT_GEN_KEYBOARD,
     )
 
 

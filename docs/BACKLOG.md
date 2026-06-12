@@ -531,7 +531,7 @@ gợi ý AI), và xoá luôn phần tính `start`/`end`/`start_date`/`end_date`
 output giờ chỉ còn "Tuần 1/2/3/4" (đã đúng từ template gốc, không có cột
 ngày), không còn bị nhiễu bởi ngày tạo brief.
 
-### (d) TODO — Đảo flow: Brand Voice check TRƯỚC "Bài mẫu đầu tiên", rồi bỏ luôn bước "Bài mẫu"
+### (d) ✅ DONE (2026-06-12) — Đảo flow: Brand Voice check TRƯỚC "Bài mẫu đầu tiên", rồi bỏ luôn bước "Bài mẫu"
 Hiện tại (`_start_tone_calibration`, `bot/handlers.py:8436`):
 1. Nếu chưa có Brand Voice → hỏi setup BV trước (gate đã đúng thứ tự)
 2. Sau đó LUÔN gen "🎨 Kiểm tra Tone — Bài mẫu đầu tiên" (1 bài sample,
@@ -545,6 +545,20 @@ content cho nền tảng đó luôn, không cần sample-post-to-check-tone riê
 `generate_sample_post` + `TONE_CHECK_KEYBOARD`/`tone_calibration` state
 (hoặc giữ lại reject/feedback path cho lần sau nếu cần, nhưng KHÔNG block
 flow chính bằng sample post).
+
+**Đã làm:** Viết lại `_start_tone_calibration` (`bot/handlers.py:8874`):
+- Giữ nguyên Brand Voice gate (đúng thứ tự — hỏi BV trước nếu chưa có).
+- Sau khi BV sẵn sàng: BỎ HẲN bước gen sample post (`generate_sample_post`)
+  + `TONE_CHECK_KEYBOARD` + state `checking_tone`. Thay vào đó: parse
+  calendar → gán POST-XXX ID ngay (`parse_calendar_to_posts`, set
+  `tone_calibration = {"stage": "done"}`), gửi list post ID, rồi hiện luôn
+  menu sản xuất content (`CALENDAR_TO_CONTENT_GEN_KEYBOARD`) — đây chính là
+  bước "platform/loại content nào trước?" (kết hợp với #10g bên dưới để hỏi
+  rõ loại nội dung).
+- `_handle_tone_feedback`/`_tone_lock_and_apply`/`_handle_tone_callback`
+  (tone_approve/reject/skip) GIỮ NGUYÊN trong code (không xoá) như backlog
+  cho phép, nhưng KHÔNG còn được trigger từ flow chính vì
+  `TONE_CHECK_KEYBOARD` không còn được gửi đi.
 
 ### (e) ✅ DONE (2026-06-12) — Bỏ 4 câu hỏi trong "✅ ✍️ Sản Xuất Nội Dung" (content_generator)
 `agents/task_registry.py:230-234` — `content_generator.intake_fields` đang
@@ -604,7 +618,7 @@ framework đã gán cho slot đó trong Calendar, không hard-code PAS).
   bot/excel_reader.py hay bot/renderers.py phụ thuộc cấu trúc cũ, nên đổi an
   toàn).
 
-### (g) TODO — Sau Content Calendar, không tự cascade chạy hết content_generator
+### (g) ✅ DONE (2026-06-12) — Sau Content Calendar, không tự cascade chạy hết content_generator
 (post + video script + UGC brief + ads cùng lúc) — chỉ chạy phần user chọn
 `content_generator` (`agents/task_registry.py:219-236`, skill
 `ContentGeneratorPipeline`) mô tả "Sản xuất toàn bộ content package: bài
@@ -614,5 +628,26 @@ chỉ "bài đăng Facebook tuần 1"), không tự động kèm video script/UG
 brief/ads nếu user không hỏi tới. Cần xem lại `ContentGeneratorPipeline` để
 tách theo scope/loại nội dung user chọn, hoặc thêm bước hỏi "sếp cần loại
 nào: bài đăng / video script / UGC brief / ads / tất cả?" trước khi chạy.
+
+**Đã làm:**
+- `bot/keyboards.py` — thêm `CONTENT_TYPE_SCOPE_KEYBOARD` (5 nút: 📝 Bài
+  đăng / 🎬 Video Script / 🤝 UGC Brief / 📢 Ads Copy / 📦 Tất cả).
+- `bot/handlers.py:_start_content_generation` — nếu chưa có
+  `pending_intake["_content_gen_types"]`, lưu `_content_gen_mode`
+  (weekly/full) rồi hiện `CONTENT_TYPE_SCOPE_KEYBOARD` và DỪNG (không chạy
+  gì cả) — áp dụng cho MỌI entry point (calendar approve, Nam mode, BV-resume
+  weekly).
+- Callback mới `ctype_*` (`bot/handlers.py`, trước nhóm "Calendar → Content
+  Gen chain") — set `_content_gen_types = [skill]` (hoặc full
+  `ContentGeneratorPipeline.SUB_SKILLS` nếu chọn "Tất cả"), rồi gọi lại
+  `_start_content_generation` với cờ weekly đã lưu.
+- `agents/operational_skills_config.py:ContentGeneratorPipeline.run_pipeline`
+  — chỉ chạy sub-skill nằm trong `_content_gen_types` (nếu có); không có →
+  chạy hết (fallback cho path cũ/test). `MULTI_OUTPUT:...` vẫn hoạt động
+  đúng với danh sách rút gọn (1 sub-skill) vì `_send_ops_result` dispatch
+  theo danh sách động, không hardcode 4 loại.
+- `_continue_after_brand_voice` (resume weekly sau khi setup BV) đổi từ gọi
+  `_prompt_week_selection` trực tiếp → gọi `_start_content_generation(weekly=True)`
+  để đảm bảo luôn đi qua bước chọn loại nội dung.
 
 ---

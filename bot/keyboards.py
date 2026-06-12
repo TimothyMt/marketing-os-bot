@@ -114,6 +114,16 @@ CALENDAR_TO_CONTENT_GEN_KEYBOARD = InlineKeyboardMarkup([
     [InlineKeyboardButton("⏭️ Để sau",                               callback_data="skip_content_gen_after_cal")],
 ])
 
+# BACKLOG #10g — hỏi loại nội dung cần sản xuất TRƯỚC khi chạy, KHÔNG tự
+# cascade hết post + video + UGC + ads cùng lúc.
+CONTENT_TYPE_SCOPE_KEYBOARD = InlineKeyboardMarkup([
+    [InlineKeyboardButton("📝 Bài đăng (post)",      callback_data="ctype_post_batch")],
+    [InlineKeyboardButton("🎬 Video Script",          callback_data="ctype_video_script_gen")],
+    [InlineKeyboardButton("🤝 UGC Brief",             callback_data="ctype_ugc_brief")],
+    [InlineKeyboardButton("📢 Ads Copy",              callback_data="ctype_ads_generator")],
+    [InlineKeyboardButton("📦 Tất cả (full package)", callback_data="ctype_all")],
+])
+
 # Sau khi gửi Funnel Map + Execution Plan (HTML) → chờ user duyệt mới dựng calendar
 FUNNEL_APPROVE_KEYBOARD = InlineKeyboardMarkup([
     [InlineKeyboardButton("✅ Duyệt kế hoạch — dựng Lịch Nội Dung", callback_data="funnel_approve")],
