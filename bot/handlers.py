@@ -264,7 +264,8 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "_monitor_pending_page_id", "_monitor_pending_page_name",
         "_last_image_b64", "_last_image_size", "_img_prompt", "_img_n",
         "_advisor_mode", "_awaiting_calendar_edit", "_awaiting_bp_edit", "_awaiting_week_selection",
-        "_awaiting_calendar_cadence", "_content_gen_weekly_mode", "_content_gen_week",
+        "_awaiting_calendar_cadence", "_awaiting_budget_team", "_budget_team_pending_confirm",
+        "_content_gen_weekly_mode", "_content_gen_week",
         "_content_channels_remaining", "_content_gen_mode", "channel_focus",
         "_bv_draft", "_bv_resume_weekly",
         "_bv_edit_mode", "_growth_skill",
@@ -767,6 +768,10 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if session.pending_intake.get("_awaiting_calendar_cadence"):
         await _handle_calendar_cadence_text(update, context, session, text)
+        return
+
+    if session.pending_intake.get("_awaiting_budget_team"):
+        await _handle_budget_team_text(update, context, session, text)
         return
 
     # Layer 2b: User mô tả phần cần sửa trong campaign brief → surgical edit
@@ -1688,7 +1693,37 @@ async def _handle_callback_inner(update, context, query, session, data, user_id)
         session.pending_intake.pop("_awaiting_rating_for", None)
         session.pending_intake.pop("_awaiting_campaign_idea", None)
         await save_session(session)
+        await _ask_budget_team_before_campaigns(query.message, session)
+        return
+
+    if data == "budget_team_confirm":
+        await query.edit_message_reply_markup(reply_markup=None)
+        profile = session.profile
+        session.pending_intake["_budget_team_context"] = (
+            f"Ngân sách marketing/tháng: {profile.monthly_marketing_budget}\n"
+            f"Team: {profile.team_size}"
+        )
+        session.pending_intake.pop("_budget_team_pending_confirm", None)
+        await save_session(session)
         await _show_extracted_campaigns(query.message, session)
+        return
+
+    if data == "budget_team_edit":
+        await query.edit_message_reply_markup(reply_markup=None)
+        session.pending_intake.pop("_budget_team_pending_confirm", None)
+        session.pending_intake["_awaiting_budget_team"] = "1"
+        await save_session(session)
+        await query.message.reply_text(
+            "✏️ OK, gõ lại giúp em:\n"
+            "• Ngân sách marketing/tháng (cho campaign này)\n"
+            "• Team: số người + vai trò",
+            parse_mode=ParseMode.MARKDOWN,
+        )
+        return
+
+    if data == "extracted_campaign_show_more":
+        await query.edit_message_reply_markup(reply_markup=None)
+        await _show_extracted_campaigns(query.message, session, show_all=True)
         return
 
     if data == "strategy_ok_run_calendar":
@@ -3198,7 +3233,7 @@ async def _handle_callback_inner(update, context, query, session, data, user_id)
                 # button produces the SAME complete brief (not the lean 3-question
                 # shortcut). content_calendar keeps its lightweight strategy-aware form.
                 if task_type == "campaign_brief":
-                    await _show_extracted_campaigns(query.message, session)
+                    await _ask_budget_team_before_campaigns(query.message, session)
                     return
                 await _send_strategy_aware_form(query.message, session, task_type)
                 return
@@ -5317,49 +5352,125 @@ async def _run_strategy_plan(message: Message, session, direction: str) -> None:
     )
 
 
-async def _show_extracted_campaigns(message: Message, session):
+async def _ask_budget_team_before_campaigns(message: Message, session) -> None:
+    """Trước khi trích campaign từ roadmap, chốt lại Budget/Team để campaign
+    đề xuất sát quy mô thật (BACKLOG #5). Nếu profile đã có sẵn 2 field này
+    thì cho user confirm/sửa nhanh; nếu chưa có thì hỏi 1 lượt."""
+    from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+
+    addr = _addr(session)
+    profile = session.profile
+
+    # Đã hỏi trong session này rồi → đi thẳng vào trích campaign.
+    if session.pending_intake.get("_budget_team_context"):
+        await _show_extracted_campaigns(message, session)
+        return
+
+    budget = (profile.monthly_marketing_budget or "").strip()
+    team = (profile.team_size or "").strip()
+
+    if budget and team:
+        session.pending_intake["_budget_team_pending_confirm"] = "1"
+        await save_session(session)
+        await message.reply_text(
+            f"💰 *Trước khi em trích campaign — chốt lại quy mô để đề xuất sát thực tế:*\n\n"
+            f"💰 *Ngân sách marketing/tháng:* {_escape_md(budget)}\n"
+            f"👥 *Team:* {_escape_md(team)}\n\n"
+            f"Thông tin này còn đúng không {addr}?",
+            parse_mode=ParseMode.MARKDOWN,
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("✅ Đúng rồi, tiếp tục", callback_data="budget_team_confirm")],
+                [InlineKeyboardButton("✏️ Cập nhật", callback_data="budget_team_edit")],
+            ]),
+        )
+        return
+
+    session.pending_intake["_awaiting_budget_team"] = "1"
+    await save_session(session)
+    await message.reply_text(
+        f"💰 *Trước khi em trích campaign — cho em biết quy mô để đề xuất sát thực tế:*\n\n"
+        f"• Ngân sách marketing/tháng (cho campaign này, ước tính cũng được)\n"
+        f"• Team: số người + vai trò (vd \"1 content + thuê ngoài video\")\n\n"
+        f"_Vd: \"15-20tr/tháng · 1 mình làm content, outsource video lúc cần\"_",
+        parse_mode=ParseMode.MARKDOWN,
+    )
+
+
+async def _handle_budget_team_text(update, context, session, text: str) -> None:
+    """User gõ Budget/Team (free text) → lưu context → trích campaign."""
+    session.pending_intake.pop("_awaiting_budget_team", None)
+    session.pending_intake["_budget_team_context"] = (text or "").strip()
+    await save_session(session)
+    await _show_extracted_campaigns(update.message, session)
+
+
+async def _show_extracted_campaigns(message: Message, session, show_all: bool = False):
     """After strategy_confirm: extract 2-3 campaigns from synthesis roadmap + 8 strategy answers.
-    Present as direct-pick buttons — no redundant needs re-questioning."""
+    Present as direct-pick buttons — no redundant needs re-questioning.
+
+    show_all=True: re-render từ `_extracted_campaigns` đã cache (không gọi LLM lại),
+    hiện cả campaign `scale: "stretch"` bị ẩn ban đầu (BACKLOG #5)."""
     from agents.campaign_ideation import extract_campaigns_from_synthesis
     import json as _json
     from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 
     addr = _addr(session)
 
-    # Bridge yêu cầu output synthesis — nếu chưa có thì KHÔNG fallback, báo lỗi rõ.
-    synthesis = (session.get_latest_result("synthesis") or "").strip()
-    if not synthesis:
+    campaigns = None
+    if show_all:
+        try:
+            campaigns = _json.loads(session.pending_intake.get("_extracted_campaigns") or "[]")
+        except _json.JSONDecodeError:
+            campaigns = None
+        if not campaigns:
+            show_all = False
+
+    if not show_all:
+        # Bridge yêu cầu output synthesis — nếu chưa có thì KHÔNG fallback, báo lỗi rõ.
+        synthesis = (session.get_latest_result("synthesis") or "").strip()
+        if not synthesis:
+            await message.reply_text(
+                f"⚠️ *Chưa có kế hoạch chiến lược (synthesis) để trích campaign.*\n\n"
+                f"Sếp thử chạy lại bước lập kế hoạch, hoặc báo cho support nhé.\n\n{SUPPORT_NOTE}",
+                parse_mode=ParseMode.MARKDOWN,
+            )
+            return
+
         await message.reply_text(
-            f"⚠️ *Chưa có kế hoạch chiến lược (synthesis) để trích campaign.*\n\n"
-            f"Sếp thử chạy lại bước lập kế hoạch, hoặc báo cho support nhé.\n\n{SUPPORT_NOTE}",
+            f"✅ *Strategy đã chốt! Em đang trích campaign từ Roadmap...*",
             parse_mode=ParseMode.MARKDOWN,
         )
-        return
 
-    await message.reply_text(
-        f"✅ *Strategy đã chốt! Em đang trích campaign từ Roadmap...*",
-        parse_mode=ParseMode.MARKDOWN,
-    )
+        campaigns = await extract_campaigns_from_synthesis(session)
 
-    campaigns = await extract_campaigns_from_synthesis(session)
+        if not campaigns:
+            from telegram import InlineKeyboardButton as _Btn, InlineKeyboardMarkup as _Kb
+            retry_kb = _Kb([[_Btn("🔄 Thử lại", callback_data="extracted_campaign_more")]])
+            await message.reply_text(
+                f"⚠️ *Em chưa trích được campaign từ Roadmap.*\n\n"
+                f"Sếp bấm thử lại giúp em. Nếu vẫn lỗi, chụp màn hình gửi support nhé.\n\n{SUPPORT_NOTE}",
+                parse_mode=ParseMode.MARKDOWN,
+                reply_markup=retry_kb,
+            )
+            return
 
-    if not campaigns:
-        from telegram import InlineKeyboardButton as _Btn, InlineKeyboardMarkup as _Kb
-        retry_kb = _Kb([[_Btn("🔄 Thử lại", callback_data="extracted_campaign_more")]])
-        await message.reply_text(
-            f"⚠️ *Em chưa trích được campaign từ Roadmap.*\n\n"
-            f"Sếp bấm thử lại giúp em. Nếu vẫn lỗi, chụp màn hình gửi support nhé.\n\n{SUPPORT_NOTE}",
-            parse_mode=ParseMode.MARKDOWN,
-            reply_markup=retry_kb,
-        )
-        return
+        session.pending_intake["_extracted_campaigns"] = _json.dumps(campaigns, ensure_ascii=False)
+        await save_session(session)
 
-    session.pending_intake["_extracted_campaigns"] = _json.dumps(campaigns, ensure_ascii=False)
-    await save_session(session)
+    # Ẩn ban đầu các campaign "stretch" (tham vọng hơn quy mô hiện tại) — chỉ
+    # hiện khi user bấm "🔍 Xem thêm phương án khác" (show_all=True).
+    if show_all:
+        visible = campaigns
+        stretch_hidden = False
+    else:
+        visible = [c for c in campaigns if c.get("scale") != "stretch"]
+        if not visible:
+            visible = campaigns
+        stretch_hidden = len(visible) < len(campaigns)
 
     num_emojis = ["1️⃣", "2️⃣", "3️⃣"]
-    lines = [f"🗺️ *Em trích từ Roadmap {len(campaigns)} campaign cho {addr} chọn ngay:*\n"]
-    for i, c in enumerate(campaigns):
+    lines = [f"🗺️ *Em trích từ Roadmap {len(visible)} campaign cho {addr} chọn ngay:*\n"]
+    for i, c in enumerate(visible):
         num = num_emojis[i] if i < 3 else f"{i+1}."
         lines.append("━━━━━━━━━━━━━━━━━━━━")
         lines.append(f"*{num} {c.get('name', '?')}*\n")
@@ -5369,14 +5480,22 @@ async def _show_extracted_campaigns(message: Message, session):
         lines.append(f"📅 *Độ dài gợi ý:* {c.get('duration_suggestion', '?')}")
         lines.append(f"💭 *Vì sao hợp:* {c.get('why_fit', '?')}\n")
     lines.append("━━━━━━━━━━━━━━━━━━━━")
-    lines.append("\n_💰 Budget / 👥 Team / 📅 Thời lượng / 🎟 % giảm — sếp quyết ở bước sau._\n")
+    if stretch_hidden:
+        lines.append(
+            "\n_Đây là campaign Max thấy phù hợp với quy mô hiện tại của sếp. "
+            "Nếu muốn xem thêm hướng tham vọng hơn (cần thêm resource), bấm nút bên dưới._\n"
+        )
+    lines.append("\n_📅 Thời lượng / 🎟 % giảm — sếp quyết ở bước sau._\n")
     lines.append("👇 *Sếp chọn campaign nào để em làm Brief Campaign?*")
 
     rows = []
-    for i, c in enumerate(campaigns):
-        num = num_emojis[i] if i < 3 else f"{i+1}."
+    for c in visible:
+        idx = campaigns.index(c)
+        num = num_emojis[idx] if idx < 3 else f"{idx+1}."
         label = f"{num} {c.get('name', '?')[:45]}"
-        rows.append([InlineKeyboardButton(label, callback_data=f"extracted_campaign_pick_{i+1}")])
+        rows.append([InlineKeyboardButton(label, callback_data=f"extracted_campaign_pick_{idx+1}")])
+    if stretch_hidden:
+        rows.append([InlineKeyboardButton("🔍 Xem thêm phương án khác (tham vọng hơn)", callback_data="extracted_campaign_show_more")])
     rows.append([InlineKeyboardButton("💡 Tôi có ý tưởng khác", callback_data="extracted_campaign_own_idea")])
     rows.append([InlineKeyboardButton("🔄 Đề xuất thêm options", callback_data="extracted_campaign_more")])
     keyboard = InlineKeyboardMarkup(rows)
@@ -6048,7 +6167,7 @@ async def _launch_task_from_advisor(update, context, session, task_name: str):
         if has_strategy:
             # campaign_brief → full A→Z flow (giống nút Brief Campaign / strategy_confirm)
             if task_name == "campaign_brief":
-                await _show_extracted_campaigns(msg, session)
+                await _ask_budget_team_before_campaigns(msg, session)
             else:
                 await _send_strategy_aware_form(msg, session, task_name)
         else:

@@ -232,7 +232,7 @@ build report 2 tab (T4 Synthesis + T5 Tactical Playbook). Caption đổi từ
 
 ---
 
-## 5. TODO (2026-06-12) — Hỏi Budget/Team TRƯỚC khi đề xuất campaign (sau T4-T5)
+## 5. ✅ DONE (2026-06-12) — Hỏi Budget/Team TRƯỚC khi đề xuất campaign (sau T4-T5)
 
 **Vấn đề hiện tại:**
 `_show_extracted_campaigns` (`bot/handlers.py:5296`) gọi
@@ -262,6 +262,25 @@ có 1 người làm content).
      `extract_campaigns_from_synthesis` đã trích nhưng bị filter ra vì
      vượt quy mô — giữ lại trong `_extracted_campaigns` (không discard),
      chỉ ẩn ban đầu.
+
+**Đã làm:**
+- `_ask_budget_team_before_campaigns` (`bot/handlers.py`) — gọi trước
+  `_show_extracted_campaigns` từ cả 3 entry point (`strategy_confirm`,
+  campaign_brief direct test, campaign_brief task dispatch). Nếu profile đã
+  có `monthly_marketing_budget` + `team_size` → show lại cho confirm
+  (`budget_team_confirm`) / sửa (`budget_team_edit`); nếu chưa có → hỏi free
+  text 1 lượt (`_awaiting_budget_team` → `_handle_budget_team_text`). Lưu kết
+  quả vào `pending_intake["_budget_team_context"]`, chỉ hỏi 1 lần/session.
+- `extract_campaigns_from_synthesis` (`agents/campaign_ideation.py`) — inject
+  block "## Ngân sách & Team hiện tại" vào prompt; `EXTRACT_CAMPAIGNS_SYSTEM`
+  yêu cầu LLM gắn `scale: "fit"` (khả thi với quy mô) hoặc `scale: "stretch"`
+  (tham vọng hơn, tối đa 1 campaign).
+- `_show_extracted_campaigns` (`bot/handlers.py`) — campaign `scale: "stretch"`
+  bị ẩn ban đầu; note text đổi thành "Đây là campaign Max thấy phù hợp với quy
+  mô hiện tại..."; nút mới "🔍 Xem thêm phương án khác (tham vọng hơn)"
+  (`extracted_campaign_show_more`) re-render từ `_extracted_campaigns` đã cache
+  (không gọi lại LLM) hiện cả campaign stretch. Card note "💰 Budget / 👥 Team"
+  đã bỏ (đã hỏi ở bước trước).
 
 ---
 

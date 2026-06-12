@@ -338,13 +338,21 @@ def _extract_json(text: str) -> Optional[dict]:
 
 EXTRACT_CAMPAIGNS_SYSTEM = """Bạn là Max — CMO AI. Kế hoạch chiến lược 90 ngày vừa được xác nhận.
 
-NHIỆM VỤ: Đọc Kế hoạch chiến lược (synthesis) + 8 hướng chiến lược sếp đã chọn → TRÍCH XUẤT 2-3 campaign cụ thể đã được roadmap đề cập hoặc hàm ý, align hoàn toàn với hướng sếp đã chọn.
+NHIỆM VỤ: Đọc Kế hoạch chiến lược (synthesis) + 8 hướng chiến lược sếp đã chọn + Ngân sách/Team hiện tại (nếu có) → TRÍCH XUẤT 2-3 campaign cụ thể đã được roadmap đề cập hoặc hàm ý, align hoàn toàn với hướng sếp đã chọn.
 
 NGUYÊN TẮC:
 - KHÔNG tạo campaign mới từ không khí — phải dựa trên roadmap/synthesis
 - Mỗi campaign phải reflect đúng segment, USP angle, channel, timeline sếp đã chọn trong 8 câu
 - Tên campaign tiếng Việt, hook-y, ngắn (4-7 từ)
 - KHÔNG đề xuất budget / % giảm cụ thể (sếp quyết ở bước sau)
+
+QUY MÔ (nếu có thông tin Ngân sách/Team):
+- Đa số campaign đề xuất (`scale: "fit"`) phải KHẢ THI với ngân sách + team hiện tại
+  — số kênh, tần suất nội dung, nhu cầu outsource phải sát quy mô thật, không
+  đề xuất campaign cần nhiều kênh/nhiều người hơn team đang có.
+- Nếu roadmap có 1 hướng campaign THAM VỌNG hơn (cần outsource thêm, đa kênh
+  hơn, ngân sách lớn hơn) — vẫn có thể đưa vào nhưng đánh dấu `scale: "stretch"`.
+- Nếu KHÔNG có thông tin Ngân sách/Team, đánh dấu tất cả `scale: "fit"`.
 
 OUTPUT BẮT BUỘC dạng JSON (KHÔNG có text khác bên ngoài JSON):
 
@@ -358,7 +366,8 @@ OUTPUT BẮT BUỘC dạng JSON (KHÔNG có text khác bên ngoài JSON):
       "key_offer": "Cơ chế offer sơ bộ — KHÔNG % giảm cụ thể",
       "duration_suggestion": "Gợi ý độ dài (vd: '4-6 tuần')",
       "channels": "Kênh triển khai theo channel sếp đã chọn",
-      "why_fit": "1-2 câu: tại sao campaign này đúng hướng + đúng timing"
+      "why_fit": "1-2 câu: tại sao campaign này đúng hướng + đúng timing",
+      "scale": "fit hoặc stretch — xem QUY MÔ ở trên"
     }
   ]
 }
@@ -366,6 +375,7 @@ OUTPUT BẮT BUỘC dạng JSON (KHÔNG có text khác bên ngoài JSON):
 
 QUY TẮC:
 - 2-3 campaigns, đa dạng về mục tiêu nếu roadmap đề cập nhiều mục tiêu
+- Tối đa 1 campaign `scale: "stretch"` trong số đó
 - Output CHỈ JSON trong ```json``` block
 - KHÔNG bịa số liệu"""
 
@@ -409,6 +419,21 @@ async def extract_campaigns_from_synthesis(session: Session) -> Optional[list[di
         if answer_lines else ""
     )
 
+    # Budget/Team — collected just before campaign extraction (BACKLOG #5),
+    # dùng để campaign đề xuất khả thi với quy mô thật.
+    budget_team_context = (session.pending_intake.get("_budget_team_context") or "").strip()
+    if not budget_team_context:
+        budget_team_lines = []
+        if session.profile.monthly_marketing_budget:
+            budget_team_lines.append(f"Ngân sách marketing/tháng: {session.profile.monthly_marketing_budget}")
+        if session.profile.team_size:
+            budget_team_lines.append(f"Team: {session.profile.team_size}")
+        budget_team_context = "\n".join(budget_team_lines)
+    budget_team_block = (
+        f"## Ngân sách & Team hiện tại:\n{budget_team_context}\n\n"
+        if budget_team_context else ""
+    )
+
     # T5 Tactical Playbook — campaign trích ra phải nhất quán với tactics đã đề xuất.
     # Dùng FULL playbook (~10-12K ký tự): 2500 ký tự đầu chỉ chứa archetype + insight,
     # cắt ngay TRƯỚC các Hướng tactic (SO/WO/WT) — đúng phần cần để trích campaign.
@@ -422,8 +447,11 @@ async def extract_campaigns_from_synthesis(session: Session) -> Optional[list[di
         f"## Kế hoạch chiến lược (Synthesis):\n{synthesis[:14000]}\n\n"
         f"{playbook_block}"
         f"{strategy_block}"
+        f"{budget_team_block}"
         "---\n\nTrích 2-3 campaign cụ thể từ roadmap trên, align với hướng sếp đã chọn "
-        "và nhất quán với tactics trong Tactical Playbook (nếu có)."
+        "và nhất quán với tactics trong Tactical Playbook (nếu có). "
+        + ("Ưu tiên campaign khả thi với Ngân sách/Team hiện tại (đánh dấu scale tương ứng)."
+           if budget_team_context else "")
     )
 
     try:
