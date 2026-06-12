@@ -7430,13 +7430,12 @@ async def _handle_calendar_cadence_text(update, context, session, text: str):
 
     raw = (text or "").strip()
     cadence_lines = []
-    for line in raw.split("\n"):
-        line = line.strip().strip("`").lstrip("-•").strip()
-        if not line:
-            continue
-        m = re.match(r"^([^:：]+)[:：]\s*(\d+)", line)
-        if m:
-            cadence_lines.append(f"{m.group(1).strip()}: {m.group(2).strip()} bài/tuần")
+    # Tìm MỌI cặp "Kênh: N" trong toàn bộ text — user có thể gõ mỗi kênh 1 dòng
+    # HOẶC tất cả trên 1 dòng nối bằng " · "/"," (giống ví dụ bot đưa ra).
+    for m in re.finditer(r"([^\s:：·,]+(?:\s+[^\s:：·,]+)*)\s*[:：]\s*(\d+)", raw):
+        ch_name = m.group(1).strip().strip("`-•").strip()
+        if ch_name:
+            cadence_lines.append(f"{ch_name}: {m.group(2).strip()} bài/tuần")
 
     # Không match được format → lưu nguyên text, để LLM tự suy
     session.pending_intake["channel_cadence"] = "; ".join(cadence_lines) if cadence_lines else raw
