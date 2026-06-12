@@ -284,7 +284,7 @@ có 1 người làm content).
 
 ---
 
-## 6. TODO (2026-06-12) — Đổi 3 câu offer-preferences thành 1 bước chọn "gói ưu đãi" (package)
+## 6. ✅ DONE (2026-06-12) — Đổi 3 câu offer-preferences thành 1 bước chọn "gói ưu đãi" (package)
 
 **Vấn đề hiện tại:**
 `_ask_offer_preferences` (`bot/handlers.py:7632`) hỏi 3 câu mở về offer:
@@ -327,6 +327,22 @@ trước khi đề xuất campaign). Margin/giá vốn thật không hỏi — m
   flow 3-câu cũ làm fallback; nhánh chọn gói đi thẳng vào
   `format_levers_card` với gói đã chọn.
 - Giữ `generate_bait_hint` làm nguồn data cho mechanism của các gói (không bỏ).
+
+**Đã làm:**
+- `propose_offer_packages` + `format_packages_card` + `PROPOSE_PACKAGES_SYSTEM`
+  mới trong `agents/campaign_ideation.py` — sinh 3 gói (nhẹ/vừa/mạnh) dùng
+  `_build_industry_levers_context` + `pricing_approach` (từ
+  `_strategy_answers`) + `_budget_team_context`/profile (BACKLOG #5).
+- `_ask_offer_preferences` (`bot/handlers.py`) — rewrite: gọi
+  `propose_offer_packages`, show card 3 gói + nút `1️⃣/2️⃣/3️⃣` + "✏️ Tự định
+  nghĩa". Logic 3-câu cũ giữ nguyên trong `_ask_offer_preferences_custom` —
+  dùng làm fallback khi propose lỗi hoặc user bấm "✏️ Tự định nghĩa".
+- Callback `offer_package_pick_{i}` — set `_offer_prefs_raw` từ gói đã chọn
+  (mechanism + give_away + constraint) → gọi thẳng `_show_offer_lever_selection`
+  (4 levers cụ thể TRONG khuôn khổ gói, không hỏi lại). Callback
+  `offer_package_custom` → `_ask_offer_preferences_custom` (flow 3-câu cũ).
+- `generate_bait_hint` giữ nguyên, không dùng trực tiếp trong flow mới nhưng
+  vẫn dùng trong `_ask_offer_preferences_custom` (câu 1️⃣ của fallback).
 
 **Phụ thuộc:** nên làm SAU backlog #5 (Budget/Team) vì cần info đó để gói
 phù hợp quy mô.

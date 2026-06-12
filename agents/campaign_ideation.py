@@ -681,6 +681,137 @@ def format_refined_card(refined_data: dict) -> str:
     return "\n".join(lines)
 
 
+# ─── OFFER PACKAGES — 3 gói ưu đãi để chọn nhanh (thay 3 câu hỏi cũ) ──
+# BACKLOG #6: founder chọn 1 gói (mức "cho đi" nhẹ/vừa/mạnh, phù hợp
+# pricing_approach + Budget/Team đã chốt ở #5) thay vì tự trả lời 3 câu hỏi mở.
+
+PROPOSE_PACKAGES_SYSTEM = """Bạn là Max — CMO AI. Campaign vừa được founder VN chốt, cần đề xuất 3 GÓI ƯU ĐÃI
+để founder chọn NHANH 1 gói (thay vì tự trả lời câu hỏi mở về triết lý ưu đãi).
+
+Dựa vào: ngành, campaign (goal/target/key_offer), pricing_approach founder đã chọn ở 8 câu
+chiến lược, và Ngân sách/Team hiện tại (nếu có) → đề xuất 3 gói với MỨC "CHO ĐI" khác nhau:
+- Gói 1: Nhẹ — giữ giá, mồi bằng giá trị cộng thêm (quà/bundle nhỏ/trải nghiệm)
+- Gói 2: Vừa — kết hợp giá trị cộng thêm + ưu đãi có điều kiện
+- Gói 3: Mạnh — ưu đãi sâu hơn, có thể giảm giá, kèm ràng buộc rõ (giới hạn số lượng/thời gian)
+
+Mỗi gói gồm:
+- "name": tên ngắn gọn tiếng Việt (vd "Mồi nhẹ - giữ giá", "Combo giá trị", "Ưu đãi mạnh - giới hạn")
+- "mechanism": cơ chế cụ thể đặc thù NGÀNH (KHÔNG bịa % giảm cụ thể cho gói 1-2; gói 3 có thể có % nếu hợp lý)
+- "give_away": mức "cho đi" mô tả TƯƠNG ĐỐI (vd "≤10% hoặc quà tặng nhỏ", "bundle 2-3 sản phẩm, giữ giá lẻ", "giảm sâu 1 lần, giới hạn số suất")
+- "constraint": ràng buộc đi kèm để bảo vệ margin (vd "giữ giá gốc trên menu", "giới hạn 50 suất đầu", "chỉ áp dụng khách mới")
+
+OUTPUT BẮT BUỘC dạng JSON (KHÔNG có text khác bên ngoài JSON):
+
+```json
+{
+  "packages": [
+    {"name": "...", "mechanism": "...", "give_away": "...", "constraint": "..."},
+    {"name": "...", "mechanism": "...", "give_away": "...", "constraint": "..."},
+    {"name": "...", "mechanism": "...", "give_away": "...", "constraint": "..."}
+  ]
+}
+```
+
+QUY TẮC:
+- ĐÚNG 3 packages, khác biệt rõ về mức "cho đi" (nhẹ → vừa → mạnh)
+- Match ngành + goal + target của campaign
+- Nếu Budget/Team nhỏ → gói "mạnh" vẫn phải khả thi vận hành (không yêu cầu outsource/đa kênh nếu team không có)
+- KHÔNG bịa số liệu doanh thu/khách hàng
+- Output CHỈ JSON trong ```json``` block"""
+
+
+async def propose_offer_packages(session: Session, campaign: dict) -> Optional[list[dict]]:
+    """Đề xuất 3 gói ưu đãi (nhẹ/vừa/mạnh) cho campaign vừa chốt — BACKLOG #6.
+
+    Dùng _build_industry_levers_context + pricing_approach (8 câu chiến lược)
+    + Budget/Team (BACKLOG #5) để 3 gói sát ngành + quy mô thật.
+    Returns list[dict] 3 packages hoặc None nếu fail.
+    """
+    from tools.llm_router import call as router_call, TaskType, AllProvidersFailedError
+
+    industry = (session.profile.industry or "").strip()
+    ctx_parts = _build_industry_levers_context(session, industry) if industry else []
+
+    campaign_summary = (
+        f"**Campaign đã chốt:**\n"
+        f"- Tên: {campaign.get('name', '?')}\n"
+        f"- Mục tiêu: {campaign.get('goal', '?')}\n"
+        f"- Target: {campaign.get('target_segment', '?')}\n"
+        f"- Cơ chế offer (định hướng): {campaign.get('key_offer', '?')}\n"
+    )
+
+    import json as _json
+    try:
+        answers = _json.loads(session.pending_intake.get("_strategy_answers") or "{}")
+    except Exception:
+        answers = {}
+    pricing_block = (
+        f"\n## Pricing approach founder đã chọn (8 câu chiến lược):\n{answers['pricing_approach']}\n"
+        if answers.get("pricing_approach") else ""
+    )
+
+    budget_team_context = (session.pending_intake.get("_budget_team_context") or "").strip()
+    if not budget_team_context:
+        bt_lines = []
+        if session.profile.monthly_marketing_budget:
+            bt_lines.append(f"Ngân sách marketing/tháng: {session.profile.monthly_marketing_budget}")
+        if session.profile.team_size:
+            bt_lines.append(f"Team: {session.profile.team_size}")
+        budget_team_context = "\n".join(bt_lines)
+    budget_team_block = (
+        f"\n## Ngân sách & Team hiện tại:\n{budget_team_context}\n" if budget_team_context else ""
+    )
+
+    user_msg = (
+        "\n\n".join(ctx_parts) + "\n\n" if ctx_parts else ""
+    ) + f"{campaign_summary}{pricing_block}{budget_team_block}\n---\n\nĐề xuất 3 gói ưu đãi (nhẹ/vừa/mạnh) cho campaign trên."
+
+    try:
+        result = await router_call(
+            task_type=TaskType.INTAKE_JSON,
+            system=PROPOSE_PACKAGES_SYSTEM,
+            user=user_msg,
+            max_tokens=1200,
+        )
+        text = (result.get("output") or "").strip()
+    except AllProvidersFailedError as e:
+        logger.warning("propose_offer_packages all providers failed: %s", e)
+        return None
+    except Exception as e:
+        logger.warning("propose_offer_packages failed: %s", e)
+        return None
+
+    data = _extract_json(text)
+    if not data or "packages" not in data:
+        logger.error("propose_offer_packages returned invalid JSON: %s", text[:200])
+        return None
+
+    packages = data.get("packages", [])
+    if not isinstance(packages, list) or len(packages) < 1:
+        return None
+    return packages[:3]
+
+
+def format_packages_card(campaign: dict, packages: list[dict]) -> str:
+    """Format 3 gói ưu đãi để user pick 1 (BACKLOG #6)."""
+    num_emojis = ["1️⃣", "2️⃣", "3️⃣"]
+    lines = [
+        f"🎁 *Em đề xuất 3 gói ưu đãi cho campaign \"{campaign.get('name', '?')}\":*",
+        "",
+        "_(Chọn 1 gói — em sẽ đề xuất cơ chế cụ thể trong khuôn khổ gói đó. "
+        "Hoặc \"✏️ Tự định nghĩa\" nếu sếp có hướng riêng.)_",
+    ]
+    for i, p in enumerate(packages):
+        num = num_emojis[i] if i < 3 else f"{i+1}."
+        lines.append("━━━━━━━━━━━━━━━━━━━━")
+        lines.append(f"*{num} {p.get('name', '?')}*")
+        lines.append(f"🎯 *Cơ chế:* {p.get('mechanism', '?')}")
+        lines.append(f"💸 *Mức cho đi:* {p.get('give_away', '?')}")
+        lines.append(f"🔒 *Ràng buộc:* {p.get('constraint', '?')}")
+    lines.append("━━━━━━━━━━━━━━━━━━━━")
+    return "\n".join(lines)
+
+
 # ─── OFFER LEVERS — AI đề xuất 4 cơ chế offer specific cho campaign ──
 
 PROPOSE_LEVERS_SYSTEM = """Bạn là Max — CMO AI giúp founder VN chọn OFFER LEVER cho campaign vừa chốt.

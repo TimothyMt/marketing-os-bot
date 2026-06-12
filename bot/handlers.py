@@ -1966,6 +1966,54 @@ async def _handle_callback_inner(update, context, query, session, data, user_id)
         )
         return
 
+    # User pick 1 trong 3 gói ưu đãi (BACKLOG #6) → đề xuất 4 lever cụ thể
+    # TRONG khuôn khổ gói đã chọn (đi thẳng vào _show_offer_lever_selection,
+    # không hỏi lại 3 câu cũ).
+    if data.startswith("offer_package_pick_"):
+        await query.edit_message_reply_markup(reply_markup=None)
+        try:
+            pkg_idx = int(data.split("_")[-1])
+        except ValueError:
+            await query.message.reply_text("⚠️ Gói không hợp lệ.")
+            return
+
+        import json as _json
+        raw_packages = session.pending_intake.get("_offer_packages", "[]")
+        raw_campaign = session.pending_intake.get("_chosen_campaign", "{}")
+        try:
+            packages = _json.loads(raw_packages)
+            campaign = _json.loads(raw_campaign)
+        except _json.JSONDecodeError:
+            packages, campaign = [], {}
+
+        if pkg_idx < 0 or pkg_idx >= len(packages) or not campaign:
+            await query.message.reply_text("⚠️ Gói đã hết hạn. Sếp /start lại nhé.")
+            return
+
+        chosen = packages[pkg_idx]
+        session.pending_intake["_offer_prefs_raw"] = (
+            f"Gói \"{chosen.get('name', '?')}\": {chosen.get('mechanism', '?')}. "
+            f"Mức cho đi: {chosen.get('give_away', '?')}. "
+            f"Ràng buộc: {chosen.get('constraint', '?')}."
+        )
+        await save_session(session)
+        await _show_offer_lever_selection(query.message, session, campaign)
+        return
+
+    if data == "offer_package_custom":
+        await query.edit_message_reply_markup(reply_markup=None)
+        import json as _json
+        raw_campaign = session.pending_intake.get("_chosen_campaign", "{}")
+        try:
+            campaign = _json.loads(raw_campaign)
+        except _json.JSONDecodeError:
+            campaign = {}
+        if not campaign:
+            await query.message.reply_text("⚠️ Campaign đã hết hạn. Sếp /start lại nhé.")
+            return
+        await _ask_offer_preferences_custom(query.message, session, campaign)
+        return
+
     # User pick offer lever 1/2/3/4 → show dynamic finalize form
     if data.startswith("lever_pick_"):
         await query.edit_message_reply_markup(reply_markup=None)
@@ -7772,8 +7820,46 @@ async def _handle_campaign_idea_text(update, context, session, text: str):
 
 
 async def _ask_offer_preferences(message: Message, session, campaign: dict):
-    """Sau khi chốt campaign → HỎI triết lý + giới hạn offer (sếp nắm quyền) TRƯỚC
-    khi AI đề xuất 4 cách ưu đãi. Sếp trả lời → _handle_offer_prefs_text → propose."""
+    """Sau khi chốt campaign → đề xuất 3 GÓI ƯU ĐÃI để sếp chọn nhanh (BACKLOG #6),
+    thay flow 3-câu-hỏi cũ. "✏️ Tự định nghĩa" → fallback flow 3 câu cũ
+    (`_ask_offer_preferences_custom` → `_handle_offer_prefs_text`)."""
+    import json as _json
+    from agents.campaign_ideation import propose_offer_packages, format_packages_card
+    from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+
+    session.pending_intake["_chosen_campaign"] = _json.dumps(campaign, ensure_ascii=False)
+    await save_session(session)
+
+    await message.reply_text(
+        f"✅ *Đã chốt campaign \"{campaign.get('name', '?')}\"!*\n\n"
+        f"Em đang đề xuất các gói ưu đãi phù hợp...",
+        parse_mode=ParseMode.MARKDOWN,
+    )
+
+    packages = await propose_offer_packages(session, campaign)
+    if not packages:
+        await _ask_offer_preferences_custom(message, session, campaign)
+        return
+
+    session.pending_intake["_offer_packages"] = _json.dumps(packages, ensure_ascii=False)
+    await save_session(session)
+
+    card = format_packages_card(campaign, packages)
+    num_emojis = ["1️⃣", "2️⃣", "3️⃣"]
+    rows = [
+        [InlineKeyboardButton(num_emojis[i] if i < 3 else f"{i+1}.", callback_data=f"offer_package_pick_{i}")]
+        for i in range(len(packages))
+    ]
+    rows.append([InlineKeyboardButton("✏️ Tự định nghĩa", callback_data="offer_package_custom")])
+    await send_long_message(
+        message, card, parse_mode=ParseMode.MARKDOWN,
+        reply_markup=InlineKeyboardMarkup(rows),
+    )
+
+
+async def _ask_offer_preferences_custom(message: Message, session, campaign: dict):
+    """Fallback flow cũ: HỎI triết lý + giới hạn offer (3 câu) khi sếp bấm
+    "✏️ Tự định nghĩa" hoặc khi propose_offer_packages lỗi."""
     import json as _json
     from agents.campaign_ideation import generate_bait_hint
     session.pending_intake["_chosen_campaign"] = _json.dumps(campaign, ensure_ascii=False)
@@ -7782,9 +7868,8 @@ async def _ask_offer_preferences(message: Message, session, campaign: dict):
     addr = _addr(session)
     bait_hint = await generate_bait_hint(session)
     await message.reply_text(
-        f"✅ *Đã chốt campaign \"{campaign.get('name', '?')}\"!*\n\n"
-        f"Giờ phần ưu đãi do {addr} quyết — em chỉ đề xuất trong khuôn khổ sếp đặt ra. "
-        f"Cho em hỏi 3 ý ạ:\n\n"
+        f"✏️ *OK, sếp tự định nghĩa ưu đãi.*\n\n"
+        f"Em chỉ đề xuất trong khuôn khổ sếp đặt ra. Cho em hỏi 3 ý ạ:\n\n"
         f"1️⃣ *Sếp muốn \"mồi\" khách bằng cách nào?*\n"
         f"_({bait_hint} — chọn 1-2 hướng)_\n\n"
         f"2️⃣ *Sếp sẵn sàng \"cho đi\" tới đâu mà vẫn lời?*\n"
