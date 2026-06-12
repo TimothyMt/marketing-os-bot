@@ -5023,7 +5023,7 @@ _STRATEGY_Q_KEYS = [
 _STRATEGY_Q_LABELS = {
     "market_gap":       "Market Gap",
     "target_segment":   "Target Segment",
-    "competitor_gap":   "Gap Đối Thủ",
+    "competitor_gap":   "Messaging Gap",
     "positioning":      "Định Vị",
     "pricing_approach": "Pricing",
     "usp_angle":        "USP Angle",
@@ -5106,6 +5106,129 @@ Output JSON array (chỉ JSON, không markdown):
         logger.warning("_generate_strategy_questions LLM failed, using fallback")
 
     return _default_strategy_questions_fallback(industry)
+
+
+def _format_answers_for_prompt(answers: dict, keys: list[str]) -> str:
+    """Render các câu trả lời (key → _STRATEGY_Q_LABELS) đã chốt thành block
+    text để inject vào prompt sinh câu hỏi tiếp theo (BACKLOG #3)."""
+    lines = []
+    for k in keys:
+        if answers.get(k):
+            label = _STRATEGY_Q_LABELS.get(k, k)
+            lines.append(f"- {label}: {answers[k]}")
+    return "\n".join(lines)
+
+
+async def _gen_q4_positioning(session, answers: dict) -> dict | None:
+    """BACKLOG #3 — sinh lại câu 4 (positioning) SAU KHI user đã trả lời Q1-3
+    (market_gap, target_segment, competitor_gap/Messaging Gap), để options bám
+    đúng hướng đã chọn. Trả về None nếu LLM fail (giữ placeholder cũ)."""
+    import json as _json, re as _re
+    from tools.llm_router import call as router_call, TaskType
+
+    g = session.get_latest_result
+    parts = []
+    for key, label in [
+        ("market_research", "Thị trường"),
+        ("competitor",      "Đối thủ"),
+        ("customer_insight", "Khách hàng"),
+    ]:
+        val = g(key)
+        if val:
+            parts.append(f"## {label}\n{val[:1500]}")
+
+    chosen_block = _format_answers_for_prompt(answers, ["market_gap", "target_segment", "competitor_gap"])
+
+    system = """Bạn là marketing strategist senior. Founder đã chọn Market Gap, Target Segment, và Messaging Gap (3 hướng chiến lược). Sinh 1 câu hỏi về POSITIONING — định vị trên positioning map — với options bám SÁT 3 hướng founder đã chọn (không generic, không lặp lại các hướng khác).
+
+Output JSON object (chỉ JSON, không markdown):
+{"key":"positioning","question":"...","context":"1-2 câu nối market_gap/target_segment/messaging_gap đã chọn với góc định vị đề xuất","options":["...","...","...",...]}
+
+- "options": 2-4 lựa chọn CỤ THỂ, mỗi lựa chọn phải khả thi với target_segment + messaging_gap đã chọn ở trên
+- "context": phải nhắc cụ thể tới ít nhất 1 trong 3 hướng đã chọn"""
+
+    user = (
+        "## 3 hướng founder đã chọn:\n" + chosen_block + "\n\n"
+        + "\n\n".join(parts)
+    )
+
+    try:
+        result = await router_call(
+            task_type=TaskType.INTAKE_JSON,
+            system=system,
+            user=user,
+            max_tokens=600,
+        )
+        raw = result["output"]
+        match = _re.search(r'\{.*\}', raw, _re.DOTALL)
+        if match:
+            q = _json.loads(match.group())
+            if q.get("key") == "positioning" and q.get("question") and q.get("options"):
+                q = {**q, "options": [_strategy_opt_to_str(o) for o in q.get("options", [])]}
+                return q
+    except Exception:
+        logger.warning("_gen_q4_positioning LLM failed, keeping baseline question")
+    return None
+
+
+async def _gen_q5_6_pricing_usp(session, answers: dict) -> list[dict] | None:
+    """BACKLOG #3 — sinh lại câu 5 (pricing_approach) + câu 6 (usp_angle) SAU KHI
+    user đã trả lời positioning (Q4), để pricing segment + USP angle nhất quán
+    với định vị đã chọn. Trả về None nếu LLM fail (giữ placeholder cũ)."""
+    import json as _json, re as _re
+    from tools.llm_router import call as router_call, TaskType
+    from frameworks.pricing_segment_library import format_pricing_segments_for_prompt
+
+    industry = session.profile.industry
+    g = session.get_latest_result
+    parts = []
+    for key, label in [
+        ("psychology_pricing", "Định giá & Psychology"),
+        ("usp_definition",     "USP"),
+    ]:
+        val = g(key)
+        if val:
+            parts.append(f"## {label}\n{val[:1500]}")
+    parts.append(format_pricing_segments_for_prompt(industry))
+
+    chosen_block = _format_answers_for_prompt(answers, ["market_gap", "target_segment", "competitor_gap", "positioning"])
+
+    system = """Bạn là marketing strategist senior. Founder đã chọn Market Gap, Target Segment, Messaging Gap, và Positioning (định vị). Sinh 2 câu hỏi:
+
+1. pricing_approach — định vị PHÂN KHÚC GIÁ, NHẤT QUÁN với positioning đã chọn (vd positioning "Premium" → phân khúc giá phải ở mức cao tương ứng, không đề phân khúc giá thấp). "options" PHẢI lấy NGUYÊN VĂN từ block "## Phân khúc giá tham khảo — ngành ..." được cung cấp — KHÔNG tự bịa khoảng giá/kênh. "context": giải thích vì sao phân khúc này nhất quán với positioning đã chọn.
+
+2. usp_angle — USP angle (emotional/practical/social proof/authority) PHÙ HỢP với positioning + pricing_approach vừa định. "context": nối USP angle với positioning đã chọn.
+
+Output JSON array đúng 2 object theo thứ tự trên (chỉ JSON, không markdown):
+[{"key":"pricing_approach","question":"...","context":"...","options":[...]}, {"key":"usp_angle","question":"...","context":"...","options":["...","...","...","..."]}]"""
+
+    user = (
+        "## Các hướng founder đã chọn:\n" + chosen_block + "\n\n"
+        + "\n\n".join(parts)
+    )
+
+    try:
+        result = await router_call(
+            task_type=TaskType.INTAKE_JSON,
+            system=system,
+            user=user,
+            max_tokens=1200,
+        )
+        raw = result["output"]
+        match = _re.search(r'\[.*\]', raw, _re.DOTALL)
+        if match:
+            qs = _json.loads(match.group())
+            if isinstance(qs, list) and len(qs) >= 2:
+                qmap = {q.get("key"): q for q in qs}
+                if "pricing_approach" in qmap and "usp_angle" in qmap:
+                    out = []
+                    for k in ("pricing_approach", "usp_angle"):
+                        q = qmap[k]
+                        out.append({**q, "options": [_strategy_opt_to_str(o) for o in q.get("options", [])]})
+                    return out
+    except Exception:
+        logger.warning("_gen_q5_6_pricing_usp LLM failed, keeping baseline questions")
+    return None
 
 
 def _default_strategy_questions_fallback(industry: str | None = None) -> list[dict]:
@@ -5219,6 +5342,20 @@ async def _ask_next_strategy_question(message: Message, session) -> None:
         await _run_strategy_plan(message, session, direction=direction_block)
         return
     else:
+        # BACKLOG #3: Q4 (positioning) và Q5-6 (pricing_approach/usp_angle) phụ
+        # thuộc các câu trước — regenerate ngay trước khi hiển thị để options
+        # bám đúng hướng user đã chọn.
+        if questions[0]["key"] == "positioning":
+            new_q4 = await _gen_q4_positioning(session, answers)
+            if new_q4:
+                questions[0] = new_q4
+        elif questions[0]["key"] == "pricing_approach":
+            new_q56 = await _gen_q5_6_pricing_usp(session, answers)
+            if new_q56:
+                questions[0] = new_q56[0]
+                if len(questions) > 1 and questions[1]["key"] == "usp_angle":
+                    questions[1] = new_q56[1]
+
         q = questions[0]
         remaining = questions[1:]
         current   = total - len(remaining)  # 1-based index
@@ -5277,7 +5414,7 @@ def _format_strategy_answers(answers: dict) -> str:
     labels = {
         "market_gap":       "Market gap muốn khai thác",
         "target_segment":   "Target segment",
-        "competitor_gap":   "Gap đối thủ muốn đánh",
+        "competitor_gap":   "Messaging gap muốn khai thác",
         "positioning":      "Định vị",
         "pricing_approach": "Pricing approach",
         "usp_angle":        "USP angle",

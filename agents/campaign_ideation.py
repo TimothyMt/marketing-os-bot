@@ -402,7 +402,7 @@ async def extract_campaigns_from_synthesis(session: Session) -> Optional[list[di
     label_map = {
         "market_gap":       "Market Gap",
         "target_segment":   "Target Segment",
-        "competitor_gap":   "Gap Đối Thủ",
+        "competitor_gap":   "Messaging Gap",
         "positioning":      "Định Vị",
         "pricing_approach": "Pricing",
         "usp_angle":        "USP Angle",

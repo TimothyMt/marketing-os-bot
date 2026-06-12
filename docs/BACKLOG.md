@@ -162,7 +162,7 @@ Vị trí thêm: `build_user_msg`/`build_context` của các `CALENDAR_DRIVEN_SK
 
 ---
 
-## 3. TODO (2026-06-12) — Làm "8 câu hỏi chiến lược" (sau T1-T3) thành flow phụ thuộc nhau
+## 3. ✅ DONE (2026-06-12) — Làm "8 câu hỏi chiến lược" (sau T1-T3) thành flow phụ thuộc nhau
 
 **Vấn đề hiện tại:**
 `bot/handlers.py:4931` (`_generate_strategy_questions`) sinh CẢ 8 câu trong
@@ -216,6 +216,27 @@ nào. Vì vậy câu 4 (`positioning`) không thể gợi ý dựa trên 3 câu 
 trả lời Q3 và Q4), nhưng đổi lại Q4-6 thực sự "ăn theo" lựa chọn trước —
 chiến lược nhất quán hơn (positioning suy từ gap analysis, pricing + USP
 angle suy từ positioning).
+
+**Đã làm:**
+- Label `competitor_gap`: "Gap Đối Thủ" → "Messaging Gap" trong
+  `_STRATEGY_Q_LABELS` (`bot/handlers.py`), `label_map` của
+  `extract_campaigns_from_synthesis` (`agents/campaign_ideation.py`), và
+  `_format_strategy_answers`.
+- `_gen_q4_positioning(session, answers)` (`bot/handlers.py`) — LLM call mới,
+  inject market_gap/target_segment/competitor_gap đã chọn + research excerpts
+  → regenerate câu positioning với options bám 3 hướng đã chọn.
+- `_gen_q5_6_pricing_usp(session, answers)` (`bot/handlers.py`) — LLM call mới,
+  inject 4 câu đã chọn (gồm positioning) + psychology_pricing/usp_definition +
+  pricing segment library → regenerate pricing_approach (options vẫn lấy
+  nguyên văn từ pricing segment library, nhất quán với positioning) +
+  usp_angle.
+- `_ask_next_strategy_question` (`bot/handlers.py`) — trong nhánh "pop next
+  question": nếu `questions[0]["key"] == "positioning"` → gọi
+  `_gen_q4_positioning` và replace; nếu `== "pricing_approach"` → gọi
+  `_gen_q5_6_pricing_usp` và replace cả pricing_approach + usp_angle. Cả 2 có
+  fallback: nếu LLM fail (`None`) → giữ nguyên placeholder từ
+  `_generate_strategy_questions` (8 câu baseline) như trước.
+- `channels` (Q7) và `timeline` (Q8) giữ nguyên, không phụ thuộc.
 
 ---
 
