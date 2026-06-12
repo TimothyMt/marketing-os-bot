@@ -5061,7 +5061,11 @@ def _strategy_opt_to_str(opt) -> str:
 
 
 async def _ask_next_strategy_question(message: Message, session) -> None:
-    """Pop and show next strategy question, or run synthesis if all answered."""
+    """Pop and show next strategy question, or run synthesis if all answered.
+
+    Resume-safe: nếu câu hỏi hiện tại (`_current_q_key`) chưa có answer (vd
+    bot crash giữa lúc render câu đó), render lại đúng câu đó từ
+    `_current_q_full` thay vì pop câu tiếp theo (tránh mất câu hỏi)."""
     import json as _json
     from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 
@@ -5069,27 +5073,35 @@ async def _ask_next_strategy_question(message: Message, session) -> None:
     answers_raw   = session.pending_intake.get("_strategy_answers",   "{}")
     questions = _json.loads(questions_raw)
     answers   = _json.loads(answers_raw)
+    total     = len(_STRATEGY_Q_KEYS)
 
-    if not questions:
+    current_key  = session.pending_intake.get("_current_q_key")
+    current_full = session.pending_intake.get("_current_q_full")
+    if current_key and current_key not in answers and current_full:
+        q = _json.loads(current_full)
+        current = total - len(questions)
+    elif not questions:
         # All answered → run synthesis
         session.pending_intake.pop("_strategy_questions", None)
         direction_block = _format_strategy_answers(answers)
         await save_session(session)
         await _run_strategy_plan(message, session, direction=direction_block)
         return
+    else:
+        q = questions[0]
+        remaining = questions[1:]
+        current   = total - len(remaining)  # 1-based index
 
-    q = questions[0]
-    remaining = questions[1:]
-    total     = len(_STRATEGY_Q_KEYS)
-    current   = total - len(remaining)  # 1-based index
+        norm_options = [_strategy_opt_to_str(o) for o in q["options"]]
+        q = {**q, "options": norm_options}
 
-    norm_options = [_strategy_opt_to_str(o) for o in q["options"]]
+        session.pending_intake["_strategy_questions"]  = _json.dumps(remaining, ensure_ascii=False)
+        session.pending_intake["_current_q_key"]       = q["key"]
+        session.pending_intake["_current_q_full"]      = _json.dumps(q, ensure_ascii=False)
+        session.pending_intake["_current_q_options"]   = _json.dumps(norm_options, ensure_ascii=False)
+        await save_session(session)
 
-    session.pending_intake["_strategy_questions"]  = _json.dumps(remaining, ensure_ascii=False)
-    session.pending_intake["_current_q_key"]       = q["key"]
-    session.pending_intake["_current_q_options"]   = _json.dumps(norm_options, ensure_ascii=False)
-    await save_session(session)
-
+    norm_options = q["options"]
     label = _STRATEGY_Q_LABELS.get(q["key"], q["key"])
 
     # Câu channels: KHÔNG đưa option sẵn — user tự gõ các kênh muốn làm.
