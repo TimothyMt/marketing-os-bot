@@ -383,7 +383,12 @@ async def extract_campaigns_from_synthesis(session: Session) -> Optional[list[di
     if not synthesis:
         return None
 
-    answers = session.pending_intake.get("_strategy_answers") or {}
+    import json as _json
+    try:
+        answers = _json.loads(session.pending_intake.get("_strategy_answers") or "{}")
+    except Exception:
+        answers = {}
+
     label_map = {
         "market_gap":       "Market Gap",
         "target_segment":   "Target Segment",
