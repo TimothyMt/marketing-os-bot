@@ -2191,14 +2191,10 @@ async def _handle_callback_inner(update, context, query, session, data, user_id)
         return
 
     if data == "resume_strategy_questions":
-        # User has research results; resume 7-question flow
+        # User has research results — luôn hỏi lại đủ 8 câu từ đầu (đơn giản,
+        # tránh resume giữa chừng từ state cũ/lỗi gây crash lặp lại).
         await query.edit_message_reply_markup(reply_markup=None)
-        if session.pending_intake.get("_strategy_questions"):
-            # Remaining question queue still intact → pick up from there
-            await _ask_next_strategy_question(query.message, session)
-        else:
-            # Queue gone (e.g. after restart) → start fresh questions
-            await _start_strategic_consultation(query.message, session)
+        await _start_strategic_consultation(query.message, session)
         return
 
     if data == "usp_use_as_is":
@@ -5031,6 +5027,12 @@ async def _start_strategic_consultation(message: Message, session) -> None:
     questions = await _generate_strategy_questions(session)
     session.pending_intake["_strategy_questions"] = _json.dumps(questions, ensure_ascii=False)
     session.pending_intake["_strategy_answers"]   = _json.dumps({}, ensure_ascii=False)
+    # Clear leftover current-question state từ lần chạy trước (resume-safe logic
+    # trong _ask_next_strategy_question sẽ đọc nhầm state cũ nếu không xóa).
+    session.pending_intake.pop("_current_q_key", None)
+    session.pending_intake.pop("_current_q_full", None)
+    session.pending_intake.pop("_current_q_options", None)
+    session.pending_intake.pop("_awaiting_strategy_q_custom", None)
     await save_session(session)
 
     await message.reply_text(
