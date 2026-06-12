@@ -389,3 +389,93 @@ chuyển đổi?
 có thể làm độc lập.
 
 ---
+
+## 10. TODO (2026-06-12) — Loạt fix flow Content Calendar → Sản xuất Content
+
+Ghi lại để fix 1 thể, KHÔNG fix ngay. Đã fix riêng phần (a) — bug cadence
+(commit "Fix bug: cadence mỗi kênh bị mất...").
+
+### (a) ✅ ĐÃ FIX — Cadence mỗi kênh bị lệch số tự bịa
+`_handle_calendar_cadence_text` (`bot/handlers.py:7427`) trước đây chỉ
+`re.match` đầu MỖI DÒNG sau `split("\n")`, nhưng ví dụ bot đưa ra lại gợi ý
+gõ tất cả trên 1 dòng nối bằng " · " (`_prompt_calendar_cadence` line 7418)
+→ user gõ theo ví dụ "Facebook: 7 · TikTok: 4 · Zalo: 7" thì CHỈ Facebook
+được parse, TikTok/Zalo bị mất → LLM tự bịa 6 và 3.
+**Đã fix:** đổi sang `re.finditer` tìm mọi cặp "Kênh: N" bất kể nối bằng
+dòng mới hay " · "/",". Đã commit + push.
+
+### (b) TODO — TikTok: hỏi thêm "tuyến content" (theo 15 ngành) + "thuê UGC ngoài?"
+Trong `_prompt_calendar_cadence` (`bot/handlers.py:7398`), sau khi user chốt
+cadence, nếu `channels` có TikTok → hỏi thêm 2 câu (gộp vào CÙNG 1 bước, không
+tách thêm round-trip):
+- "Tuyến content TikTok muốn tập trung?" — gợi ý sẵn theo industry (dùng
+  `agents/social_industry_profiles.py` làm nguồn — file này đã có
+  channel/giờ vàng theo 15 ngành, cần bổ sung thêm "content lines" gợi ý
+  theo ngành nếu chưa có)
+- "Có thuê UGC ngoài không?" (Có/Không + số lượng nếu có)
+Câu trả lời lưu vào `pending_intake` để CONTENT_CALENDAR_SYSTEM
+(`agents/operational_prompts.py:98`) dùng define topic/angle cho section
+TikTok, và để `ugc_brief` skill dùng sau nếu cần.
+
+### (c) TODO — Bỏ field ngày không liên quan trong content_calendar output
+User feedback: phần "ngày" (Story Arc date range "Tuần 1 (15/06–21/06)"...)
+hiển thị trong file Excel "chả liên quan gì". Cần kiểm tra lại: các date
+range này tự tính từ `start_date = hôm nay` + `duration` (xem backlog #7,
+`merge_to_brief_fields`). Cần xác minh: (1) date range này có đang được hiển
+thị đúng & hữu ích không, hay (2) nó gây nhiễu vì user chỉ cần biết
+"Tuần 1/2/3/4" mà không cần ngày cụ thể (vì lịch thật sự sẽ dịch theo ngày
+campaign chạy thực tế, không phải ngày tạo brief). Có thể bỏ cột/date range
+này khỏi Story Arc, chỉ giữ "Tuần X".
+
+### (d) TODO — Đảo flow: Brand Voice check TRƯỚC "Bài mẫu đầu tiên", rồi bỏ luôn bước "Bài mẫu"
+Hiện tại (`_start_tone_calibration`, `bot/handlers.py:8436`):
+1. Nếu chưa có Brand Voice → hỏi setup BV trước (gate đã đúng thứ tự)
+2. Sau đó LUÔN gen "🎨 Kiểm tra Tone — Bài mẫu đầu tiên" (1 bài sample,
+   `generate_sample_post`) → user duyệt/chỉnh tone qua `TONE_CHECK_KEYBOARD`
+
+User muốn: bỏ HẲN bước "Bài mẫu đầu tiên" (tone calibration loop). Sau khi
+Brand Voice đã có (hoặc vừa setup xong) → hỏi luôn "Sếp muốn gen content nền
+tảng nào trước?" (Facebook/TikTok/Zalo...) → dùng Brand Voice đã có để viết
+content cho nền tảng đó luôn, không cần sample-post-to-check-tone riêng.
+→ Cần thay `_start_tone_calibration` bằng 1 prompt chọn platform, bỏ
+`generate_sample_post` + `TONE_CHECK_KEYBOARD`/`tone_calibration` state
+(hoặc giữ lại reject/feedback path cho lần sau nếu cần, nhưng KHÔNG block
+flow chính bằng sample post).
+
+### (e) TODO — Bỏ 4 câu hỏi trong "✅ ✍️ Sản Xuất Nội Dung" (content_generator)
+`agents/task_registry.py:230-234` — `content_generator.intake_fields` đang
+có 4 field muốn bỏ:
+- `video_type` ("Video type tuần này (UGC/EGC/FGC/mix)?")
+- `fgc_channel_mode` ("Nếu có FGC: kênh riêng hay kết hợp brand?")
+- `ugc_outsource` ("Có thuê creator ngoài làm UGC không?")
+- `tone_note` ("Tone note đặc biệt?")
+→ Xoá 4 field này khỏi `intake_fields`. Lưu ý: `ugc_outsource` có thể vẫn
+cần — nếu (b) thêm câu "thuê UGC ngoài?" ở bước TikTok cadence rồi, thì
+field này ở đây là TRÙNG → xoá ở content_generator, giữ ở (b). Kiểm tra
+`ContentGeneratorPipeline` xem các field này có được dùng để branch logic
+không trước khi xoá (tránh lỗi field-not-found).
+
+### (f) TODO — video_script_gen: cấu trúc 13-cột cứng (Hook/Problem/Solution/
+### Proof/CTA theo PAS) → thay theo "tuyến content" đã chọn ở (b)
+`VIDEO_SCRIPT_GEN_SYSTEM` (`agents/operational_prompts.py:1369-1426`) ép mọi
+video vào khung 5-beat PAS cố định (Hook 3s/Problem 10s/Solution 20s/Proof
+10s/CTA 7s) — không phù hợp với tuyến content khác (vd: storytime, behind-
+the-scenes, day-in-life, listicle... mỗi tuyến có nhịp khác PAS). Cần làm
+cấu trúc cột ĐỘNG theo tuyến content của slot đó (lấy từ (b) hoặc từ Hook
+angle/Pillar đã gán trong Calendar) — PAS chỉ là 1 trong nhiều framework
+khả dụng (xem `agents/content_suite_prompts.py:344-352` đã có sẵn 5
+frameworks: PAS/BAB/AIDA/FAB/Star-Story — video script nên theo đúng
+framework đã gán cho slot đó trong Calendar, không hard-code PAS).
+
+### (g) TODO — Sau Content Calendar, không tự cascade chạy hết content_generator
+(post + video script + UGC brief + ads cùng lúc) — chỉ chạy phần user chọn
+`content_generator` (`agents/task_registry.py:219-236`, skill
+`ContentGeneratorPipeline`) mô tả "Sản xuất toàn bộ content package: bài
+đăng + video script + UGC brief + ads — output Excel" — 1 lần chạy ra CẢ 4
+loại nội dung. User muốn: chỉ gửi/chạy đúng loại nội dung user yêu cầu (vd
+chỉ "bài đăng Facebook tuần 1"), không tự động kèm video script/UGC
+brief/ads nếu user không hỏi tới. Cần xem lại `ContentGeneratorPipeline` để
+tách theo scope/loại nội dung user chọn, hoặc thêm bước hỏi "sếp cần loại
+nào: bài đăng / video script / UGC brief / ads / tất cả?" trước khi chạy.
+
+---
