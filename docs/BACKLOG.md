@@ -476,7 +476,7 @@ gõ tất cả trên 1 dòng nối bằng " · " (`_prompt_calendar_cadence` lin
 **Đã fix:** đổi sang `re.finditer` tìm mọi cặp "Kênh: N" bất kể nối bằng
 dòng mới hay " · "/",". Đã commit + push.
 
-### (b) TODO — TikTok: hỏi thêm "tuyến content" (theo 15 ngành) + "thuê UGC ngoài?"
+### (b) ✅ DONE (2026-06-12) — TikTok: hỏi thêm "tuyến content" (theo 15 ngành) + "thuê UGC ngoài?"
 Trong `_prompt_calendar_cadence` (`bot/handlers.py:7398`), sau khi user chốt
 cadence, nếu `channels` có TikTok → hỏi thêm 2 câu (gộp vào CÙNG 1 bước, không
 tách thêm round-trip):
@@ -488,6 +488,25 @@ tách thêm round-trip):
 Câu trả lời lưu vào `pending_intake` để CONTENT_CALENDAR_SYSTEM
 (`agents/operational_prompts.py:98`) dùng define topic/angle cho section
 TikTok, và để `ugc_brief` skill dùng sau nếu cần.
+
+**Đã làm:**
+- `agents/social_industry_profiles.py`: thêm dict `TIKTOK_CONTENT_LINES`
+  (14 ngành, mỗi ngành 3-4 tuyến content TikTok đặc thù — food porn/BTS/UGC
+  cho fnb, before-after/routine cho health_beauty, v.v.) + fallback
+  `TIKTOK_CONTENT_LINES_GENERIC` + helper `get_tiktok_content_lines(industry)`.
+- `bot/handlers.py:_prompt_calendar_cadence` — nếu `channels` chứa "TikTok"
+  (case-insensitive), nối thêm vào CÙNG message: gợi ý tuyến theo ngành (từ
+  `get_tiktok_content_lines`) + câu hỏi "Tuyến content TikTok muốn tập
+  trung?" + "Có thuê UGC ngoài không?", kèm format gợi ý
+  `Tuyến: ...` / `UGC: ...`.
+- `bot/handlers.py:_handle_calendar_cadence_text` — thêm regex parse
+  `Tuyến[...]:` và `UGC[...]:` từ câu trả lời, lưu vào
+  `pending_intake["tiktok_content_lines"]` / `pending_intake["ugc_outsource"]`
+  (không bắt buộc — nếu user không trả lời thì bỏ qua, không chặn flow).
+- `agents/operational_skills_config.py:ContentCalendarDynamicSkill.build_user_msg`
+  — inject 2 field trên vào context cho `CONTENT_CALENDAR_SYSTEM` (section
+  "TIKTOK — TUYẾN CONTENT DO SẾP CHỐT") để LLM bám tuyến đã chọn cho section
+  TikTok của Calendar.
 
 ### (c) ✅ DONE (2026-06-12) — Bỏ field ngày không liên quan trong content_calendar output
 User feedback: phần "ngày" (Story Arc date range "Tuần 1 (15/06–21/06)"...)

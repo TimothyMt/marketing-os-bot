@@ -747,6 +747,17 @@ class ContentCalendarDynamicSkill(OperationalSkill):
                 "Section 4: mỗi sub-section kênh có ĐÚNG (số bài/tuần × số tuần) bài cho kênh đó.)_"
             )
 
+        # TikTok content line + UGC outsource do user chốt (BACKLOG #10b) —
+        # dùng để define topic/angle cho section TikTok trong Calendar.
+        tiktok_lines = (session.pending_intake.get("tiktok_content_lines") or "").strip()
+        ugc_outsource = (session.pending_intake.get("ugc_outsource") or "").strip()
+        if tiktok_lines or ugc_outsource:
+            msg += "\n\n---\n\n**TIKTOK — TUYẾN CONTENT DO SẾP CHỐT:**"
+            if tiktok_lines:
+                msg += f"\n- Tuyến content TikTok ưu tiên: {tiktok_lines}\n  _(Section TikTok trong Calendar bám theo tuyến này cho topic/angle.)_"
+            if ugc_outsource:
+                msg += f"\n- Thuê UGC ngoài: {ugc_outsource}"
+
         # Inject calendar edit feedback nếu có
         feedback = session.pending_intake.get("_calendar_feedback", "")
         if feedback:

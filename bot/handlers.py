@@ -7783,7 +7783,26 @@ async def _prompt_calendar_cadence(message, session):
     for ch in channels:
         lines.append(f"`{ch}: <số bài/tuần>`")
     lines.append("")
-    lines.append("_Vd: " + " · ".join(f"{ch}: 3" for ch in channels) + "_")
+    example = " · ".join(f"{ch}: 3" for ch in channels)
+
+    # TikTok có trong kênh → hỏi gộp thêm "tuyến content" + "thuê UGC ngoài?"
+    # trong CÙNG bước này (không tách thêm round-trip) — BACKLOG #10(b).
+    has_tiktok = any("tiktok" in ch.lower() for ch in channels)
+    if has_tiktok:
+        from agents.social_industry_profiles import get_tiktok_content_lines
+        suggested_lines = get_tiktok_content_lines(session.profile.industry or "")
+        lines.append(
+            "_Vd: " + example + " · Tuyến: Behind-the-scenes + Review khách · UGC: Có, 2 video/tháng_"
+        )
+        lines.append("")
+        lines.append("📱 *Riêng TikTok — trả lời thêm 2 ý dưới đây (trong cùng tin nhắn):*")
+        lines.append("")
+        lines.append(f"1️⃣ *Tuyến content TikTok* muốn tập trung? Gợi ý theo ngành:\n_{suggested_lines}_")
+        lines.append("2️⃣ *Có thuê UGC ngoài không?* (Có/Không + số lượng nếu có)")
+        lines.append("")
+        lines.append("Gõ theo format: `Tuyến: <tuyến muốn chọn>` và `UGC: <Có/Không, số lượng>`")
+    else:
+        lines.append("_Vd: " + example + "_")
 
     session.pending_intake["_awaiting_calendar_cadence"] = "1"
     session.stage = PipelineStage.TASK_SELECT
@@ -7807,6 +7826,20 @@ async def _handle_calendar_cadence_text(update, context, session, text: str):
 
     # Không match được format → lưu nguyên text, để LLM tự suy
     session.pending_intake["channel_cadence"] = "; ".join(cadence_lines) if cadence_lines else raw
+
+    # TikTok: trích "Tuyến: ..." và "UGC: ..." nếu có (BACKLOG #10b) — gộp
+    # cùng bước cadence, không tách round-trip riêng.
+    m_tuyen = re.search(r"Tuyến[^:：]*[:：]\s*(.+?)(?:\n|·\s*UGC|UGC[^:：]*[:：]|$)", raw, re.IGNORECASE)
+    if m_tuyen:
+        tuyen_val = m_tuyen.group(1).strip(" ·-")
+        if tuyen_val:
+            session.pending_intake["tiktok_content_lines"] = tuyen_val
+    m_ugc = re.search(r"UGC[^:：]*[:：]\s*(.+?)(?:\n|$)", raw, re.IGNORECASE)
+    if m_ugc:
+        ugc_val = m_ugc.group(1).strip(" ·-")
+        if ugc_val:
+            session.pending_intake["ugc_outsource"] = ugc_val
+
     await save_session(session)
 
     await _run_content_calendar(update.message, session, context, update)

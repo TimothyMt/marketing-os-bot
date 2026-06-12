@@ -331,6 +331,41 @@ SOCIAL_GENERIC_PROFILE = """**🎯 BỘ NÃO NGÀNH: Chung (chưa xác định n
 **Lưu ý:** Vì chưa rõ ngành, bám CHẶT vào product_service + target_customer trong profile để content không bị chung chung."""
 
 
+# Gợi ý "tuyến content" TikTok theo ngành — dùng để hỏi user chọn tuyến muốn
+# tập trung khi dựng Content Calendar (BACKLOG #10b). Mỗi entry là 3-4 tuyến
+# ngắn gọn, đặc thù ngành, phù hợp định dạng video ngắn TikTok.
+TIKTOK_CONTENT_LINES: dict[str, str] = {
+    "fnb": "Food porn cận cảnh món signature · Behind-the-scenes bếp/sơ chế · Review khách thật (UGC) · Trend âm thanh + món ăn",
+    "health_beauty": "Before/after transformation · Routine sáng-tối · Myth-busting da liễu · Khách kể trải nghiệm (UGC/EGC)",
+    "education": "Tip/hack học nhanh dạng nhanh · Học viên success story · Phá lầm tưởng phương pháp học · Mini-lesson demo",
+    "ecommerce": "Unboxing/demo sản phẩm · Review khách thật (UGC) · Flash sale/đếm ngược · So sánh trước-sau dùng sản phẩm",
+    "tech_saas": "Demo tính năng giải pain cụ thể · So sánh thủ công vs dùng phần mềm · Case study + số ROI · Tip/insight ngành",
+    "agency": "Behind-the-process làm việc · Case result trước/sau · Contrarian take ngắn · Framework độc quyền (free)",
+    "real_estate": "Tour căn hộ/dự án (walkthrough) · Lifestyle aspiration không gian sống · Tip pháp lý/vay mua nhà · Khách an cư thành công",
+    "retail": "Hàng mới về / trend · Không khí tại store · Combo/khuyến mãi theo dịp · Khách mua sắm thật (UGC tại store)",
+    "fashion_retail": "Lookbook/phối đồ theo dịp · Styling tip theo dáng người · Hậu trường photoshoot/BST mới · Khách mặc thật (UGC)",
+    "health_clinic": "Bác sĩ giải thích bệnh lý/quy trình · Hướng dẫn phòng ngừa tại nhà · Giới thiệu thiết bị/đội ngũ · Case điều trị thật (đã đồng ý)",
+    "pet_care": "Before/after grooming · Khoảnh khắc dễ thương boss · Tip chăm sóc thú cưng · Khách + boss thật (UGC)",
+    "events_wedding": "Real wedding/event highlight · Hậu trường set up · Checklist chuẩn bị (giá trị free) · Khoảnh khắc cảm xúc cặp đôi",
+    "interior_design": "Before/after công trình · Tour công trình hoàn thiện · Tip bố trí/chọn vật liệu · Xu hướng nội thất theo phong cách",
+    "travel_hospitality": "Cảnh đẹp/góc check-in · Trải nghiệm khách thật (UGC) · Guide/lịch trình ngắn · Combo/ưu đãi theo mùa",
+}
+
+TIKTOK_CONTENT_LINES_GENERIC = (
+    "Storytime/behind-the-scenes · Tip/hack ngắn liên quan sản phẩm · "
+    "Trend/âm thanh viral gắn brand · Khách/người dùng thật (UGC)"
+)
+
+
+def get_tiktok_content_lines(industry: str) -> str:
+    """Trả về gợi ý 'tuyến content' TikTok theo industry key (BACKLOG #10b).
+
+    Không match → generic fallback.
+    """
+    key = (industry or "").strip().lower()
+    return TIKTOK_CONTENT_LINES.get(key, TIKTOK_CONTENT_LINES_GENERIC)
+
+
 def get_social_industry_profile(industry: str) -> str:
     """Trả về bộ não ngành theo industry key.
 
