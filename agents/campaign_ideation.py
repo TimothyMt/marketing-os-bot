@@ -1114,14 +1114,8 @@ def merge_to_brief_fields(
 
     campaign_brief consume 4 keys: campaign_name, campaign_goal, duration, key_offer
     """
-    from datetime import date, timedelta
-
     duration_text = user_inputs.get("Thời lượng campaign", "")
     duration_days = _parse_duration_days(duration_text)
-    start = date.today()
-    end = start + timedelta(days=duration_days)
-    start_date = start.strftime("%d/%m/%Y")
-    end_date = end.strftime("%d/%m/%Y")
 
     # Lever parameters (loại field thời lượng)
     lever_params = {
@@ -1141,8 +1135,6 @@ def merge_to_brief_fields(
         ),
         "duration": (
             f"**Thời lượng:** {duration_text or f'{duration_days} ngày'}\n"
-            f"**Ngày bắt đầu:** {start_date}\n"
-            f"**Ngày kết thúc:** {end_date}\n"
             f"_(Gợi ý từ AI: {campaign.get('duration_suggestion') or campaign.get('duration', 'N/A')})_"
         ),
         "key_offer": (

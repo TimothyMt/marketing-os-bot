@@ -489,7 +489,7 @@ Câu trả lời lưu vào `pending_intake` để CONTENT_CALENDAR_SYSTEM
 (`agents/operational_prompts.py:98`) dùng define topic/angle cho section
 TikTok, và để `ugc_brief` skill dùng sau nếu cần.
 
-### (c) TODO — Bỏ field ngày không liên quan trong content_calendar output
+### (c) ✅ DONE (2026-06-12) — Bỏ field ngày không liên quan trong content_calendar output
 User feedback: phần "ngày" (Story Arc date range "Tuần 1 (15/06–21/06)"...)
 hiển thị trong file Excel "chả liên quan gì". Cần kiểm tra lại: các date
 range này tự tính từ `start_date = hôm nay` + `duration` (xem backlog #7,
@@ -498,6 +498,19 @@ thị đúng & hữu ích không, hay (2) nó gây nhiễu vì user chỉ cần 
 "Tuần 1/2/3/4" mà không cần ngày cụ thể (vì lịch thật sự sẽ dịch theo ngày
 campaign chạy thực tế, không phải ngày tạo brief). Có thể bỏ cột/date range
 này khỏi Story Arc, chỉ giữ "Tuần X".
+
+**Đã làm:** Xác nhận nguồn: `merge_to_brief_fields` (agents/campaign_ideation.py)
+tính `start_date = date.today()` (ngày TẠO BRIEF, không phải ngày campaign
+chạy thật) + `end_date = start + duration_days`, rồi nhúng "**Ngày bắt đầu:**
+.../**Ngày kết thúc:** ..." vào field `duration` của brief — field này được
+đưa vào context cho campaign_brief → content_calendar, khiến LLM tự suy ra
+"Tuần 1 (15/06–21/06)" dựa trên ngày tạo brief (sai lệch với ngày chạy thực
+tế). Đã xoá hoàn toàn 2 dòng "Ngày bắt đầu"/"Ngày kết thúc" khỏi field
+`duration` trong `merge_to_brief_fields` (chỉ còn giữ "Thời lượng: ..." +
+gợi ý AI), và xoá luôn phần tính `start`/`end`/`start_date`/`end_date`
+(dùng `date`/`timedelta`, không còn cần). Story Arc trong content_calendar
+output giờ chỉ còn "Tuần 1/2/3/4" (đã đúng từ template gốc, không có cột
+ngày), không còn bị nhiễu bởi ngày tạo brief.
 
 ### (d) TODO — Đảo flow: Brand Voice check TRƯỚC "Bài mẫu đầu tiên", rồi bỏ luôn bước "Bài mẫu"
 Hiện tại (`_start_tone_calibration`, `bot/handlers.py:8436`):
