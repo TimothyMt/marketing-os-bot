@@ -242,32 +242,25 @@ class ContentGeneratorPipeline:
     def _prefill_intake(self, session) -> None:
         """Pre-fill intake cho các sub-skill từ gate answers + profile.
 
-        Gate answers (weeks, highlight_angles, video_type, fgc_channel_mode,
-        ugc_outsource, ads_usp) đã được user cung cấp qua form content_generator.
+        Gate answers (weeks, highlight_angles, ads_usp) đã được user cung cấp
+        qua form content_generator. `ugc_outsource` (nếu có) đến từ câu hỏi
+        TikTok ở bước calendar cadence (BACKLOG #10b) — không hỏi lại ở đây.
         Pipeline auto-chain đọc từ pending_intake thay vì hardcode defaults.
         """
         pi = session.pending_intake
         profile = session.profile
         goal = pi.get("campaign_goal") or profile.primary_goal or "Thu lead / chốt đơn"
 
-        # video_script_gen — derive creator_type from gate video_type answer
-        video_type_raw = (pi.get("video_type") or "").lower()
-        if not pi.get("creator_type"):
-            if "fgc" in video_type_raw:
-                pi["creator_type"] = "fgc"
-            elif "egc" in video_type_raw:
-                pi["creator_type"] = "egc"
-            elif "kol" in video_type_raw:
-                pi["creator_type"] = "kol"
-            else:
-                pi["creator_type"] = "ugc"
+        # video_script_gen — creator_type mặc định "ugc" (framework động đã
+        # quyết định cấu trúc kịch bản theo tuyến content, xem #10f)
+        pi.setdefault("creator_type", "ugc")
 
         # video_script_gen + VideoScriptsSkill — pass scope from gate
         pi.setdefault("scope", pi.get("scope") or f"{pi.get('weeks', '4 tuần')} — theo calendar")
         pi.setdefault("funnel", "TOFU")
         pi.setdefault("duration", "45s")
 
-        # ugc_brief — pass outsource flag so prompt knows context
+        # ugc_brief — pass outsource flag (từ câu hỏi TikTok ở #10b) so prompt knows context
         pi.setdefault("creator_types", pi.get("ugc_outsource") or "UGC micro (1K-10K)")
 
         # ads_generator (AdsCopySkill) — prefer gate answers, fallback to profile

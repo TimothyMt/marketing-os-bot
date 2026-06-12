@@ -546,7 +546,7 @@ content cho nền tảng đó luôn, không cần sample-post-to-check-tone riê
 (hoặc giữ lại reject/feedback path cho lần sau nếu cần, nhưng KHÔNG block
 flow chính bằng sample post).
 
-### (e) TODO — Bỏ 4 câu hỏi trong "✅ ✍️ Sản Xuất Nội Dung" (content_generator)
+### (e) ✅ DONE (2026-06-12) — Bỏ 4 câu hỏi trong "✅ ✍️ Sản Xuất Nội Dung" (content_generator)
 `agents/task_registry.py:230-234` — `content_generator.intake_fields` đang
 có 4 field muốn bỏ:
 - `video_type` ("Video type tuần này (UGC/EGC/FGC/mix)?")
@@ -558,6 +558,20 @@ cần — nếu (b) thêm câu "thuê UGC ngoài?" ở bước TikTok cadence r�
 field này ở đây là TRÙNG → xoá ở content_generator, giữ ở (b). Kiểm tra
 `ContentGeneratorPipeline` xem các field này có được dùng để branch logic
 không trước khi xoá (tránh lỗi field-not-found).
+
+**Đã làm:**
+- `agents/task_registry.py` — xoá 4 field `video_type`, `fgc_channel_mode`,
+  `ugc_outsource`, `tone_note` khỏi `content_generator.intake_fields`
+  (giờ chỉ còn `weeks`, `scope`, `highlight_angles`, `ads_usp`).
+- `agents/operational_skills_config.py:ContentGeneratorPipeline._prefill_intake`
+  — cập nhật theo: `creator_type` mặc định "ugc" (không còn derive từ
+  `video_type` — framework động ở (f) đã tự quyết cấu trúc kịch bản theo
+  tuyến content, không cần phân loại creator trước); `creator_types` (cho
+  `ugc_brief`) vẫn đọc `pi.get("ugc_outsource")` — giờ field này lấy từ câu
+  hỏi TikTok ở bước calendar cadence (#10b) nếu có, KHÔNG hỏi lại, tránh
+  trùng lặp. `fgc_channel_mode` không còn được set → `VideoScriptsSkill`
+  (skill khác, "video_scripts" standalone) tự fallback nhánh "kết hợp brand"
+  mặc định, không lỗi field-not-found vì dùng `.get()`.
 
 ### (f) ✅ DONE (2026-06-12) — video_script_gen: cấu trúc 13-cột cứng (Hook/Problem/Solution/
 ### Proof/CTA theo PAS) → thay theo "tuyến content" đã chọn ở (b)

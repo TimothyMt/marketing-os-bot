@@ -227,11 +227,7 @@ OPERATIONAL_TASKS: dict[str, TaskConfig] = {
             {"key": "weeks",            "label": "Lên plan mấy tuần?",                   "example": "4 tuần / 2 tuần / 1 tuần",                     "required": True},
             {"key": "scope",            "label": "Sản xuất cho tuần / ngày nào?",         "example": "Tuần 1 (5-11/01/2026) — 14 bài",               "required": True},
             {"key": "highlight_angles", "label": "Angle / chủ đề muốn nhấn vào?",         "example": "Giảm đau hiệu quả; before/after thật; review khách", "required": False},
-            {"key": "video_type",       "label": "Video type tuần này (UGC/EGC/FGC/mix)?","example": "UGC + FGC",                                    "required": True},
-            {"key": "fgc_channel_mode", "label": "Nếu có FGC: kênh riêng hay kết hợp brand?", "example": "Riêng (kênh cá nhân founder) / Kết hợp brand", "required": False},
-            {"key": "ugc_outsource",    "label": "Có thuê creator ngoài làm UGC không?",  "example": "Có (2 UGC micro 1K-10K) / Không",              "required": True},
             {"key": "ads_usp",          "label": "USP + ưu đãi muốn đẩy qua ads?",        "example": "Giảm 20% tháng này; combo Tết 680K (gốc 850K)","required": False},
-            {"key": "tone_note",        "label": "Tone note đặc biệt?",                    "example": "Tết — vibe ấm áp + urgency mềm",               "required": False},
         ],
     ),
     # "social_posts" — ĐÃ XOÁ (2026-06-10): trùng vai với post_batch (cùng viết bài hữu cơ batch).
