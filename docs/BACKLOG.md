@@ -462,10 +462,9 @@ có thể làm độc lập.
 
 ---
 
-## 10. TODO (2026-06-12) — Loạt fix flow Content Calendar → Sản xuất Content
+## 10. ✅ DONE (2026-06-12) — Loạt fix flow Content Calendar → Sản xuất Content
 
-Ghi lại để fix 1 thể, KHÔNG fix ngay. Đã fix riêng phần (a) — bug cadence
-(commit "Fix bug: cadence mỗi kênh bị mất...").
+Tất cả sub-items (a)-(g) đã hoàn thành — xem chi tiết "Đã làm" trong từng mục bên dưới.
 
 ### (a) ✅ ĐÃ FIX — Cadence mỗi kênh bị lệch số tự bịa
 `_handle_calendar_cadence_text` (`bot/handlers.py:7427`) trước đây chỉ
