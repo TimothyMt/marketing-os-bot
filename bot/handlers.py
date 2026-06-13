@@ -4080,6 +4080,13 @@ async def _send_single_shot_form(message: Message, session, task_name: str, _ski
         await message.reply_text(f"⚠️ Skill {task_name} không tồn tại.")
         return
 
+    intake_fields = task.intake_fields
+    if task_name == "content_generator" and session.pending_intake.get("scope"):
+        # Weekly mode (scope đã chốt = "Tuần N" ở _handle_week_selection_text)
+        # — field "weeks" (Lên plan mấy tuần?) không còn ý nghĩa, scope đã
+        # quyết định phạm vi chạy. Bỏ khỏi form, không prefill, không hỏi.
+        intake_fields = [f for f in intake_fields if f["key"] != "weeks"]
+
     # Ads tasks pull data từ 1 Ad Account cụ thể — nếu user có nhiều account,
     # cho chọn account trước khi vào form (tránh audit/phân tích nhầm account).
     if task_name == "ads_analytics" and not _skip_account_pick:
@@ -4185,7 +4192,7 @@ async def _send_single_shot_form(message: Message, session, task_name: str, _ski
     }
 
     prefilled: dict[str, str] = {}
-    for f in task.intake_fields:
+    for f in intake_fields:
         key = f["key"]
         profile_attr = _PROFILE_KEY_MAP.get(key)
         if not profile_attr:
@@ -4230,7 +4237,10 @@ async def _send_single_shot_form(message: Message, session, task_name: str, _ski
                 "weeks":            intake.get("duration"),
                 "highlight_angles": intake.get("campaign_goal") or intake.get("campaign_name"),
             }
+            _intake_field_keys = {f["key"] for f in intake_fields}
             for key, val in _brief_map.items():
+                if key not in _intake_field_keys:
+                    continue
                 if val and key not in prefilled:
                     prefilled[key] = str(val).strip()
                     session.pending_intake[key] = str(val).strip()
@@ -4242,7 +4252,7 @@ async def _send_single_shot_form(message: Message, session, task_name: str, _ski
     # Bỏ qua field đã prefill từ profile HOẶC đã set sẵn trong pending_intake
     # (vd channel_focus do nút chooser của Khoa set) → không hỏi lại.
     remaining_fields = [
-        f for f in task.intake_fields
+        f for f in intake_fields
         if f["key"] not in prefilled and not session.pending_intake.get(f["key"])
     ]
 
@@ -4262,7 +4272,7 @@ async def _send_single_shot_form(message: Message, session, task_name: str, _ski
         else:
             lines.append("*Em đã có sẵn từ business profile của sếp:*")
         for k, v in _display_prefilled.items():
-            label = next((f["label"] for f in task.intake_fields if f["key"] == k), k)
+            label = next((f["label"] for f in intake_fields if f["key"] == k), k)
             lines.append(f"• *{label}:* {_escape_md(v[:120])}")
         lines.append("")
         if remaining_fields:
@@ -4807,8 +4817,12 @@ async def _send_ops_result(message: Message, session, task_name: str, result: st
     # Stem chung cho mọi file (tránh trailing "_" khi slug rỗng)
     file_stem = f"{task_name}_{business_slug}" if business_slug else task_name
 
-    # Skip HTML: Excel-only skills + action skills (ads_optimizer)
+    # Skip HTML phụ: Excel-only skills + action skills (ads_optimizer)
     SKIP_HTML_SKILLS = {"content_generator", "post_batch", "video_script_gen", "ugc_brief", "ads_optimizer", "ads_intelligence"}
+
+    # Action skills: output hiện inline (kèm nút action), KHÔNG gửi file deliverable.
+    # Khác SKIP_HTML_SKILLS (chỉ bỏ HTML phụ) — post_batch vẫn phải gửi MD primary.
+    NO_FILE_SKILLS = {"ads_optimizer", "ads_intelligence"}
 
     if task_name not in SKIP_HTML_SKILLS:
         # Send HTML always (universal viewable)
@@ -4833,17 +4847,21 @@ async def _send_ops_result(message: Message, session, task_name: str, result: st
     # Content Suite v2: skills luôn output MD primary + Excel secondary (Haiku convert)
     CONTENT_SUITE_V2 = {"post_write", "post_adapt", "post_voice_check", "post_hooks", "post_batch"}
 
-    # Send primary deliverable per skill config (skip for action skills like ads_optimizer)
-    if task_name not in SKIP_HTML_SKILLS and skill.primary_deliverable == PrimaryDeliverable.MARKDOWN:
-        md_bytes = render_markdown_file(task_name, task.label, parsed, skill.output_format, business_name)
-        buf = io.BytesIO(md_bytes)
-        buf.name = f"{file_stem}.md"
-        await message.reply_document(
-            document=buf,
-            filename=buf.name,
-            caption=f"📝 *{task.label}* — bản Markdown (gửi designer/dev/creator)",
-            parse_mode=ParseMode.MARKDOWN,
-        )
+    # Send primary deliverable per skill config (skip for action skills like ads_optimizer).
+    # Gate bằng NO_FILE_SKILLS (KHÔNG phải SKIP_HTML_SKILLS) — post_batch nằm trong
+    # SKIP_HTML_SKILLS nhưng MD là deliverable chính của nó, vẫn phải gửi.
+    if task_name not in NO_FILE_SKILLS and skill.primary_deliverable == PrimaryDeliverable.MARKDOWN:
+        # post_batch: chỉ gửi Excel (như các skill EXCEL khác), bỏ file MD song song
+        if task_name != "post_batch":
+            md_bytes = render_markdown_file(task_name, task.label, parsed, skill.output_format, business_name)
+            buf = io.BytesIO(md_bytes)
+            buf.name = f"{file_stem}.md"
+            await message.reply_document(
+                document=buf,
+                filename=buf.name,
+                caption=f"📝 *{task.label}* — bản Markdown (gửi designer/dev/creator)",
+                parse_mode=ParseMode.MARKDOWN,
+            )
 
         # Content Suite v2: TRY gen Excel secondary qua Haiku auto-convert
         if task_name in CONTENT_SUITE_V2:
@@ -5090,7 +5108,7 @@ async def _generate_strategy_questions(session) -> list[dict]:
 8 chiều BẮT BUỘC (đúng key, đúng thứ tự):
 1. market_gap — khoảng trống thị trường nào muốn khai thác
 2. target_segment — segment/ICP nào muốn focus
-3. competitor_gap — gap đối thủ nào muốn đánh (messaging/channel/segment/product)
+3. competitor_gap (Messaging Gap) — thông điệp/narrative/claim nào đối thủ ĐANG bỏ trống mà business này có thể chiếm — CHỈ về góc truyền thông (tone, claim, story angle), KHÔNG đề cập channel gap/segment gap/product gap
 4. positioning — định vị trên positioning map — quadrant/góc nào
 5. pricing_approach — định vị PHÂN KHÚC GIÁ (không hỏi giá từng sản phẩm)
 6. usp_angle — USP angle muốn lead (emotional/practical/social proof)
@@ -5098,6 +5116,8 @@ async def _generate_strategy_questions(session) -> list[dict]:
 8. timeline — khung thời gian triển khai kế hoạch (sprint nhanh / vừa phải / dài hơi)
 
 🔴 RIÊNG câu 5 (pricing_approach): KHÔNG hỏi pricing model generic (premium/competitive/value/bundle) và KHÔNG hỏi giá từng sản phẩm. Hỏi founder muốn ĐỊNH VỊ Ở PHÂN KHÚC GIÁ nào. "options" PHẢI lấy NGUYÊN VĂN từ block "## Phân khúc giá tham khảo — ngành ..." được cung cấp trong Nghiên cứu (mỗi option = 1 phân khúc, gồm tên phân khúc + khoảng giá + kênh bán điển hình) — KHÔNG tự bịa khoảng giá hay kênh khác. "context": nếu research có đề cập giá/kênh bán hiện tại của business → so sánh và gợi ý phân khúc gần nhất phù hợp; nếu không có thì tóm tắt ngắn vì sao phân khúc này hợp với positioning/customer insight đã research.
+
+🔴 RIÊNG câu 3 (competitor_gap / Messaging Gap): CHỈ hỏi về khoảng trống THÔNG ĐIỆP — claim/narrative/tone of voice nào đối thủ chưa ai sở hữu mà business này có thể "own". "options" là các GÓC TRUYỀN THÔNG cụ thể bám research (vd: "Data-driven — minh bạch số liệu/kết quả thật", "Anti-hype — thẳng thắn, không thổi phồng", "Local-first — gắn bản địa, insight vùng miền", "Authority — chuyên môn, chứng nhận, kinh nghiệm"). KHÔNG liệt kê channel gap / segment gap / product gap làm options — đó là chiều khác, không thuộc câu này.
 
 🔴 RIÊNG câu 7 (channels): user sẽ TỰ GÕ các kênh muốn làm — KHÔNG hiển thị lựa chọn sẵn. Để "options": []. Dồn giá trị vào "context": tóm tắt finding CỤ THỂ từ research về kênh nào tiềm năng nhất cho business này (vd "TikTok organic CAC gần 0 nếu content đúng") để user tham khảo trước khi tự quyết. "question" hỏi mở: kênh nào user muốn triển khai content chính. Chỉ nhắc tới các kênh nội dung Max trực tiếp sản xuất được (Facebook, TikTok, Instagram, YouTube/Shorts, Zalo OA, Threads, LinkedIn, Google/SEO content...) — không nhắc "hợp tác đối tác", "referral", "co-marketing".
 
@@ -5269,7 +5289,7 @@ def _default_strategy_questions_fallback(industry: str | None = None) -> list[di
     return [
         {"key": "market_gap",       "question": "Market gap nào sếp muốn khai thác?",           "context": "Dựa vào nghiên cứu thị trường.",       "options": ["Khoảng trống phân khúc cao cấp", "Khoảng trống digital/online", "Khoảng trống địa lý", "Khoảng trống sản phẩm mới"]},
         {"key": "target_segment",   "question": "Segment / ICP nào muốn tập trung?",             "context": "Dựa vào customer insight.",            "options": ["Khách hàng trẻ 18-30", "Khách hàng trung niên 30-45", "Doanh nghiệp nhỏ SME", "Phụ huynh / gia đình"]},
-        {"key": "competitor_gap",   "question": "Gap đối thủ nào muốn khai thác?",               "context": "Dựa vào phân tích đối thủ.",           "options": ["Messaging gap — góc chưa ai nói", "Channel gap — kênh đối thủ bỏ ngỏ", "Segment gap — nhóm khách bị bỏ qua", "Product gap — tính năng còn thiếu"]},
+        {"key": "competitor_gap",   "question": "Messaging Gap nào sếp muốn khai thác — thông điệp/narrative nào đối thủ chưa ai sở hữu?", "context": "Dựa vào phân tích đối thủ — góc truyền thông đang bị bỏ trống.", "options": ["Data-driven — minh bạch số liệu, kết quả thật", "Anti-hype — thẳng thắn, không quảng cáo thổi phồng", "Local-first — gắn bản địa, insight vùng miền", "Authority — chuyên môn, chứng nhận, kinh nghiệm"]},
         {"key": "positioning",      "question": "Muốn định vị ở góc nào trên thị trường?",       "context": "Dựa vào positioning map.",            "options": ["Premium — chất lượng cao, giá cao", "Value — chất lượng tốt, giá hợp lý", "Niche specialist — chuyên sâu 1 phân khúc", "Challenger — thách thức market leader"]},
         {"key": "pricing_approach", "question": "Sếp muốn định vị ở phân khúc giá nào?",         "context": "Mỗi phân khúc đi kèm khoảng giá tham khảo + kênh bán điển hình theo ngành.", "options": pricing_options},
         {"key": "usp_angle",        "question": "USP angle nào muốn lead trong marketing?",       "context": "Dựa vào USP definition.",             "options": ["Emotional angle — cảm xúc, câu chuyện", "Practical angle — lợi ích cụ thể, số liệu", "Social proof angle — review, kết quả khách", "Authority angle — expertise, chứng chỉ"]},
@@ -7390,27 +7410,41 @@ def _duration_to_days(duration: str | None) -> int:
     return 30
 
 
-async def _ask_campaign_setup(message, session):
-    """Hỏi kênh + organic/ads + kênh chủ lực (text, ghi nhận — không nút bấm)
-    TRƯỚC khi viết Brief. Sếp trả lời → _handle_campaign_setup_text → viết Brief."""
+async def _ask_campaign_setup(update, context, session):
+    """KHÔNG hỏi lại kênh + ngân sách nữa (2026-06-12) — 2 ý này sếp đã trả lời ở
+    câu 7 chiến lược (channels) + budget gate (_budget_team_context). Organic/ads +
+    kênh chủ lực: KHÔNG hỏi, để AI tự suy từ data. Prefill xong viết Brief thẳng."""
+    import json as _json
+    pi = session.pending_intake
+
     # Reset answer cũ để campaign mới không kế thừa
     for k in ("media_mix", "hero_channel", "total_budget"):
-        session.pending_intake.pop(k, None)
-    session.pending_intake["_awaiting_campaign_setup"] = "1"
+        pi.pop(k, None)
+
+    # 1) Kênh — lấy từ câu 7 chiến lược đã chốt; fallback profile.current_channels
+    channels = ""
+    try:
+        answers = _json.loads(pi.get("_strategy_answers") or "{}")
+        channels = (answers.get("channels") or "").strip()
+    except Exception:
+        channels = ""
+    if not channels:
+        channels = (session.profile.current_channels or "").strip()
+    if channels:
+        pi["channels"] = channels
+
+    # 2) Ngân sách — lấy từ budget gate đã chốt (_budget_team_context); fallback profile.
+    #    Chuỗi này gồm cả budget + team → đủ cho brief phân bổ Section 5 (AI tự bóc số).
+    budget_ctx = (pi.get("_budget_team_context") or "").strip()
+    if not budget_ctx and session.profile.monthly_marketing_budget:
+        budget_ctx = str(session.profile.monthly_marketing_budget).strip()
+    if budget_ctx:
+        pi["total_budget"] = budget_ctx
+
     await save_session(session)
-    addr = _addr(session)
-    suggested = session.profile.current_channels or "Facebook, TikTok, Zalo OA, Instagram"
-    await message.reply_text(
-        f"📝 *Đã nhận đủ thông tin!* Trước khi em viết Brief, cho em hỏi 3 ý ạ:\n\n"
-        f"1️⃣ *Triển khai ở những kênh nào?*\n"
-        f"_(Gợi ý từ profile: {suggested})_\n\n"
-        f"2️⃣ *Tổng ngân sách campaign + phân bổ organic/ads?*\n"
-        f"_(Gồm cả tiền ads + sản xuất nội dung — vd \"Tổng 30tr: Facebook ads 15tr, còn lại quay chụp; TikTok đăng organic\")_\n\n"
-        f"3️⃣ *Kênh nào là chủ lực, kênh nào hỗ trợ?*\n"
-        f"_(Dồn lực 1 kênh chính hiệu quả hơn rải đều — vd \"TikTok chủ lực, Facebook + Zalo hỗ trợ\")_\n\n"
-        f"_Sếp trả lời cả 3 trong 1 tin. Chưa rõ ý nào thì bỏ qua, em tự cân ạ 🙏_",
-        parse_mode=ParseMode.MARKDOWN,
-    )
+
+    # KHÔNG hỏi organic/ads + kênh chủ lực — viết Brief thẳng, AI tự suy từ data
+    await _run_campaign_brief_after_setup(update.message, session, context, update)
 
 
 async def _handle_campaign_setup_text(update, context, session, text):
@@ -8372,9 +8406,9 @@ async def _handle_campaign_finalize_text(update, context, session, text: str):
     session.selected_task = "campaign_brief"
     await save_session(session)
 
-    # HỎI kênh + tỉ trọng source mix (theo từng kênh) TRƯỚC khi viết brief —
-    # brief mới có thể viết chiến lược theo đúng kênh + tỉ trọng sếp chốt.
-    await _ask_campaign_setup(update.message, session)
+    # Prefill kênh (từ câu 7 chiến lược) + ngân sách (từ budget gate) đã chốt →
+    # viết brief thẳng, KHÔNG hỏi lại. Organic/ads + kênh chủ lực để AI tự suy.
+    await _ask_campaign_setup(update, context, session)
 
 
 # ─── Brand Voice Persistence (Sprint 5) ──────────────────────────
