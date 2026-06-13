@@ -14,23 +14,25 @@ logger = logging.getLogger(__name__)
 DEFAULT_QUOTA = 1_000_000  # 1M tokens/user/month
 _TOKEN_LOG_KEY = "_token_log"
 _TOKEN_LOG_MAX = 50  # số entries tối đa giữ lại
-_JOB_SEQ_KEY = "_job_seq"  # monotonic counter — gom các call của cùng 1 job
+_JOB_SEQ_KEY = "_job_seq"  # marker — gom các call của cùng 1 job
 
 
 def begin_job(session) -> int:
     """Bắt đầu 1 job mới (1 task user yêu cầu). Mọi track_skill sau đó
     được stamp cùng job_seq cho tới lần begin_job kế tiếp.
 
+    Dùng epoch millis làm job_seq — không cần persist giữa các request
+    (preferences["_job_seq"] không được load lại từ DB), nhưng vẫn luôn
+    lớn hơn mọi giá trị cũ trong _token_log nên get_job_breakdown(job_seq=None)
+    (lấy max) luôn trỏ đúng job vừa mở.
+
     Returns: job_seq mới.
     """
     if session is None:
         return 0
+    import time
+    new_seq = int(time.time() * 1000)
     prefs = session.preferences or {}
-    try:
-        current = int(prefs.get(_JOB_SEQ_KEY, 0))
-    except (ValueError, TypeError):
-        current = 0
-    new_seq = current + 1
     prefs[_JOB_SEQ_KEY] = new_seq
     session.preferences = prefs
     return new_seq
