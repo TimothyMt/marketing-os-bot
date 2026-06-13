@@ -207,6 +207,11 @@ async def _call_anthropic_sonnet(
         messages=[{"role": "user", "content": user}],
         extra_headers=extra_headers,
     )
+    if response.stop_reason == "max_tokens":
+        raise RuntimeError(
+            f"Anthropic {CLAUDE_SONNET_MODEL} output bị cắt giữa câu (stop_reason=max_tokens, "
+            f"max_tokens={max_tokens}) — failover sang provider khác."
+        )
     return {
         "output": response.content[0].text,
         "tokens_in": getattr(response.usage, "input_tokens", 0),
@@ -234,6 +239,11 @@ async def _call_anthropic_haiku(
         messages=[{"role": "user", "content": user}],
         extra_headers=extra_headers,
     )
+    if response.stop_reason == "max_tokens":
+        raise RuntimeError(
+            f"Anthropic {CLAUDE_HAIKU_MODEL} output bị cắt giữa câu (stop_reason=max_tokens, "
+            f"max_tokens={max_tokens}) — failover sang provider khác."
+        )
     return {
         "output": response.content[0].text,
         "tokens_in": getattr(response.usage, "input_tokens", 0),

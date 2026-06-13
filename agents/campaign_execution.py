@@ -42,10 +42,10 @@ QUY TẮC OUTPUT (Telegram):
 
 SKILLS CÓ SẴN (dùng đúng tên trong backtick):
 - `ads_generator`        — copy quảng cáo ToFu / MoFu / BoFu
-- `video_scripts`        — kịch bản TikTok / Reels / Shorts
+- `video_script_gen`        — kịch bản TikTok / Reels / Shorts
 - `email_zalo_sequence`  — chuỗi nurture Email + Zalo (3-7 tin)
 - `sales_inbox_script`   — kịch bản chốt inbox / DM / Zalo chat
-- `post_hooks`           — caption + hook bài đăng organic
+- `post_batch`           — caption + hook bài đăng organic
 - `content_calendar`     — lịch đăng (đã auto-gen, sếp có thể tái chạy)
 - `retention_strategy`   — hệ thống giữ chân khách cũ
 - `winback_campaign`     — thu hồi khách đã bỏ quên
@@ -53,7 +53,7 @@ SKILLS CÓ SẴN (dùng đúng tên trong backtick):
 RÀNG BUỘC THEO GOAL TYPE:
 - acquisition  → ưu tiên: ads_generator → email_zalo_sequence → sales_inbox_script
 - revenue/upsell → ưu tiên: email_zalo_sequence → ads_generator → sales_inbox_script
-- brand/awareness → ưu tiên: video_scripts → ads_generator → post_hooks
+- brand/awareness → ưu tiên: video_script_gen → ads_generator → post_batch
 - retention    → ưu tiên: retention_strategy → email_zalo_sequence → winback_campaign
 - mix          → balance acquisition + brand"""
 
@@ -88,7 +88,7 @@ _FALLBACK_ACTIVITIES = {
     "acquisition": (
         "🔵 *ToFu — Tiếp cận tệp mới*\n"
         "• Ads video hook 3 giây tiếp cận cold audience ← `ads_generator`\n"
-        "• Kịch bản TikTok/Reels awareness ← `video_scripts`\n\n"
+        "• Kịch bản TikTok/Reels awareness ← `video_script_gen`\n\n"
         "🟡 *MoFu — Nurture & Trust*\n"
         "• Chuỗi Email/Zalo nurture 5 ngày ← `email_zalo_sequence`\n"
         "• Kịch bản chăm lead qua inbox/Zalo ← `sales_inbox_script`\n\n"
@@ -104,7 +104,7 @@ _FALLBACK_ACTIVITIES = {
     ),
     "revenue": (
         "🔵 *ToFu — Nhắc nhớ & Re-engage*\n"
-        "• Post giá trị + showcase sản phẩm ← `post_hooks`\n\n"
+        "• Post giá trị + showcase sản phẩm ← `post_batch`\n\n"
         "🟡 *MoFu — Upsell & Cross-sell*\n"
         "• Chuỗi Email/Zalo upsell 3-5 ngày ← `email_zalo_sequence`\n"
         "• Ads retarget khách đã mua ← `ads_generator`\n\n"
@@ -120,23 +120,23 @@ _FALLBACK_ACTIVITIES = {
     ),
     "brand": (
         "🔵 *ToFu — Viral & Awareness*\n"
-        "• Kịch bản video hook TikTok/Reels ← `video_scripts`\n"
+        "• Kịch bản video hook TikTok/Reels ← `video_script_gen`\n"
         "• Ads reach rộng cold audience ← `ads_generator`\n\n"
         "🟡 *MoFu — Education & Trust*\n"
-        "• Caption + hook bài educate ← `post_hooks`\n"
+        "• Caption + hook bài educate ← `post_batch`\n"
         "• Content pillar Educate + Engage ← `content_calendar`\n\n"
         "🟢 *BoFu — Social Proof & CTA nhẹ*\n"
         "• Testimonial + case study ads ← `ads_generator`\n\n"
         + _RETENTION_BASELINE +
         "*🚀 Thứ tự ưu tiên chạy tiếp:*\n"
-        "1. `video_scripts` (hero content viral)\n"
+        "1. `video_script_gen` (hero content viral)\n"
         "2. `ads_generator` (ToFu reach)\n"
-        "3. `post_hooks` (organic amplify)\n"
+        "3. `post_batch` (organic amplify)\n"
         "4. `retention_strategy` (giữ data follower/lead thu được — tối ưu ROI)"
     ),
     "retention": (
         "🔵 *ToFu — Re-attract khách cũ*\n"
-        "• Post nhắc nhớ + value showcase ← `post_hooks`\n\n"
+        "• Post nhắc nhớ + value showcase ← `post_batch`\n\n"
         "🟡 *MoFu — Nurture & Loyalty*\n"
         "• Hệ thống giữ chân + loyalty tier ← `retention_strategy`\n"
         "• Chuỗi Zalo/Email re-engage ← `email_zalo_sequence`\n\n"
