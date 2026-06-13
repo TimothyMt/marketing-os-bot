@@ -466,11 +466,16 @@ def render_excel_file(
     parsed: dict,
     output_format: OutputFormat,
     business_name: str = "",
+    post_ids: Optional[list[str]] = None,
 ) -> Optional[bytes]:
     """Render skill output as .xlsx.
     Skills in SKILL_TEMPLATE_SHEET are routed to render_template_excel() which
     fills content_generation_template.xlsx instead of building a new workbook.
     Other skills use dynamic table extraction + openpyxl.
+
+    post_ids: nếu truyền vào (content_calendar) — danh sách POST-XXX IDs theo
+    đúng thứ tự parse_calendar_to_posts() đã gán, dùng để chèn cột "ID" đầu
+    mỗi bảng dữ liệu (không áp cho overview/key-value sheet).
     """
     if skill_name in SKILL_TEMPLATE_SHEET:
         return render_template_excel(skill_name, skill_label, parsed, output_format, business_name)
@@ -548,6 +553,24 @@ def render_excel_file(
                 sheets_to_render.append(t)
     else:
         sheets_to_render = tables[:8]  # cap 8 sheets
+
+    # Content Calendar — chèn cột "ID" (POST-XXX) đầu mỗi bảng dữ liệu, khớp
+    # thứ tự với parse_calendar_to_posts() để /post <ID> trỏ đúng row trong Excel.
+    if skill_name == "content_calendar" and post_ids:
+        new_sheets = []
+        post_idx = 0
+        for t_title, t_headers, t_rows in sheets_to_render:
+            if _is_keyvalue_table(t_headers, t_rows):
+                new_sheets.append((t_title, t_headers, t_rows))
+                continue
+            new_headers = ["ID"] + list(t_headers)
+            new_rows = []
+            for row in t_rows:
+                pid = post_ids[post_idx] if post_idx < len(post_ids) else ""
+                post_idx += 1
+                new_rows.append([pid] + list(row))
+            new_sheets.append((t_title, new_headers, new_rows))
+        sheets_to_render = new_sheets
 
     # SPECIAL — Content Generator: chỉ giữ MASTER table (có cột Tuần + Bài),
     # bỏ qua các mini-table phụ trong content (size guides, comparison tables, etc.)

@@ -4889,7 +4889,14 @@ async def _send_ops_result(message: Message, session, task_name: str, result: st
             logger.info("Rendering Excel for skill=%s (parsed keys: %s, raw len: %d)",
                         task_name, list(parsed.keys()),
                         len(parsed.get("raw", "")) if isinstance(parsed.get("raw"), str) else 0)
-            xlsx_bytes = render_excel_file(task_name, task.label, parsed, skill.output_format, business_name)
+            post_ids = None
+            if task_name == "content_calendar":
+                from agents.post_actions import parse_calendar_to_posts
+                campaign_id = session.pending_intake.get("campaign_name", "")
+                posts = parse_calendar_to_posts(result, campaign_id=campaign_id)
+                if posts:
+                    post_ids = list(posts.keys())
+            xlsx_bytes = render_excel_file(task_name, task.label, parsed, skill.output_format, business_name, post_ids=post_ids)
         except Exception as e:
             logger.exception("render_excel_file CRASHED for %s: %s", task_name, e)
             xlsx_bytes = None
