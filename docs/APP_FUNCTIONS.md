@@ -285,6 +285,40 @@ travel_hospitality`
 
 ---
 
+## 10. Chuyển sang repo mới — mang gì, bỏ gì
+
+### Mang nguyên (core — app không chạy được nếu thiếu)
+| Path | Vai trò |
+|---|---|
+| `bot/` | Telegram handlers, renderers, keyboards, main entrypoint |
+| `agents/` | Pipelines, skills, prompts, task registry |
+| `tools/` | LLM router, token tracker/billing, FB Marketing/Ads Library, v.v. |
+| `frameworks/` | Industry brain (14 ngành), archetype resolver |
+| `storage/` (trừ phần liệt kê ở dưới) | Models, session, v2 adapter + tables |
+| `storage/migrations/001..011*.sql` | Toàn bộ — cần chạy hết trên Supabase mới để có schema v2 hiện tại |
+| `workers/` | Ads scheduler / competitor monitor jobs |
+| `services/` | (kiểm tra nội dung — hỗ trợ ads scheduler) |
+| `config.py`, `run_local.py`, `Procfile`, `requirements.txt` | Entry/config |
+| `content_generation_template.xlsx` | Template Excel cho content_generator |
+| `.env.example` | Danh sách env vars cần set ở repo mới (Telegram/Anthropic/OpenAI/Gemini/Supabase/FB/Encryption) |
+| `docs/` | Tài liệu — đặc biệt file này + `BACKLOG.md`, `markos-flow.md` |
+
+### Có thể bỏ qua (legacy / one-time, KHÔNG cần ở repo mới)
+| Path | Vì sao bỏ |
+|---|---|
+| `storage/session.py` — nhánh v1 (`_clear_v1_row`, write vào table `sessions` cũ) | Mặc định đã ở Phase D (`DB_V2_READ=true`, `DB_V2_WRITE=false`) — chỉ còn v2. Nhánh v1 chỉ là an toàn lưới cho rollback, repo mới bắt đầu sạch nên không cần. |
+| `scripts/backfill_v2.py`, `scripts/verify_v2_drift.py` | Script một-lần cho migration v1→v2 đã xong. Repo mới start thẳng ở v2, không cần backfill. |
+| `_pending_three_tier/` | (Đã xoá ở commit này) — code nhánh three-tier không dùng, bản gốc còn trong git history nếu cần tham khảo. |
+| `__pycache__/`, `.pytest_cache/` | Build cache, không track. |
+
+### Lưu ý khi setup repo mới
+1. Tạo Supabase project mới → chạy lần lượt `storage/migrations/001_initial_sessions.sql` → `011_fb_available_accounts.sql`.
+2. Copy `.env.example` → `.env`, điền key thật (Telegram token mới nếu muốn bot riêng).
+3. `DB_V2_READ=true`, `DB_V2_WRITE=false` (default) — không cần đụng `storage/session.py` nhánh v1.
+4. Nếu muốn dọn tiếp `storage/session.py` (xoá nhánh v1 hẳn) — nên làm ở **repo mới**, sau khi đã chạy ổn vài ngày, để dễ rollback nếu có vấn đề.
+
+---
+
 ## Phụ lục — Thống kê
 
 | Hạng mục | Số lượng |
